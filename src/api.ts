@@ -14,6 +14,7 @@ import { applyFilters } from './utils/filters';
 import { buildVariables, generateFrontmatter, extractContentBySelector, selectorContentToString, formatPropertyValue } from './utils/shared';
 import { sanitizeFileName } from './utils/string-utils';
 import { Template, Property } from './types/types';
+import { prepareDocumentForExtraction } from './utils/publisher-figures';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -185,7 +186,7 @@ export async function clip(options: ClipOptions): Promise<ClipResult> {
 
 	// Extract content with defuddle
 	// Cast through unknown: linkedom's Document is structurally compatible but not nominally typed as DOM Document
-	const defuddle = new DefuddleClass(doc as unknown as Document, { url });
+	const defuddle = new DefuddleClass(prepareDocumentForExtraction(doc as unknown as Document, url), { url });
 	const defuddleResult = defuddle.parse();
 
 	// Convert to markdown

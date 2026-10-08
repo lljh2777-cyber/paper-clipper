@@ -24,3 +24,19 @@ assets/shared
 .cursorrules
 .env
 context/
+
+# Browser Fetcher: local login state and captured pages
+.browser-profile/
+output/browser-fetch/
+output/playwright/
+
+# Local paper samples, private exports, and machine-specific Skill configuration
+/test-paper*.md
+/Paper_Vault/
+/Paper_Vault_Backups/
+/exports/
+/captures/
+/output/
+/skills/paper-clipper/runtime.json
+.env.*
+!.env.example

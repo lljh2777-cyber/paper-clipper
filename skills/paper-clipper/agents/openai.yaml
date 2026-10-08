@@ -1,0 +1,4 @@
+interface:
+  display_name: "Paper Clipper"
+  short_description: "Save publisher papers as local Markdown"
+  default_prompt: "Use $paper-clipper to save this paper's publisher HTML as Markdown."

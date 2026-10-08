@@ -1,3 +1,39 @@
+# Paper Clipper
+
+An independent, unofficial paper-acquisition workflow based on
+[Obsidian Web Clipper](https://github.com/obsidianmd/obsidian-clipper).
+Resolve a title, DOI or URL, obtain accessible publisher HTML, convert it to
+Markdown, check supported content structures, and optionally archive local images
+and a DOI-deduplicated note into a chosen Vault. Existing notes are not overwritten.
+
+Start with [Paper Agent](docs/paper-agent.md) for the command-line interface,
+local Codex Skill, installation instructions, limitations and validation results.
+
+```sh
+npm ci
+npx playwright install chromium
+npm run build:cli
+npm run install:paper-skill
+```
+
+This repository currently preserves the working development baseline and upstream
+history; the proposed minimal standalone core has not yet been extracted.
+It is not an official Obsidian release or a distribution-ready rebranded browser
+extension. Upstream copyright and license notices are retained. Brand assets,
+icons and marketing materials are excluded from upstream's MIT grant; review and
+replace or separately license those materials before packaging a derived release.
+Third-party components retain their respective licenses.
+
+Paper captures, personal Vaults, browser profiles and local acceptance samples are
+not included. Unit tests use local synthetic fixtures; real-paper acceptance
+commands require separately supplied authorized inputs and can fail if those
+inputs are absent. See [Real-paper acceptance](docs/paper-acceptance.md).
+
+## Upstream Documentation
+
+The following describes the upstream project. Links to official extension stores
+install the upstream extension, not the custom HTML-export build in this fork.
+
 Obsidian Web Clipper helps you highlight and capture the web in your favorite browser. Anything you save is stored as durable Markdown files that you can read offline, and preserve for the long term.
 
 - **[Download Web Clipper](https://obsidian.md/clipper)**
@@ -45,6 +81,17 @@ In no particular order:
 - [x] Translate UI into more languages — help is welcomed
 
 ## Developers
+
+For Agent-oriented title/DOI/URL acquisition with one JSON result, start with [Paper Agent](docs/paper-agent.md): `node scripts/save-paper.mjs "<title | DOI | URL>"`. This is a local command, not an installed Agent plugin or MCP server.
+To expose that workflow as a discoverable local Codex Skill, use `npm run install:paper-skill`, then invoke `$paper-clipper` on the next turn. See [Skill installation](docs/paper-agent.md#local-codex-skill). No default Vault is configured.
+For automatic URL/file/directory routing, start with the [Unified paper command](docs/clip.md): `npm run clip -- <input>`.
+For the five-paper support matrix, known limitations, and offline replay, see [Real-paper acceptance](docs/paper-acceptance.md).
+For optional offline image attachments, use `--download-assets`; see [Local image attachments](docs/paper-assets.md).
+For one-command capture/import, local images and DOI-deduplicated Vault archiving, use `npm run clip -- <input> --download-assets --vault <vault>`; see [Vault archiving](docs/vault-archive.md). Preview already converted files with `npm run clip:vault -- <converted-directory> --vault <vault> --dry-run`.
+For one-command paper capture and Markdown validation, see [Paper Clipper](docs/paper-clipper.md).
+The standalone HTML capture tool is documented in [Browser Fetcher](docs/browser-fetcher.md).
+To export HTML from an already accessible browser tab, see [Extension HTML export](docs/html-export.md).
+To automatically pair and batch-convert exported HTML/JSON files, see [Import exported papers](docs/import-papers.md).
 
 To build the extension:
 

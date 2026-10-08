@@ -161,13 +161,13 @@ module.exports = (env, argv) => {
 			new MiniCssExtractPlugin({
 				filename: '[name].css'
 			}),
-			{
+			...(env.SKIP_CLEANUP ? [] : [{
 				apply: (compiler) => {
 					compiler.hooks.afterEmit.tap('RemoveDSStore', (compilation) => {
 						removeDSStore(path.resolve(__dirname, outputDir));
 					});
 				}
-			},
+			}]),
 			new webpack.DefinePlugin({
 				'process.env.NODE_ENV': JSON.stringify(argv.mode),
 				'DEBUG_MODE': JSON.stringify(!isProduction)

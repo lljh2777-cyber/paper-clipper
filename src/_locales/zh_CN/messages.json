@@ -256,6 +256,14 @@
 	"export": {
 		"message": "导出"
 	},
+	"exportPageHtml": { "message": "导出页面 HTML" },
+	"htmlExportInProgress": { "message": "正在导出 HTML..." },
+	"htmlExportDownloadsStarted": { "message": "已发起 HTML 与 JSON 下载。" },
+	"htmlExportFailed": { "message": "HTML 导出失败，请刷新页面后重试。" },
+	"htmlExportUnsupportedPage": { "message": "请打开原始 HTTP 或 HTTPS 网页后导出 HTML。" },
+	"htmlExportExitReader": { "message": "请退出阅读模式后再导出 HTML。" },
+	"htmlExportTooLarge": { "message": "页面 HTML 超过 30 MiB 限制。" },
+	"htmlExportPageChanged": { "message": "导出时页面已发生跳转，请刷新剪藏器后重试。" },
 	"exportAllSettings": {
 		"message": "导出所有设置"
 	},

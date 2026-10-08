@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "hic",
+      "name": "Hi-C pancreatic cancer",
+      "url": "https://link.springer.com/article/10.1186/s13045-021-01131-0",
+      "captureReport": "output/browser-fetch/papers/hic.md.report.json",
+      "reference": "test-paper.md",
+      "comparison": "whitespace",
+      "excludeReferenceSections": ["Ask a research question"],
+      "expectedExit": 0,
+      "requiredSections": ["Background", "Methods", "Results", "Discussion"],
+      "minimums": {"bodyWords": 10000}
+    },
+    {
+      "id": "deepmet",
+      "name": "DeepMet",
+      "url": "https://www.nature.com/articles/s41586-025-09969-x",
+      "captureReport": "output/browser-fetch/papers/deepmet.md.report.json",
+      "reference": "test-paper3.md",
+      "referenceMissingNatureLegends": 5,
+      "sourceChecks": {"natureLegends": "figure .c-article-section__figure-description"},
+      "comparison": "whitespace",
+      "referenceReplacements": [
+        {
+          "from": "$${C}\\_{{\\\\rm{DeepMet}}}(m)=\\\\frac{{\\\\rm{Frequency}}(m)}{{\\\\sum }\\_{i\\\\in {\\\\rm{Candidates}}}{\\\\rm{Frequency}}(i)}$$",
+          "to": "$$\n{C}_{{\\rm{DeepMet}}}(m)=\\frac{{\\rm{Frequency}}(m)}{{\\sum }_{i\\in {\\rm{Candidates}}}{\\rm{Frequency}}(i)}\n$$",
+          "reason": "DeepMet confidence equation: undo legacy Markdown escaping, verified against raw .mathjax-tex."
+        },
+        {
+          "from": "$${S}\\_{{\\\\rm{comb}}}(m)={C}\\_{{\\\\rm{DeepMet}}}(m)\\\\times {\\\\rm{CosineSimilarity}}(m)$$",
+          "to": "$$\n{S}_{{\\rm{comb}}}(m)={C}_{{\\rm{DeepMet}}}(m)\\times {\\rm{CosineSimilarity}}(m)\n$$",
+          "reason": "DeepMet combined-score equation: undo legacy Markdown escaping, verified against raw .mathjax-tex."
+        }
+      ],
+      "expectedExit": 0,
+      "requiredSections": ["Main", "Discussion", "Methods"],
+      "minimums": {"bodyWords": 23000}
+    },
+    {
+      "id": "novae-export",
+      "name": "Novae authorized extension export",
+      "url": "https://www.nature.com/articles/s41592-025-02899-6",
+      "exportPair": "../Novae a graph-based foundation model for spatial transcriptomics data  Nature Methods-20261007124423964.html",
+      "reference": "output/browser-fetch/novae-reference.md",
+      "referenceMissingNatureLegends": 6,
+      "sourceChecks": {"natureLegends": "figure .c-article-section__figure-description"},
+      "comparison": "exact",
+      "expectedExit": 0,
+      "requiredSections": ["Main", "Results", "Discussion", "Methods"],
+      "minimums": {"bodyWords": 12619, "mathExpressions": 69, "displayEquations": 7, "footnoteDefinitions": 59, "images": 6}
+    },
+    {
+      "id": "plos-binomial",
+      "name": "PLOS binomial feature selection",
+      "url": "https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1012386",
+      "captureReport": "output/browser-fetch/acceptance/plos-binomial.md.report.json",
+      "expectedExit": 0,
+      "requiredSections": ["Introduction", "Results", "Discussion", "Methods"],
+      "sourceChecks": {"links": "a.ref-tip", "images": ".figure img, img.inline-graphic", "captions": ".figcaption, .figure p:not([class])"},
+      "minimums": {"bodyWords": 15000, "images": 18}
+    },
+    {
+      "id": "frontiers-lfsc",
+      "name": "Frontiers LFSC rendered",
+      "url": "https://www.frontiersin.org/journals/genetics/articles/10.3389/fgene.2022.1068075/full",
+      "captureReport": "output/browser-fetch/acceptance/frontiers-fixed.md.report.json",
+      "sourceMode": "browser",
+      "expectedExit": 0,
+      "requiredSections": ["1 Introduction", "2 Methods and materials", "3 Results", "4 Conclusion"],
+      "sourceChecks": {"tables": ".ArticleTable table", "links": "a.ArticleReference", "captions": ".ArticleFigure figcaption"},
+      "minimums": {"bodyWords": 7000, "mathExpressions": 95, "tables": 3, "images": 8}
+    },
+    {
+      "id": "novae-preview",
+      "name": "Novae subscription preview",
+      "url": "https://www.nature.com/articles/s41592-025-02899-6",
+      "captureReport": "output/browser-fetch/papers/novae-rejected.md.report.json",
+      "expectedExit": 2,
+      "requiredReasons": ["subscription-preview"]
+    },
+    {
+      "id": "frontiers-unrendered",
+      "name": "Frontiers SSR missing equations",
+      "url": "https://www.frontiersin.org/journals/genetics/articles/10.3389/fgene.2022.1068075/full",
+      "captureReport": "output/browser-fetch/acceptance/frontiers-fixed.md.report.json",
+      "sourceMode": "http",
+      "expectedExit": 2,
+      "requiredReasons": ["unrendered-equations"]
+    },
+    {
+      "id": "elife-challenge",
+      "name": "eLife client challenge",
+      "url": "https://elifesciences.org/articles/69324",
+      "captureReport": "output/browser-fetch/acceptance/elife-pathway.md.report.json",
+      "expectedExit": 2,
+      "requiredReasons": ["access-challenge"]
+    }
+  ]
+}

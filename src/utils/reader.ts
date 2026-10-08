@@ -1,4 +1,5 @@
 import Defuddle from 'defuddle/full';
+import { prepareDocumentForExtraction } from './publisher-figures';
 import browser from './browser-polyfill';
 import { detectBrowser } from './browser-detection';
 import { flattenShadowDom as flattenShadowDomUtil } from './flatten-shadow-dom';
@@ -874,7 +875,7 @@ export class Reader {
 			return pre;
 		}
 
-		const defuddle = new Defuddle(doc, { url: doc.URL });
+		const defuddle = new Defuddle(prepareDocumentForExtraction(doc, doc.URL), { url: doc.URL });
 		const defuddled = await defuddle.parseAsync();
 
 		return {

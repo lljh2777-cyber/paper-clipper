@@ -23,6 +23,7 @@ import { sanitizeFileName } from '../utils/string-utils';
 import { saveFile } from '../utils/file-utils';
 import { translatePage, getMessage, setupLanguageAndDirection } from '../utils/i18n';
 import { formatPropertyValue } from '../utils/shared';
+import { exportPageHtml } from '../utils/page-html-export';
 
 interface ReaderModeResponse {
 	success: boolean;
@@ -159,6 +160,7 @@ async function initializeExtension(tabId: number) {
 	try {
 		// Initialize translations
 		await translatePage();
+		document.getElementById('export-page-html')?.setAttribute('aria-label', getMessage('exportPageHtml'));
 		
 		// Setup language and RTL support
 		await setupLanguageAndDirection();
@@ -284,6 +286,13 @@ function setupMessageListeners() {
 
 document.addEventListener('DOMContentLoaded', async function() {
 	loadedSettings = await loadSettings();
+	const exportButton = document.getElementById('export-page-html') as HTMLButtonElement | null;
+	if (exportButton) {
+		exportButton.title = getMessage('exportPageHtml');
+		exportButton.setAttribute('aria-label', exportButton.title);
+		initializeIcons(exportButton);
+		exportButton.addEventListener('click', handleExportPageHtml);
+	}
 	if (isIframe) {
 		document.documentElement.classList.add('is-embedded');
 	}
@@ -299,6 +308,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 		}
 		
 		currentTabId = response.tabId;
+		if (exportButton) exportButton.disabled = false;
 		const tab = await getTabInfo(currentTabId);
 		const currentBrowser = await detectBrowser();
 		const isMobile = currentBrowser === 'mobile-safari';
@@ -1237,6 +1247,33 @@ export async function copyToClipboard(content: string) {
 	} catch (error) {
 		console.error('Failed to copy to clipboard:', error);
 		showError('failedToCopyText');
+	}
+}
+
+async function handleExportPageHtml() {
+	const button = document.getElementById('export-page-html') as HTMLButtonElement;
+	const status = document.getElementById('html-export-status') as HTMLElement;
+	if (button.disabled) return;
+	button.disabled = true;
+	button.setAttribute('aria-busy', 'true');
+	status.hidden = false;
+	status.textContent = getMessage('htmlExportInProgress');
+	status.classList.remove('is-error');
+	try {
+		const tabId = currentTabId;
+		if (tabId === undefined) throw new Error('htmlExportUnsupportedPage');
+		const tab = await getTabInfo(tabId);
+		await exportPageHtml(tabId, tab.url);
+		status.textContent = getMessage('htmlExportDownloadsStarted');
+	} catch (error) {
+		console.error('Failed to export page HTML:', error);
+		const knownErrors = ['htmlExportUnsupportedPage', 'htmlExportExitReader', 'htmlExportTooLarge', 'htmlExportPageChanged'];
+		const key = error instanceof Error && knownErrors.includes(error.message) ? error.message : 'htmlExportFailed';
+		status.textContent = getMessage(key);
+		status.classList.add('is-error');
+	} finally {
+		button.disabled = false;
+		button.removeAttribute('aria-busy');
 	}
 }
 

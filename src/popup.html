@@ -14,6 +14,9 @@
 				</select>
 			</div>
 			<div class="popup-actions">
+				<button type="button" id="export-page-html" class="clickable-icon" data-i18n-title="exportPageHtml" aria-label="Export page HTML" disabled>
+					<i data-lucide="file-down"></i>
+				</button>
 				<a href="#" id="show-variables" class="clickable-icon" 
 					data-i18n-title="showPageVariables">
 					<i data-lucide="ellipsis"></i>
@@ -36,6 +39,7 @@
 				</a>		
 			</div>
 		</div>
+		<p id="html-export-status" role="status" hidden></p>
 		<p class="error-message" style="display: none;"></p>
 		<div class="clipper">
 			<textarea id="note-name-field" type="text" data-i18n="noteName" rows="1"></textarea>

@@ -256,6 +256,14 @@
 	"export": {
 		"message": "匯出"
 	},
+	"exportPageHtml": { "message": "匯出頁面 HTML" },
+	"htmlExportInProgress": { "message": "正在匯出 HTML..." },
+	"htmlExportDownloadsStarted": { "message": "已請求下載 HTML 與 JSON。" },
+	"htmlExportFailed": { "message": "HTML 匯出失敗，請重新整理頁面後重試。" },
+	"htmlExportUnsupportedPage": { "message": "請開啟原始 HTTP 或 HTTPS 網頁後匯出 HTML。" },
+	"htmlExportExitReader": { "message": "請退出閱讀模式後再匯出 HTML。" },
+	"htmlExportTooLarge": { "message": "頁面 HTML 超過 30 MiB 限制。" },
+	"htmlExportPageChanged": { "message": "匯出時頁面已發生跳轉，請重新整理剪藏器後重試。" },
 	"exportAllSettings": {
 		"message": "匯出所有設定"
 	},

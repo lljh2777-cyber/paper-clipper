@@ -256,6 +256,14 @@
 	"export": {
 		"message": "Export"
 	},
+	"exportPageHtml": { "message": "Export page HTML" },
+	"htmlExportInProgress": { "message": "Exporting HTML..." },
+	"htmlExportDownloadsStarted": { "message": "HTML and JSON downloads requested." },
+	"htmlExportFailed": { "message": "HTML export failed. Reload the page and try again." },
+	"htmlExportUnsupportedPage": { "message": "Open the original HTTP or HTTPS page to export HTML." },
+	"htmlExportExitReader": { "message": "Exit reader mode before exporting HTML." },
+	"htmlExportTooLarge": { "message": "This page exceeds the 30 MiB HTML limit." },
+	"htmlExportPageChanged": { "message": "The page changed during export. Refresh the clipper and try again." },
 	"exportAllSettings": {
 		"message": "Export all settings"
 	},
