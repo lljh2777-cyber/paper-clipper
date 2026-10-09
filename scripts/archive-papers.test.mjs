@@ -90,6 +90,25 @@ test('dry-run validates and plans without creating a Vault or touching source fi
 	assert.equal(await readFile(f.input, 'utf8'), f.markdown);
 });
 
+test('standalone archive and dry run recompute source sections for old reports', async () => {
+	const f = await fixture('source-sections', { images: false, url: 'https://www.nature.com/articles/test' });
+	const section = (body) => `<article class="c-article-body"><div class="main-content"><section data-title="Methods"><div><h2 class="c-article-section__title">Methods</h2><div class="c-article-section__content">${body}</div></div></section></div></article>`;
+	await writeFile(path.join(f.artifacts, 'file.html'), html().replace('</body>', section('<p>Original methods.</p><p>Source paragraph missing in old output.</p>') + '</body>'));
+	for (const flags of [['--dry-run'], []]) {
+		const result = await archivePapers(f.options(flags));
+		assert.equal(result.exitCode, 1);
+		assert.equal(result.report.items[0].code, 'source-sections');
+		assert.equal(result.report.items[0].quality.sourceSections.checkedParagraphs, 2);
+		assert.equal(result.report.items[0].quality.sourceSections.matchedParagraphs, 1);
+		await assert.rejects(stat(path.join(f.vault, 'Papers')), { code: 'ENOENT' });
+		assert.equal(await readFile(f.input, 'utf8'), f.markdown);
+	}
+	await writeFile(path.join(f.artifacts, 'file.html'), html().replace('</body>', section('<p>Original methods.</p>') + '</body>'));
+	const accepted = await archivePapers(f.options(['--dry-run']));
+	assert.equal(accepted.exitCode, 0);
+	assert.equal(accepted.report.items[0].sourceSections.status, 'passed');
+});
+
 test('standalone archive rechecks Nature legends in old accepted snapshots before deduplication, including dry run', async () => {
 	for (const [name, legend] of [['missing', ''], ['shortened', 'Detailed.'], ['complete', 'Detailed panel description.']]) {
 		const f = await fixture(`nature-caption-${name}`, { url: 'https://www.nature.com/articles/fixture' });

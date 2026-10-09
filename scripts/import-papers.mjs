@@ -14,8 +14,8 @@ Directory scans are not recursive.
 
   -o, --output-dir <path>    Output directory (default: output/browser-fetch/imported)
   -t, --template <path>      Optional Clipper template JSON or directory
-      --min-words <count>    Minimum body words before References (default: 1000)
-      --require-section <h>  Required level-2 heading; repeat as needed
+      --min-words <count>    Minimum main-section prose words (default: 1000)
+      --require-section <h>  Required nonempty section; repeat as needed
       --timeout <ms>         Timeout per conversion (default: 60000)
       --overwrite            Replace existing Markdown only after checks pass
       --download-assets      Download image attachments without browser credentials

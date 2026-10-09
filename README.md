@@ -16,8 +16,19 @@ npm run build:cli
 npm run install:paper-skill
 ```
 
-This repository currently preserves the working development baseline and upstream
-history; the proposed minimal standalone core has not yet been extracted.
+This repository preserves the full development baseline and upstream history.
+For a standalone command-line edition without the extension UI, editor, branding
+or browser packaging, export the reviewed core file list into a new directory:
+
+```sh
+npm run export:core -- -o ../paper-clipper-core
+```
+
+Then run `npm install` and `npm test` inside that directory (install Playwright
+Chromium first for browser tests). See [the extraction guide](docs/core-extraction.md).
+Export refuses an existing destination and never deletes files or copies local
+papers, Vaults, browser profiles, build output or installed Skill paths.
+
 It is not an official Obsidian release or a distribution-ready rebranded browser
 extension. Upstream copyright and license notices are retained. Brand assets,
 icons and marketing materials are excluded from upstream's MIT grant; review and

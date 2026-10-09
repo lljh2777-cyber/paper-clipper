@@ -108,6 +108,12 @@ Missing/changed/misplaced legends fail with code `figure-captions` and per-figur
 diagnostics under `quality.figureCaptions`. Successful items report their current
 `figureCaptions` coverage; unsupported structures are explicitly `not-applicable`.
 Existing Vault notes themselves are never rewritten or certified by this check.
+The same archive paths independently recheck supported Nature main-body headings
+and plain paragraphs (`source-sections` on failure, `quality.sourceSections` for
+diagnostics, `sourceSections` on successful items). Unsupported layouts are
+`not-applicable`; math/image paragraphs are explicitly skipped, not certified.
+See [source section scope](paper-clipper.md#source-section-checks) before treating
+a passing report as evidence of completeness.
 If images exist, all must have local relative paths matching successful download
 records, matching file sizes and supported signatures. Partial or remote image
 sets fail. Papers without embedded images do not require an assets report.

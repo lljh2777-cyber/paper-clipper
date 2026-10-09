@@ -55,7 +55,8 @@ matching pair. A byte-count match is a consistency check, not a cryptographic
 integrity or authenticity guarantee.
 
 Conversion reuses the paper pipeline's MathJax normalization and basic checks:
-at least 1,000 words before References, two main-text level-2 headings, and no
+at least 1,000 prose words within recognized main sections, two distinct nonempty
+main-text headings, and no
 recognized subscription-preview notice or access-challenge title. These are
 heuristics, not proof that every part of a paper was captured.
 
@@ -65,8 +66,12 @@ npm run clip:import -- "E:\Paper_Clipper" --min-words 700 --timeout 90000
 npm run clip:import -- "E:\Paper_Clipper" -t "path\to\template.json"
 ```
 
-`--require-section` can be repeated and checks exact level-2 heading names,
-ignoring case. `--timeout` bounds each CLI conversion; it is not a whole-batch
+`--require-section` can be repeated and checks heading names and nonempty prose,
+ignoring case. Markdown heading levels 1-6 and setext headings are supported;
+known back matter cannot satisfy the body threshold. See
+[body checks and reporting](paper-clipper.md#checks-and-reports) for exclusions
+and the limits of this structural heuristic.
+`--timeout` bounds each CLI conversion; it is not a whole-batch
 deadline. Custom templates can be JSON files or template directories. Body
 checks always run before rendering the custom template.
 

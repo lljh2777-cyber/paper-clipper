@@ -10,13 +10,16 @@ import { browserFlags, fetchPage, resolveBrowserOptions } from './fetch-page.mjs
 import { localizeImages } from './paper-assets.mjs';
 import { checkFigureCaptions } from './paper-captions.mjs';
 import { assessPaperIdentity } from './paper-metadata.mjs';
+import { assessMarkdown, bodyCheckVersion, previewPattern } from './paper-validation.mjs';
+import { checkSourceSections, sourceSectionsVersion } from './paper-sections.mjs';
+
+export { assessMarkdown } from './paper-validation.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const cliPath = path.join(root, 'dist/cli.cjs');
 const defaultTemplate = path.join(root, 'src/utils/fixtures/templates/minimal.json');
 const exec = promisify(execFile);
 const maxHtmlBytes = 30 * 1024 * 1024;
-const previewPattern = /this is a preview of subscription content|sign in to access (?:the )?full (?:text|article)|purchase access to (?:the|this) article/i;
 
 const usage = `Usage: node scripts/clip-paper.mjs <url> -o <paper.md> [options]
 
@@ -25,8 +28,8 @@ const usage = `Usage: node scripts/clip-paper.mjs <url> -o <paper.md> [options]
       --fetch <mode>          auto, http, or browser (default: auto)
       --html <path>           Read saved HTML (no page fetch/browser)
       --download-assets      Download image attachments; enables image network requests
-      --min-words <count>     Minimum body words before References (default: 1000)
-      --require-section <h>  Required level-2 heading; repeat for multiple headings
+      --min-words <count>     Minimum main-section prose words (default: 1000)
+      --require-section <h>  Required nonempty section; repeat for multiple headings
       --overwrite            Replace existing output only after checks pass
       --profile <path>       Dedicated Playwright profile
       --login                Start browser mode and pause for manual login
@@ -84,28 +87,6 @@ export function parseOptions(args) {
 		mode: values.html ? 'file' : needsBrowser ? 'browser' : values.fetch,
 		overwrite: values.overwrite, downloadAssets: values['download-assets'],
 	};
-}
-
-export function assessMarkdown(markdown, { minWords, requiredSections = [] }, page = {}) {
-	const body = markdown.replace(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, '').trim();
-	const headings = [...body.matchAll(/^##\s+(.+?)\s*#*\s*$/gm)].map(match => match[1].replace(/[*_`]/g, '').trim());
-	const beforeReferences = body.split(/^##\s+(?:References|Bibliography)\s*\r?$/im)[0];
-	const words = text => text.trim().split(/\s+/).filter(Boolean).length;
-	const mainSections = [...new Set(headings.filter(heading => /^(?:\d+[.\s]*)?(?:introduction|background|main|results|discussion|methods|materials and methods|methodology|conclusions?)(?:$|[\s:])/i.test(heading)))];
-	const reasons = [];
-	if (page.preview || previewPattern.test(body)) reasons.push('subscription-preview');
-	if (page.challenge) reasons.push('access-challenge');
-	if (page.unrenderedEquations) reasons.push('unrendered-equations');
-	if (page.figureCaptions?.status === 'failed') reasons.push('figure-captions');
-	if (page.paperIdentity?.status === 'failed') reasons.push('paper-identity');
-	if (words(beforeReferences) < minWords) reasons.push('too-short');
-	if (mainSections.length < 2) reasons.push('missing-main-sections');
-	for (const heading of requiredSections) {
-		if (!headings.some(found => found.toLowerCase() === heading.toLowerCase())) reasons.push(`missing-section:${heading}`);
-	}
-	return { passed: reasons.length === 0, bodyWords: words(body), wordsBeforeReferences: words(beforeReferences), headings, mainSections, reasons,
-		...(page.figureCaptions ? { figureCaptions: page.figureCaptions } : {}),
-		...(page.paperIdentity ? { paperIdentity: page.paperIdentity } : {}) };
 }
 
 export function normalizeMathJaxTex(html) {
@@ -266,7 +247,7 @@ export async function clipPaper(options) {
 	const report = {
 		requestedUrl: options.url, mode: options.mode, startedAt: new Date().toISOString(),
 		status: 'error', output: options.output, outputWritten: false, artifactDirectory: directory,
-		checks: { minWords: options.minWords, requiredSections: options.requiredSections, minMainSections: 2, figureCaptions: 'nature-v1', expectedDoi: options.expectedDoi },
+		checks: { bodyCheck: bodyCheckVersion, sourceSections: sourceSectionsVersion, minWords: options.minWords, requiredSections: options.requiredSections, minMainSections: 2, figureCaptions: 'nature-v1', expectedDoi: options.expectedDoi },
 		attempts: [],
 	};
 	let exitCode = 1;
@@ -317,6 +298,7 @@ export async function clipPaper(options) {
 			page.preview ||= captured.report.status === 'subscription-preview';
 			attempt.title = page.title;
 			page.figureCaptions = checkFigureCaptions(captured.html, extracted, attempt.contentUrl);
+			page.sourceSections = checkSourceSections(captured.html, extracted, attempt.contentUrl);
 			if (options.expectedDoi) page.paperIdentity = assessPaperIdentity(captured.html, options.expectedDoi);
 			attempt.quality = assessMarkdown(extracted, options, page);
 			if (!attempt.quality.passed) {
@@ -327,13 +309,19 @@ export async function clipPaper(options) {
 			let markdown = options.template === defaultTemplate ? extracted : await convert(conversionHtml, attempt.contentUrl, options.template, options.timeout);
 			attempt.quality.outputFigureCaptions = options.template === defaultTemplate ? page.figureCaptions
 				: checkFigureCaptions(captured.html, markdown, attempt.contentUrl);
-			if (attempt.quality.outputFigureCaptions.status === 'failed') {
+			attempt.quality.outputSourceSections = options.template === defaultTemplate ? page.sourceSections
+				: checkSourceSections(captured.html, markdown, attempt.contentUrl);
+			const outputFailures = [
+				...(attempt.quality.outputFigureCaptions.status === 'failed' ? ['output-figure-captions'] : []),
+				...(attempt.quality.outputSourceSections.status === 'failed' ? ['output-source-sections'] : []),
+			];
+			if (outputFailures.length) {
 				attempt.renderedMarkdown = path.join(directory, `${mode}.rendered.md`);
 				await writeFile(attempt.renderedMarkdown, markdown, 'utf8');
 				attempt.status = 'incomplete';
 				attempt.quality.passed = false;
-				attempt.quality.reasons.push('output-figure-captions');
-				console.error('Content check failed: output-figure-captions (custom template output).');
+				attempt.quality.reasons.push(...outputFailures);
+				console.error(`Content check failed: ${outputFailures.join(', ')} (custom template output).`);
 				break;
 			}
 			if (options.downloadAssets) {

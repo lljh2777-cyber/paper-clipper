@@ -23,6 +23,8 @@
 		"build:safari": "webpack --env BROWSER=safari --mode production",
 		"build": "npm run build:chrome && npm run build:firefox && npm run build:safari",
 		"build:cli": "node scripts/build-cli.mjs",
+		"export:core": "node scripts/export-paper-core.mjs",
+		"test:core-export": "node --test scripts/export-paper-core.test.mjs",
 		"build:api": "node scripts/build-api.mjs",
 		"fetch:browser": "node scripts/fetch-page.mjs",
 		"clip": "node scripts/clip.mjs",

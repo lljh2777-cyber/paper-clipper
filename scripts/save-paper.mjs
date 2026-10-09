@@ -26,7 +26,7 @@ stdout is one JSON result; progress goes to stderr. No AI or PDF conversion.
   --overwrite              Intentionally regenerate conversion output, never Vault notes
   --mailto <email>         Optional contact address sent to Crossref
   --resolve-timeout <ms>   Metadata request timeout (default: 15000)
-  --min-words <count>      Body threshold (default: 1000)
+  --min-words <count>      Main-section prose threshold (default: 1000)
   --require-section <h>    Required section, repeatable
   --fetch auto|http|browser, --profile, --login, --headed, --wait-for,
   --timeout, --settle      Existing capture options (browser options not with --html)

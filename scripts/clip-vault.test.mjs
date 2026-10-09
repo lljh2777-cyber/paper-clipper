@@ -233,6 +233,72 @@ test('Nature caption failures block fresh imports and both URL/import legacy-cac
 	assert.equal(requests, before);
 });
 
+test('legacy accepted snapshots cannot bypass current section checks on either archive route', { timeout: 15000 }, async () => {
+	const s = setup('legacy-sections');
+	const input = await exportPair(path.join(directory, 'legacy-sections/input'), 'paper.html');
+	const initial = await clip(parseOptions([input, '-o', s.output]));
+	assert.equal(initial.exitCode, 0);
+	const item = initial.report.items[0];
+	const report = JSON.parse(await readFile(`${item.output}.report.json`, 'utf8'));
+	const attempt = report.attempts.find(entry => entry.status === 'passed-checks');
+	const legacy = `## Main\n\n## Methods\n\n## Funding\n\n${paragraph}`;
+	// Recreate an old, internally consistent accepted cache without the new check.
+	await writeFile(item.output, legacy);
+	await writeFile(path.join(report.artifactDirectory, 'accepted.md'), legacy);
+	await writeFile(attempt.markdown, legacy);
+	delete report.checks.bodyCheck;
+	attempt.quality = { passed: true, reasons: [] };
+	await writeFile(`${item.output}.report.json`, JSON.stringify(report));
+	const before = requests;
+	for (const args of [[input, '-o', s.output], [baseUrl + '/article', '--output', item.output]]) {
+		const result = await clip(parseOptions([...args, '--vault', s.vault]));
+		assert.equal(result.exitCode, 1);
+		assert.equal(result.report.items[0].status, 'skipped');
+		assert.equal(result.report.items[0].archive.code, 'content-check');
+		assert.equal(result.report.items[0].archive.quality.mainBodyWords, 0);
+		assert.equal(await readFile(item.output, 'utf8'), legacy);
+		assert.equal(result.report.items[0].archive.output, undefined);
+		await assert.rejects(stat(path.join(s.vault, 'Papers')), { code: 'ENOENT' });
+	}
+	assert.equal(requests, before);
+});
+
+test('legacy Nature caches missing a prose paragraph fail both archive routes without rewriting notes', async () => {
+	const url = 'https://www.nature.com/articles/fixture';
+	const section = (title, body) => `<section data-title="${title}"><div><h2 class="c-article-section__title">${title}</h2><div class="c-article-section__content">${body}</div></div></section>`;
+	const source = full.replace(/<article>[\s\S]*?<\/article>/, `<article class="c-article-body"><h1>Test paper</h1><div class="main-content">${section('Main', `<p>${paragraph}</p><p>Unique preserved source paragraph.</p>`)}${section('Methods', `<p>${paragraph}</p>`)}</div></article>`);
+	const s = setup('nature-source-cache');
+	const input = await exportPair(path.join(directory, 'nature-source-cache/input'), 'paper.html', source, url);
+	const initial = await clip(parseOptions([input, '-o', s.output]));
+	assert.equal(initial.exitCode, 0);
+	const item = initial.report.items[0];
+	assert.equal(item.quality.sourceSections.status, 'passed');
+	const report = JSON.parse(await readFile(`${item.output}.report.json`, 'utf8'));
+	const legacy = (await readFile(item.output, 'utf8')).replace('Unique preserved source paragraph.', '');
+	await writeFile(item.output, legacy);
+	await writeFile(path.join(report.artifactDirectory, 'accepted.md'), legacy);
+	delete report.checks.sourceSections;
+	delete report.attempts[0].quality.sourceSections;
+	delete report.attempts[0].quality.outputSourceSections;
+	await writeFile(`${item.output}.report.json`, JSON.stringify(report));
+	await mkdir(s.vault, { recursive: true });
+	const note = path.join(s.vault, 'manual.md');
+	await writeFile(note, 'My annotations stay unchanged.');
+	const mtime = (await stat(note)).mtimeMs;
+	const before = requests;
+	for (const args of [[input, '-o', s.output], [url, '--output', item.output]]) {
+		const result = await clip(parseOptions([...args, '--vault', s.vault]));
+		assert.equal(result.exitCode, 1);
+		assert.equal(result.report.items[0].archive.code, 'source-sections');
+		assert.equal(result.report.items[0].nextStep.code, 'repair-source-sections');
+		assert.equal(await readFile(item.output, 'utf8'), legacy);
+		assert.equal(await readFile(note, 'utf8'), 'My annotations stay unchanged.');
+		assert.equal((await stat(note)).mtimeMs, mtime);
+		await assert.rejects(stat(path.join(s.vault, 'Papers')), { code: 'ENOENT' });
+	}
+	assert.equal(requests, before);
+});
+
 test('Vault runtime path checks precede conversion; lock failures retain converted Markdown and can be retried', { timeout: 20000 }, async () => {
 	const bad = setup('bad-path');
 	await mkdir(path.dirname(bad.vault), { recursive: true });

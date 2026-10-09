@@ -6,7 +6,8 @@ import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { assessMarkdown, clipPaper, normalizeMathJaxTex, normalizeMathMLForReader, normalizePublisherLinks, parseOptions } from './clip-paper.mjs';
+import { clipPaper, normalizeMathJaxTex, normalizeMathMLForReader, normalizePublisherLinks, parseOptions } from './clip-paper.mjs';
+import { assessMarkdown, bodyCheckVersion } from './paper-validation.mjs';
 import { parseHTML } from 'linkedom';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -104,6 +105,32 @@ test('normalizes only explicit unrendered MathJax wrappers, preserving raw data 
 	assert.equal(normalizeMathJaxTex(fullHtml).html, fullHtml);
 });
 
+test('funding-heavy empty sections fail the actual converter without replacing an accepted note', { timeout: 15000 }, async () => {
+	const input = path.join(directory, 'empty-sections.html');
+	const destination = path.join(directory, 'empty-sections.md');
+	const html = `<html><head><title>Empty sections</title></head><body><article><h1>Empty sections</h1><h2>Main</h2><h2>Methods</h2><h2>Funding</h2><p>${paragraph}</p><p>${paragraph}</p></article></body></html>`;
+	await writeFile(input, html);
+	await writeFile(destination, 'Previous accepted note and annotations.');
+	const before = (await stat(destination)).mtimeMs;
+	const result = await clipPaper(parseOptions([baseUrl + '/unused', '--html', input, '-o', destination, '--overwrite']));
+	assert.equal(result.exitCode, 2);
+	assert.equal(result.report.outputWritten, false);
+	assert.ok(result.report.attempts[0].quality.reasons.includes('too-short'));
+	assert.equal(result.report.attempts[0].quality.bodyCheck, bodyCheckVersion);
+	assert.equal(await readFile(destination, 'utf8'), 'Previous accepted note and annotations.');
+	assert.equal((await stat(destination)).mtimeMs, before);
+});
+
+test('third-level article sections survive actual conversion and required-section validation', { timeout: 15000 }, async () => {
+	const input = path.join(directory, 'third-level-sections.html');
+	await writeFile(input, fullHtml.replaceAll('<h2>', '<h3>').replaceAll('</h2>', '</h3>'));
+	const result = await clipPaper(parseOptions([baseUrl + '/unused', '--html', input,
+		'-o', path.join(directory, 'third-level-sections.md'), '--require-section', 'Methods']));
+	assert.equal(result.exitCode, 0);
+	assert.ok(result.report.attempts[0].quality.mainBodyWords >= 1000);
+	assert.equal(result.report.checks.bodyCheck, bodyCheckVersion);
+});
+
 test('offline publisher math survives the actual CLI with dollar delimiters and unescaped TeX', { timeout: 15000 }, async () => {
 	const math = String.raw`<p>Inline <span class="mathjax-tex">\(x_i + \alpha\)</span> is preserved.</p>
 		<div class="mathjax-tex">$$\frac{x_i}{y_j}$$</div>`;
@@ -122,6 +149,42 @@ test('offline publisher math survives the actual CLI with dollar delimiters and 
 	assert.ok(markdown.includes(String.raw`$x_i + \alpha$`));
 	assert.ok(markdown.includes('$$\n' + String.raw`\frac{x_i}{y_j}` + '\n$$'));
 	assert.ok(!markdown.includes(String.raw`\\alpha`));
+});
+
+test('Nature section preservation checks extraction and final templates before publishing', { timeout: 15000 }, async () => {
+	const section = (heading, body) => `<section data-title="${heading}"><div><h2 class="c-article-section__title">${heading}</h2><div class="c-article-section__content">${body}</div></div></section>`;
+	const source = `<html><head><title>Section fixture</title></head><body><article class="c-article-body"><h1>Section fixture</h1><div class="main-content">${section('Main', `<p>Main study. ${paragraph}</p><p>Unique source sentence.</p>`)}${section('Methods', `<p>Methods study. ${paragraph}</p>`)}</div></article></body></html>`;
+	const input = path.join(directory, 'nature-source-sections.html');
+	await writeFile(input, source);
+	const config = { ...options('nature-source-sections', '/unused', ['--html', input]), url: 'https://www.nature.com/articles/fixture' };
+	const result = await clipPaper(config);
+	assert.equal(result.exitCode, 0);
+	assert.equal(result.report.attempts[0].quality.sourceSections.matchedParagraphs, 3);
+	assert.equal(result.report.attempts[0].quality.outputSourceSections.status, 'passed');
+	const previous = await readFile(config.output, 'utf8');
+	const mtime = (await stat(config.output)).mtimeMs;
+	const template = path.join(directory, 'nature-source-sections-template.json');
+	await writeFile(template, JSON.stringify({ noteNameFormat: '{{title}}', noteContentFormat: 'Summary: {{title}}', properties: [] }));
+	const rejected = await clipPaper({ ...config, template, overwrite: true, downloadAssets: true });
+	assert.equal(rejected.exitCode, 2);
+	assert.equal(rejected.report.outputWritten, false);
+	assert.equal(rejected.report.attempts[0].quality.sourceSections.status, 'passed');
+	assert.deepEqual(rejected.report.attempts[0].quality.reasons, ['output-source-sections']);
+	assert.equal(rejected.report.assets, undefined);
+	assert.equal(await readFile(config.output, 'utf8'), previous);
+	assert.equal((await stat(config.output)).mtimeMs, mtime);
+	await assert.rejects(stat(path.join(rejected.report.artifactDirectory, 'accepted.md')), { code: 'ENOENT' });
+	await writeFile(template, JSON.stringify({ noteNameFormat: '{{title}}', noteContentFormat: '{{content}}', properties: [] }));
+	assert.equal((await clipPaper({ ...config, output: path.join(directory, 'nature-source-sections-custom.md'), template })).exitCode, 0);
+	// A source paragraph in an aside is intentionally removed by the reader.
+	// Remaining prose still passes the size gate, but not source preservation.
+	await writeFile(input, source.replace('<p>Unique source sentence.</p>', '<aside><p>Unique source sentence.</p></aside>'));
+	const lost = await clipPaper({ ...config, overwrite: true });
+	assert.equal(lost.exitCode, 2);
+	assert.ok(lost.report.attempts[0].quality.mainBodyWords > 1000);
+	assert.ok(lost.report.attempts[0].quality.reasons.includes('source-sections'));
+	assert.equal(await readFile(config.output, 'utf8'), previous);
+	assert.equal(await readFile(lost.report.attempts[0].html, 'utf8'), await readFile(input, 'utf8'));
 });
 
 test('publisher reference normalization is scoped, preserves labels and is idempotent', () => {

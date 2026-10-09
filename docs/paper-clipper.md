@@ -52,20 +52,48 @@ is staged on the same filesystem before replacing the previous version.
 The default checks require:
 
 - No recognized subscription-preview notice or access-challenge title.
-- At least 1,000 whitespace-separated words before the References/Bibliography heading.
-- At least two level-2 main-text headings, such as Main, Introduction, Background,
-  Results, Discussion, Methods, or Conclusions.
+- At least 1,000 whitespace-separated prose words within recognized main sections.
+- At least two distinct, nonempty main-text headings, such as Main, Introduction,
+  Background, Results, Discussion, Methods, or Conclusions. All observed main
+  sections must contain prose, either directly or in non-excluded subsections.
+- Markdown ATX levels 1-6 and setext headings are recognized. Code blocks, quoted
+  headings and headings inside lists cannot establish article sections.
 - For supported Nature figure structures, complete source legends retained in
   both the extracted body and final template output.
 
 These are conservative heuristics for research articles. They are not a universal
 full-text detector and do not establish paper identity or exact equivalence to a
 manual clip. Short papers or unusual heading structures may need different
-thresholds or later publisher-specific rules. The word counts include Markdown
-syntax and are approximate.
+thresholds or later publisher-specific rules. A nonempty section is not proof
+that all of its original paragraphs were retained.
+
+`scripts/paper-validation.mjs` owns the shared body check. It parses Markdown
+structure rather than matching heading-looking lines. Prose paragraphs and
+procedure-list text count once toward `mainBodyWords`; nested main sections are
+not double-counted. Known abstract/back-matter sections (including Funding,
+Acknowledgements and References) and their descendants do not count. Neither do
+unheaded text, unrelated sibling sections, code, blockquotes, tables, image alt
+text, raw HTML blocks, footnote definitions or standalone `$$` display math.
+These excluded formats remain in the saved Markdown; this rule only controls
+the body-length gate, not conversion or preservation of those structures.
+
+Reports identify `bodyCheck: "markdown-sections-v1"` and provide `sections` with
+heading, level, kind, exclusion status, prose words and paragraph counts.
+`mainBodyWords` drives the length decision. `bodyWords` and
+`wordsBeforeReferences` remain approximate raw-Markdown diagnostics, not gates.
+New reasons include `empty-main-section:<heading>` and `empty-section:<heading>`;
+existing `too-short` and `missing-main-sections` reasons are retained.
+
+This is a Markdown-side structural heuristic, not a publisher-HTML body-container
+check or source-to-output section-preservation proof. Raw HTML body layouts and
+unsupported section names can still be rejected. It does not mark references,
+tables or math as verified, and does not weaken the separate access/DOI/caption
+checks. Conversion-only cached output is still skipped; the unified Vault route
+rechecks the retained extraction under the current requirements before archiving.
 
 `--min-words 700` changes the word threshold. Repeat `--require-section` to require
-specific level-2 headings in addition to the default checks:
+specific nonempty headings in addition to the default checks (case-insensitive,
+with numbering retained in the requested name):
 
 ```powershell
 npm run clip:paper -- "https://www.nature.com/articles/s41592-025-02899-6" --require-section Main --require-section Results --require-section Methods -o output/browser-fetch/papers/novae.md
@@ -108,6 +136,42 @@ whenever archiving, including `clip:vault --dry-run`. This happens before DOI
 deduplication and does not trust a historical passing report. Missing captions
 produce archive error `figure-captions` and exit `1`. A normal conversion skip
 without `--vault` still does not revalidate or change the existing Markdown.
+
+### Source section checks
+
+`scripts/paper-sections.mjs` adds the independent `nature-sections-v1` check.
+On Nature pages with one `.c-article-body .main-content` container and its known
+`section[data-title]` layout, it compares the captured source with Markdown:
+
+- Every recognized main/subsection heading must retain its text, level and order.
+- Each supported plain prose paragraph must retain its text, occurrence count and
+  order within the same nearest heading. Extra output paragraphs such as figure
+  legends do not count as replacements for missing prose.
+- Whitespace and numeric local Nature citation notation are normalized; citation
+  numbers remain distinct. This does not audit citation definitions or link targets.
+
+This is a **scoped preservation check**, not a whole-article completeness score.
+It ignores figures (covered separately above), tables, lists, quotes, code blocks,
+hidden content and content outside the recognized main body. Paragraphs containing
+recognized math, dollar content or inline images are listed as skipped, not matched.
+It does not prove formula correctness, formatting fidelity, authorized full-text
+access, or that the publisher had loaded every section into the captured HTML.
+
+Each attempt includes `quality.sourceSections` and, after extraction passes,
+`quality.outputSourceSections`. They report `version`, `status`, `scope`,
+`expectedSections`, `checkedParagraphs`, `matchedParagraphs`, `skippedParagraphs`
+and per-section heading/ID, paragraph counts, errors and numbered skip reasons.
+`passed` applies only to that scope; inspect skipped counts even when it passes.
+Unsupported publishers/layouts return `not-applicable` with a reason, never a
+claim of preservation. Recognized but malformed sections fail conservatively.
+
+Missing/changed content rejects extraction with `source-sections`, or a custom
+template with `output-source-sections` (exit `2`). Failed template checks precede
+image downloads. No accepted file is published or replaced on failure. All Vault
+archive calls also recompute this check on final Markdown, including old caches,
+standalone calls and dry runs, before deduplication. Failures use archive code
+`source-sections` (exit `1`). Conversion-only skips and existing Vault notes remain
+unchanged and are not revalidated. No AI or extra network requests are used.
 
 For an output named `paper.md`, the tool writes:
 

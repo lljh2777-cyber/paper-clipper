@@ -6,7 +6,8 @@ import { parseArgs } from 'node:util';
 import { parseDocument, stringify } from 'yaml';
 import { collectImages, imageExtension } from './paper-assets.mjs';
 import { assessPaperIdentity, canonicalUrl, normalizeDoi, paperMetadata } from './paper-metadata.mjs';
-import { assessMarkdown } from './clip-paper.mjs';
+import { assessMarkdown } from './paper-validation.mjs';
+import { checkSourceSections } from './paper-sections.mjs';
 import { checkFigureCaptions } from './paper-captions.mjs';
 
 const maxDocument = 30 * 1024 * 1024;
@@ -180,10 +181,14 @@ async function prepare(input, options) {
 	const figureCaptions = checkFigureCaptions(html, markdown, sourceUrl);
 	if (figureCaptions.status === 'failed') throw archiveError('figure-captions', 'Saved Markdown does not preserve the source figure legends. Reconvert and inspect the named figures before archiving.',
 		{ quality: { passed: false, reasons: ['figure-captions'], figureCaptions } });
+	const sourceSections = checkSourceSections(html, markdown, sourceUrl);
+	if (sourceSections.status === 'failed') throw archiveError('source-sections', 'Saved Markdown does not preserve the supported source sections and prose. Inspect the section diagnostics before reconverting.',
+		{ quality: { passed: false, reasons: ['source-sections'], sourceSections } });
 	if (options.checks) {
 		if (!attempt.markdown || !within(artifacts, path.resolve(attempt.markdown))) throw new Error('No bounded extracted Markdown for current content checks.');
 		const extracted = new TextDecoder('utf-8', { fatal: true }).decode(await regularBytes(attempt.markdown));
-		const quality = assessMarkdown(extracted, options.checks, { figureCaptions: checkFigureCaptions(html, extracted, sourceUrl) });
+		const quality = assessMarkdown(extracted, options.checks, { figureCaptions: checkFigureCaptions(html, extracted, sourceUrl),
+			sourceSections: checkSourceSections(html, extracted, sourceUrl) });
 		if (!quality.passed) throw archiveError('content-check', 'Saved extraction does not pass the current content requirements.', { quality });
 	}
 	const metadata = paperMetadata(html, { url: sourceUrl,
@@ -215,7 +220,7 @@ async function prepare(input, options) {
 	// Hashing here names the DOI/URL identity, not the paper or its attachments.
 	const id = createHash('sha256').update(metadata.identity).digest('hex').slice(0, 16);
 	const merged = { ...properties, ...metadata, paper_clipper_id: id, archive_status: 'clipped-source' };
-	return { input, reportPath, metadata, figureCaptions, paperIdentity, id, name: filename(metadata), attachments, originalBytes: bytes,
+	return { input, reportPath, metadata, figureCaptions, sourceSections, paperIdentity, id, name: filename(metadata), attachments, originalBytes: bytes,
 		markdown: `---\n${stringify(merged, { lineWidth: 0 })}---\n${body}` };
 }
 
@@ -249,6 +254,7 @@ export async function archivePapers(options) {
 				const paper = await prepare(input, options);
 				item.metadata = paper.metadata;
 				item.figureCaptions = paper.figureCaptions;
+				item.sourceSections = paper.sourceSections;
 				if (paper.paperIdentity) item.paperIdentity = paper.paperIdentity;
 				item.attachments = paper.attachments.length;
 				const found = duplicate(paper.metadata, notes);

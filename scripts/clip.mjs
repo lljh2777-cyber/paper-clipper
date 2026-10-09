@@ -20,8 +20,8 @@ Existing Markdown is skipped by default. Original files are preserved.
 Common options:
   -o, --output-dir <path>    Destination DIRECTORY for either route
   -t, --template <path>      Clipper template JSON or directory
-      --min-words <count>    Minimum words before References (default: 1000)
-      --require-section <h> Required level-2 heading; repeat as needed
+      --min-words <count>    Minimum main-section prose words (default: 1000)
+      --require-section <h> Required nonempty section; repeat as needed
       --timeout <ms>         Timeout per fetch/conversion phase (default: 60000)
       --overwrite            Replace Markdown only after checks pass
       --download-assets      Save image attachments and use relative image paths
@@ -139,6 +139,10 @@ export function nextStep(item, route) {
 	if (item.archive?.quality?.reasons.some(reason => reason.includes('figure-captions')) ||
 		item.quality?.reasons.some(reason => reason.includes('figure-captions'))) return {
 		code: 'repair-figure-captions', message: 'Source figure legends could not be verified in the Markdown. Inspect quality.figureCaptions / outputFigureCaptions for figure titles and errors. Use the current converter and a full-content template, then intentionally regenerate the conversion with --overwrite. Existing Vault notes are not overwritten; export again only if the saved source itself is incomplete.',
+	};
+	if (item.archive?.quality?.reasons.some(reason => reason.includes('source-sections')) ||
+		item.quality?.reasons.some(reason => reason.includes('source-sections'))) return {
+		code: 'repair-source-sections', message: 'Source sections or plain prose could not be verified. Inspect quality.sourceSections / outputSourceSections (or archive.quality.sourceSections) for headings and paragraph numbers. Use a full-content template and inspect the retained HTML before intentionally reconverting. Existing Vault notes are not overwritten; skipped math paragraphs are not verified by this check.',
 	};
 	if (item.archive?.status === 'archived') return {
 		code: 'read-vault-note', message: 'Open the archived note in Obsidian and review formulas, tables and captions. The source Markdown and images were preserved.',
