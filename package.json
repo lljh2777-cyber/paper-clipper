@@ -32,7 +32,7 @@
 		"paper": "node scripts/save-paper.mjs",
 		"paper:browser": "node scripts/browser-queue.mjs",
 		"test:browser-queue:e2e": "node scripts/test-browser-queue-e2e.mjs",
-		"test:browser-queue": "npm run build:cli && node --test scripts/browser-queue.test.mjs && vitest run src/utils/paper-queue-client.test.ts src/utils/page-html-export.test.ts",
+		"test:browser-queue": "npm run build:cli && node --test scripts/browser-queue.test.mjs && vitest run src/utils/paper-queue-client.test.ts src/utils/paper-queue-background.test.ts src/utils/page-html-export.test.ts",
 		"install:paper-skill": "node scripts/install-paper-skill.mjs",
 		"test:paper-skill": "npm run build:cli && node --test scripts/install-paper-skill.test.mjs",
 		"test:paper-agent": "npm run build:cli && node --test scripts/resolve-paper.test.mjs scripts/save-paper.test.mjs",

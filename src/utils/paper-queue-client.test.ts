@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, expect, it, vi } from 'vitest';
 import browser from './browser-polyfill';
-import { PaperTaskTab, probePaperPage, queueApi, queueEndpoint } from './paper-queue-client';
+import { OwnedPaperTab, PaperTaskTab, probePaperPage, queueApi, queueEndpoint } from './paper-queue-client';
 
 vi.mock('./browser-polyfill', () => ({ default: {
 	tabs: { create: vi.fn(), get: vi.fn(), remove: vi.fn(), update: vi.fn() },
@@ -44,6 +44,24 @@ it('creates only its task tab, waits for stable content and closes that tab afte
 	expect(browser.scripting.executeScript).toHaveBeenCalledTimes(5);
 	await worker.finish(job.id);
 	expect(browser.tabs.remove).toHaveBeenCalledWith(12);
+});
+
+it('restores same-session ownership across worker instances without creating another tab', async () => {
+	let saved: OwnedPaperTab | undefined;
+	const persistence = { load: async () => saved, save: async (value?: OwnedPaperTab) => { saved = value && { ...value }; } };
+	await new PaperTaskTab(async () => {}, persistence).snapshot(job);
+	const restored = new PaperTaskTab(async () => {}, persistence);
+	expect(await restored.owns(job.id)).toBe(true); await restored.snapshot(job);
+	expect(browser.tabs.create).toHaveBeenCalledTimes(1);
+	await restored.finish(job.id); expect(saved).toBeUndefined(); expect(browser.tabs.remove).toHaveBeenCalledWith(12);
+});
+
+it('recovery refuses ownership after the user navigates the saved task tab elsewhere', async () => {
+	const persistence = { load: async () => ({ id: 12, jobId: job.id, capturedUrl: url }), save: vi.fn() };
+	vi.mocked(browser.tabs.get).mockResolvedValue({ id: 12, url: 'https://example.org/personal' } as any);
+	const restored = new PaperTaskTab(async () => {}, persistence);
+	expect(await restored.owns(job.id)).toBe(false); await restored.finish(job.id);
+	expect(browser.tabs.remove).not.toHaveBeenCalled();
 });
 
 it('never closes a task tab the user navigated elsewhere', async () => {

@@ -1,4 +1,5 @@
 import browser from 'webextension-polyfill';
+import { installPaperQueueBackground } from './utils/paper-queue-background';
 import { detectBrowser } from './utils/browser-detection';
 import { updateCurrentActiveTab, isValidUrl, isBlankPage, isNormalPageUrl } from './utils/active-tab-manager';
 import { TextHighlightData } from './utils/highlighter';
@@ -9,6 +10,7 @@ import { incrementStat } from './utils/storage-utils';
 import { hasStoredHighlights } from './utils/url-utils';
 
 const YOUTUBE_EMBED_RULE_ID = 9001;
+installPaperQueueBackground();
 const YOUTUBE_INNERTUBE_RULE_ID = 9002;
 
 // Chrome: declarativeNetRequest to rewrite Referer on YouTube embeds.

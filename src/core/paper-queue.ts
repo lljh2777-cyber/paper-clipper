@@ -1,18 +1,20 @@
 import browser from '../utils/browser-polyfill';
 import { createIcons, Link, Unplug, Play, ExternalLink, X, RotateCw } from 'lucide';
-import { PaperTaskTab, queueApi, QueueJob } from '../utils/paper-queue-client';
+import { QueueJob } from '../utils/paper-queue-client';
 
 const endpoint = document.getElementById('endpoint') as HTMLInputElement;
 const key = document.getElementById('key') as HTMLInputElement;
 const status = document.getElementById('connection')!;
 const errorBox = document.getElementById('error')!;
-const taskTab = new PaperTaskTab();
 const icons = () => createIcons({ icons: { Link, Unplug, Play, ExternalLink, X, RotateCw } });
 const showError = (error: unknown) => { errorBox.hidden = false; errorBox.textContent = error instanceof Error ? error.message : String(error); };
-let api: ReturnType<typeof queueApi> | undefined, polling = false, active = false, busy = false;
-let disconnectRequested = false;
-let connectedEndpoint = '';
-const terminal = new Set(['saved', 'duplicate', 'failed', 'cancelled', 'existing-unverified']);
+let busy = false;
+
+async function command(op: string, data: Record<string, string> = {}) {
+	const result = await browser.runtime.sendMessage({ action: 'paperQueue', op, ...data }) as { error?: string; state: { status: string; jobs: QueueJob[]; busy: boolean; error?: string } } | undefined;
+	if (!result || result.error) throw new Error(result?.error ?? 'Background queue unavailable. Reload the updated extension.');
+	return result.state;
+}
 
 function render(jobs: QueueJob[]) {
 	document.getElementById('count')!.textContent = String(jobs.length);
@@ -36,8 +38,7 @@ function render(jobs: QueueJob[]) {
 				const symbol = document.createElement('i'); symbol.dataset.lucide = icon; button.append(symbol); button.disabled = busy && action !== 'open';
 				button.addEventListener('click', async () => {
 					try {
-						if (action === 'open') await taskTab.focus(job.id);
-						else { await api?.(`/v1/jobs/${job.id}/${action}`, {}); errorBox.hidden = true; if (action === 'skip') await taskTab.finish(job.id); await refresh(); }
+						await command(action, { jobId: job.id }); errorBox.hidden = true; await refresh();
 					} catch (error) { showError(error); }
 				}); controls.append(button);
 			}
@@ -50,94 +51,44 @@ function render(jobs: QueueJob[]) {
 }
 
 async function refresh() {
-	if (!api) return;
-	const { jobs } = await api('/v1/jobs');
-	await taskTab.reconcile(jobs.map((job: QueueJob) => job.id));
-	for (const job of jobs as QueueJob[]) if (terminal.has(job.status)) await taskTab.finish(job.id);
-	render(jobs);
-}
-
-async function tick() {
-	if (polling || !active || !api) return;
-	polling = true;
-	try {
-		await refresh(); status.textContent = 'Connected';
-		const { job } = await api('/v1/claim', {});
-		if (job) {
-			busy = true; await refresh();
-			try {
-				const snapshot = await taskTab.snapshot(job);
-				await api(`/v1/jobs/${job.id}/capture`, { ...snapshot, lease: job.lease });
-				errorBox.hidden = true;
-			} catch (error) {
-				await api(`/v1/jobs/${job.id}/pause`, { lease: job.lease, reason: error instanceof Error ? error.message : String(error) }).catch(() => {});
-				showError(error);
-			} finally { busy = false; }
-			await refresh();
-		}
-	} catch (error) {
-		if (error && typeof error === 'object' && 'status' in error && error.status === 401) {
-			active = false; api = undefined; key.value = '';
-			await browser.storage.local.remove('paperQueuePairing');
-			status.textContent = 'Re-pair required';
-		} else status.textContent = 'Waiting for local queue';
-		showError(error);
-	}
-	finally { polling = false; if (disconnectRequested) { active = false; disconnectRequested = false; status.textContent = 'Disconnected'; } }
+	const state = await command('status');
+	busy = state.busy; status.textContent = state.status; render(state.jobs);
+	(document.getElementById('reset-pairing') as HTMLButtonElement).disabled = busy;
+	(document.getElementById('forget') as HTMLButtonElement).disabled = busy;
+	if (state.error) showError(new Error(state.error)); else errorBox.hidden = true;
+	if (state.status === 'Re-pair required') key.value = '';
 }
 
 async function connect() {
-	if (polling) throw new Error('Wait for the current task to finish.');
-	api = queueApi(endpoint.value.trim(), key.value.trim());
-	await api('/v1/jobs');
-	connectedEndpoint = endpoint.value.trim();
-	await browser.storage.local.set({ paperQueuePairing: { endpoint: endpoint.value.trim(), key: key.value.trim() } });
-	errorBox.hidden = true; active = true; await tick();
+	await command('connect', { endpoint: endpoint.value.trim(), key: key.value.trim() });
+	await refresh();
 }
 
 document.getElementById('pairing')!.addEventListener('submit', event => { event.preventDefault(); connect().catch(showError); });
 document.getElementById('disconnect')!.addEventListener('click', () => {
-	if (polling) { disconnectRequested = true; status.textContent = 'Disconnecting after current task'; }
-	else { active = false; status.textContent = 'Disconnected'; }
+	command('disconnect').then(refresh).catch(showError);
 });
 document.getElementById('forget')!.addEventListener('click', async () => {
-	if (polling) { showError(new Error('Disconnect after the current task before forgetting pairing.')); return; }
-	active = false; api = undefined; key.value = ''; await browser.storage.local.remove('paperQueuePairing'); status.textContent = 'Disconnected';
+	try { await command('forget'); key.value = ''; await refresh(); } catch (error) { showError(error); }
 });
 document.getElementById('reset-pairing')!.addEventListener('click', async () => {
-	if (polling || !api) { showError(new Error('Connect and wait for the current task before resetting pairing.')); return; }
-	const wasActive = active; active = false;
-	if (!window.confirm('Reset this local queue pairing? Other controllers must re-pair. Unfinished captures will pause. Publisher login and saved notes are unchanged.')) { active = wasActive; return; }
-	polling = true;
+	if (busy) { showError(new Error('Wait for the current task before resetting pairing.')); return; }
+	if (!window.confirm('Reset this local queue pairing? Other controllers must re-pair. Unfinished captures will pause. Publisher login and saved notes are unchanged.')) return;
 	try {
-		const result = await api('/v1/pairing/reset', {});
-		const next = queueApi(connectedEndpoint, result.key);
-		await browser.storage.local.set({ paperQueuePairing: { endpoint: connectedEndpoint, key: result.key } });
-		endpoint.value = connectedEndpoint;
-		api = next; key.value = result.key; active = wasActive; errorBox.hidden = true;
+		await command('reset'); await loadPairing();
 		const notice = document.getElementById('pairing-notice')!;
 		notice.hidden = false; notice.textContent = 'Pairing reset. This controller is updated; other controllers must re-pair.';
 		await refresh();
-	} catch (error) {
-		if (error && typeof error === 'object' && 'status' in error && error.status === 409) {
-			active = wasActive; showError(error); return;
-		}
-		// A lost reset response may mean rotation succeeded. Never retry with the old key.
-		api = undefined; key.value = ''; active = false;
-		await browser.storage.local.remove('paperQueuePairing'); status.textContent = 'Re-pair required'; showError(error);
-	} finally { polling = false; }
+	} catch (error) { showError(error); }
 });
-window.addEventListener('beforeunload', event => { if (busy) { event.preventDefault(); event.returnValue = ''; } });
 icons();
 
-// A visible extension page owns the loop; no service-worker keepalive or daily-tab scan.
-navigator.locks.request('paper-queue-controller', { ifAvailable: true }, async lock => {
-	if (!lock) { document.querySelectorAll('button').forEach(button => { button.disabled = true; }); status.textContent = 'Another queue page is open'; return; }
+async function loadPairing() {
 	const saved = (await browser.storage.local.get('paperQueuePairing')).paperQueuePairing as { endpoint?: unknown; key?: unknown } | undefined;
 	if (saved && typeof saved.endpoint === 'string' && typeof saved.key === 'string') {
 		endpoint.value = saved.endpoint; key.value = saved.key;
-		try { api = queueApi(saved.endpoint, saved.key); connectedEndpoint = saved.endpoint; active = true; } catch (error) { showError(error); }
-	}
-	await tick();
-	await new Promise<void>(() => { setInterval(() => { tick().catch(showError); }, 2500); });
-}).catch(showError);
+	} else key.value = '';
+}
+// Views never claim or capture. Closing every view leaves the background controller running.
+loadPairing().then(refresh).catch(showError);
+setInterval(() => { refresh().catch(showError); }, 2500);

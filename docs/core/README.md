@@ -30,7 +30,7 @@ npx playwright install chromium
 
 With the separately installed modified extension, the primary interactive route
 is `npm run paper:browser -- "DOI" --download-assets`. Pair once and keep the
-extension's Paper queue page open. See [usual-browser queue](docs/browser-queue.md).
+browser open; the extension's Paper queue page may close. See [usual-browser queue](docs/browser-queue.md).
 The commands below remain available for explicit standalone acquisition.
 
 ```sh

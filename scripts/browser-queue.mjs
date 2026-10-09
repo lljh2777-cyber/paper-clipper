@@ -14,7 +14,7 @@ const maxBody = 31 * 1024 * 1024;
 const usage = `Usage: node scripts/browser-queue.mjs <DOI|URL|title> [...] [options]
 
 Primary interactive acquisition through the paired extension in your usual browser.
-Keep the extension's Paper queue page open. Login/challenges require human action.
+Keep your browser open; the paired extension runs in the background. Login/challenges require human action.
 No daily-profile access, cookie extraction, PDF/OCR or dedicated-browser fallback.
 
   -o, --output-dir <dir>   Local reports/captures (default: output/browser-queue)

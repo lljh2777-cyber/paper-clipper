@@ -57,9 +57,11 @@ view the current key explicitly and reconnect; do not retry blindly. Pairing fil
 and any temporary key files are private local data. **Forget pairing** is not a
 server-key reset.
 
-Keep this queue page and the local command open. The page is a foreground task
-controller, not an always-running background service. Closing it stops acquisition;
-it does not erase publisher login. On reopening it remembers pairing. There is no
+Keep the browser and local command running. **The queue page can be closed**:
+the extension background worker owns acquisition; pages only show state and
+provide controls. Pairing and the enabled/disconnected choice persist locally.
+Disconnect disables background acquisition until Connect is clicked again.
+Closing a view is not Disconnect and does not erase publisher login. There is no
 need to click Export or choose a download folder for each paper. The old manual
 export/inbox watcher remains a separate fallback.
 
@@ -73,8 +75,15 @@ node scripts/browser-queue.mjs "DOI" --download-assets --vault "EXPLICIT_VAULT_P
 Use the same output directory and port to reuse pairing. A command accepts 1-20
 DOIs, URLs or full titles; title ambiguity requires a confirmed DOI, not selection
 by rank. The command stays open until Ctrl+C, including after all tasks finish.
-Stop it before starting the next queue on the same port. Only one controller
-page may claim tasks at once.
+Stop it before starting the next queue on the same port. Multiple queue views
+share one background controller; they do not claim tasks independently.
+
+The worker uses an `alarms` permission to check for new queues about once per
+minute, with short follow-up checks during an active batch. It recreates missing
+alarms on worker/browser startup. Browser/device sleep can delay this schedule;
+the extension does not keep Chrome alive or wake the computer. No notifications,
+cookies, debugger or additional host permissions are requested. To inspect a
+pause, open Paper queue from the extension. Login/CAPTCHA never auto-resumes.
 
 The extension creates one task tab at a time and waits for a stable DOM. Readiness
 is not proof of completeness. The existing export sanitizer snapshots HTML for
@@ -98,10 +107,20 @@ Skip cancels the task. Failed or ambiguous tasks are never automatically retried
 
 Accepted task tabs close only if still at the observed/captured URL. Tabs the user
 navigates elsewhere are left alone. Everyday tabs are not enumerated, reused or
-closed. On controller reload it intentionally forgets tab IDs so it cannot close
-an unrelated reused tab. A claimed job then requires explicit Resume/Skip; Resume
-creates a new task tab. Close the old tab yourself after checking it. This also
-applies after a browser/process crash.
+closed. Task-tab ownership is stored in browser-session storage, so a terminated
+worker can resume its own capture without scanning everyday tabs. The durable
+local journal records only job ID, lease and phase, never HTML or browser cookies.
+Browser restart or extension reload clears session-owned tab IDs: an interrupted
+capture then pauses for explicit Resume/Skip instead of adopting possibly reused
+IDs. Close any restored old task tab yourself after checking it. Pending queued
+work can start automatically after browser restart when background acquisition
+remains enabled and the local service is still running.
+
+Before sending HTML the worker journals the submitting phase. If the response is
+lost or exceeds 20 seconds, it checks the server's processing/terminal status;
+it never automatically resends HTML. An uncertain submission still marked claimed
+is paused for explicit review. Conversion runs locally and is not cancelled by
+closing a queue view or terminating the extension worker.
 
 Task state is reported for the current command, not automatically resumed across
 server restarts. Restarting the same identifiers is an explicit new queue. Pairing
@@ -115,12 +134,16 @@ the server may have finished conversion.
 The service binds **127.0.0.1 only**, requires a 256-bit bearer key for all job
 operations, checks Host and extension Origin, and exposes no browser-accessible
 enqueue or filesystem-path API. Jobs and output options come from the explicit
-local command, never page DOM/messages. No manifest permissions are added.
+local command, never page DOM/messages. Background control messages are accepted
+only from this extension's exact queue page, never publisher content scripts.
 Pairing grants the extension access to this queue; keep that build trusted.
 
 Tests use synthetic captures and local fixture pages only. They do not prove
 institution-specific SSO, CAPTCHA, VPN/proxy redirects, session expiry,
-background-tab throttling or Firefox/Safari support. Private Novae acceptance
+real device suspend timing, background-tab throttling or Firefox/Safari support.
+Synthetic end-to-end tests close every queue view, stop the Chromium worker and
+wait for alarm-based recovery; fault-injection tests cover uncertain submissions,
+lost ownership, disabled startup and blocked access. Private Novae acceptance
 requires the user's authorized browser and deliberate local execution.
 Image requests have no browser credentials; session-only images may remain
 incomplete and block Vault archiving.

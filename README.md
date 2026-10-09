@@ -10,7 +10,7 @@ Start with [Paper Agent](docs/paper-agent.md) for the command-line interface,
 local Codex Skill, installation instructions, limitations and validation results.
 
 The primary interactive route is now the [usual-browser queue](docs/browser-queue.md):
-pair the modified extension once, keep its Paper queue page open, then run
+pair the modified extension once, keep the browser open (the queue page may close), then run
 `npm run paper:browser -- "DOI" --download-assets`. Paper tabs are captured and
 converted automatically, pausing for human login or verification when needed.
 The dedicated Playwright browser and manual HTML inbox remain optional paths.

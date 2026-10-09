@@ -15,7 +15,7 @@ export function queueApi(endpoint: string, key: string) {
 	if (!/^[a-f0-9]{64}$/.test(key)) throw new Error('Invalid pairing key.');
 	return async (route: string, data?: unknown) => {
 		const response = await fetch(origin + route, { method: data === undefined ? 'GET' : 'POST',
-			signal: AbortSignal.timeout(route.endsWith('/capture') ? 180000 : 10000),
+			signal: AbortSignal.timeout(route.endsWith('/capture') ? 20000 : 10000),
 			credentials: 'omit', redirect: 'error', cache: 'no-store',
 			headers: { Authorization: `Bearer ${key}`, ...(data === undefined ? {} : { 'Content-Type': 'application/json' }) },
 			body: data === undefined ? undefined : JSON.stringify(data) });
@@ -43,10 +43,26 @@ function captureUrl(value: string, requested: string) {
 	return url.href;
 }
 
+export type OwnedPaperTab = { id: number; jobId: string; capturedUrl?: string };
 export class PaperTaskTab {
-	private owned?: { id: number; jobId: string; capturedUrl?: string };
-	constructor(private wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))) {}
+	private owned?: OwnedPaperTab;
+	private loaded = false;
+	constructor(private wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms)),
+		private persistence?: { load(): Promise<OwnedPaperTab | undefined>; save(value?: OwnedPaperTab): Promise<void> }) {}
+	private async restore() {
+		if (!this.loaded) { this.owned = await this.persistence?.load(); this.loaded = true; }
+	}
+	private async persist() { await this.persistence?.save(this.owned); }
+	async owns(jobId: string) {
+		await this.restore();
+		if (this.owned?.jobId !== jobId) return false;
+		try {
+			const tab = await browser.tabs.get(this.owned.id);
+			return !this.owned.capturedUrl || tab.url === this.owned.capturedUrl;
+		} catch { return false; }
+	}
 	async snapshot(job: QueueJob): Promise<PageHtmlSnapshot> {
+		await this.restore();
 		if (!job.url) throw new Error('Task has no URL.');
 		captureUrl(job.url, job.url);
 		if (this.owned && this.owned.jobId !== job.id) throw new Error('Previous task tab still needs attention.');
@@ -55,6 +71,7 @@ export class PaperTaskTab {
 			const tab = await browser.tabs.create({ url: job.url, active: false });
 			if (tab.id === undefined) throw new Error('Could not create a task tab.');
 			this.owned = { id: tab.id, jobId: job.id };
+			await this.persist();
 		}
 		const id = this.owned.id;
 		let prior = '', stable = 0;
@@ -63,6 +80,7 @@ export class PaperTaskTab {
 			if (tab.status === 'complete' && tab.url && /^https?:/.test(tab.url)) {
 				captureUrl(tab.url, job.url);
 				this.owned.capturedUrl = tab.url;
+				await this.persist();
 				const probe = (await browser.scripting.executeScript({ target: { tabId: id, frameIds: [0] }, func: probePaperPage }))[0]?.result as ReturnType<typeof probePaperPage> | undefined;
 				if (probe?.blocked) throw new Error('Login, verification or full-text access requires your attention.');
 				const signature = probe?.ready ? `${probe.url}:${probe.size}` : '';
@@ -72,6 +90,7 @@ export class PaperTaskTab {
 					if (!result?.snapshot) throw new Error(result?.error ?? 'Snapshot failed.');
 					if (result.snapshot.url !== probe?.url) throw new Error('Page navigated during capture.');
 					this.owned.capturedUrl = result.snapshot.url;
+					await this.persist();
 					return result.snapshot;
 				}
 			}
@@ -80,16 +99,20 @@ export class PaperTaskTab {
 		throw new Error('Page did not settle within 30 seconds. Resume explicitly after it is ready.');
 	}
 	async focus(jobId: string) {
-		if (this.owned?.jobId !== jobId) throw new Error('No task tab owned by this queue page. Resume to create a new one.');
+		await this.restore();
+		if (this.owned?.jobId !== jobId) throw new Error('No task tab owned by this browser session. Resume to create a new one.');
 		const tab = await browser.tabs.update(this.owned.id, { active: true });
 		if (tab.windowId !== undefined) await browser.windows.update(tab.windowId, { focused: true });
 	}
 	async reconcile(jobIds: string[]) {
+		await this.restore();
 		if (this.owned && !jobIds.includes(this.owned.jobId)) await this.finish(this.owned.jobId);
 	}
 	async finish(jobId: string) {
+		await this.restore();
 		if (this.owned?.jobId !== jobId) return;
 		const owned = this.owned; this.owned = undefined;
+		await this.persist();
 		try {
 			const tab = await browser.tabs.get(owned.id);
 			// A tab the user navigated elsewhere is no longer ours to close.
