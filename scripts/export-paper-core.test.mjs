@@ -13,6 +13,20 @@ before(async () => {
 	directory = await mkdtemp(path.join(parent, 'run-'));
 });
 
+test('development package is unofficial and non-publishable with consistent lockfile identity', async () => {
+	const pkg = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
+	const lock = JSON.parse(await readFile(path.join(root, 'package-lock.json'), 'utf8'));
+	assert.equal(pkg.name, 'paper-clipper-dev');
+	assert.equal(pkg.private, true);
+	assert.match(pkg.description, /^Unofficial,/);
+	assert.equal(lock.name, pkg.name);
+	assert.equal(lock.packages[''].name, pkg.name);
+	assert.equal(lock.version, pkg.version);
+	assert.equal(lock.packages[''].version, pkg.version);
+	assert.match(await readFile(path.join(root, 'LICENSE'), 'utf8'), /Copyright \(c\) 2024 Obsidian/);
+	assert.match(await readFile(path.join(root, 'THIRD_PARTY_NOTICES.md'), 'utf8'), /does not claim upstream endorsement/);
+});
+
 test('core dependency list excludes extension tools and uses existing locked versions', async () => {
 	const lock = JSON.parse(await readFile(path.join(root, 'package-lock.json'), 'utf8'));
 	const pkg = corePackage(lock);

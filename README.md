@@ -17,6 +17,15 @@ npm run install:paper-skill
 ```
 
 This repository preserves the full development baseline and upstream history.
+GitHub's contributor listing includes authors of that retained history; it is not
+a list of current Paper Clipper maintainers or an endorsement by upstream authors.
+Original authorship and commits are preserved, not reassigned.
+
+The development package is named `paper-clipper-dev` and is marked `private: true`
+to prevent accidental npm publication (the GitHub repository remains public).
+Its inherited version and `obsidian-clipper` CLI alias are retained for build and
+command compatibility, not as an official Obsidian product identity.
+
 For a standalone command-line edition without the extension UI, editor, branding
 or browser packaging, export the reviewed core file list into a new directory:
 
@@ -39,6 +48,10 @@ extension. Upstream copyright and license notices are retained. Brand assets,
 icons and marketing materials are excluded from upstream's MIT grant; review and
 replace or separately license those materials before packaging a derived release.
 Third-party components retain their respective licenses.
+See [Third-Party Notices](THIRD_PARTY_NOTICES.md) for the development repository
+and [Core notices](docs/core/THIRD_PARTY_NOTICES.md) for the exported edition.
+Core is the intended basis for a future standalone distribution; no separate
+product repository or release is created by exporting it.
 
 Paper captures, personal Vaults, browser profiles and local acceptance samples are
 not included. Unit tests use local synthetic fixtures; real-paper acceptance
