@@ -1,5 +1,7 @@
 # Authorized HTML Import
 
+For automatic processing of exported pairs, see [browser export inbox](watch-exports.md).
+
 This core edition imports authorized snapshots; it does not contain a browser
 extension or read the normal browser's cookies/profile. For publicly accessible
 HTML, the HTTP or dedicated-browser route needs no extension. To reuse access

@@ -14,11 +14,11 @@ const converter = [
 ];
 const modules = [
 	'install-paper-skill', 'resolve-paper', 'save-paper', 'fetch-page', 'clip-paper',
-	'import-papers', 'clip', 'archive-papers', 'paper-assets', 'paper-captions',
+	'import-papers', 'watch-exports', 'clip', 'archive-papers', 'paper-assets', 'paper-captions',
 	'accept-assets', 'accept-papers', 'paper-validation', 'paper-sections',
 ];
 const extras = ['build-cli', 'paper-metadata', 'accept-math', 'accept-vault', 'accept-clip-vault'];
-const documents = ['browser-fetcher', 'clip', 'import-papers', 'paper-agent', 'paper-assets', 'paper-clipper', 'vault-archive'];
+const documents = ['browser-fetcher', 'clip', 'import-papers', 'watch-exports', 'paper-agent', 'paper-assets', 'paper-clipper', 'vault-archive'];
 export const coreFiles = [
 	'LICENSE', '.gitignore',
 	...converter.map(file => `src/${file}`),
@@ -51,6 +51,8 @@ export function corePackage(lock) {
 			build: 'npm run build:cli', 'build:cli': 'node scripts/build-cli.mjs',
 			paper: 'node scripts/save-paper.mjs', clip: 'node scripts/clip.mjs',
 			'clip:paper': 'node scripts/clip-paper.mjs', 'clip:import': 'node scripts/import-papers.mjs',
+			'clip:watch': 'node scripts/watch-exports.mjs',
+			'test:inbox': 'npm run build:cli && node --test scripts/watch-exports.test.mjs',
 			'clip:vault': 'node scripts/archive-papers.mjs', 'fetch:browser': 'node scripts/fetch-page.mjs',
 			'install:paper-skill': 'node scripts/install-paper-skill.mjs',
 			test: 'npm run build:cli && node --test scripts/*.test.mjs',

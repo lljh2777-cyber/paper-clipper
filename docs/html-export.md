@@ -1,5 +1,7 @@
 # Extension HTML export
 
+For automatic processing of exported pairs, see [browser export inbox](watch-exports.md).
+
 The **Export page HTML** button (file/download icon at the left of the header
 tools) is available in the popup, side panel, and embedded clipper. In Simplified
 Chinese its tooltip is **导出页面 HTML**. It takes a new snapshot at click time,

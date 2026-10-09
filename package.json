@@ -34,6 +34,8 @@
 		"test:paper-agent": "npm run build:cli && node --test scripts/resolve-paper.test.mjs scripts/save-paper.test.mjs",
 		"clip:paper": "node scripts/clip-paper.mjs",
 		"clip:import": "node scripts/import-papers.mjs",
+		"clip:watch": "node scripts/watch-exports.mjs",
+		"test:inbox": "npm run build:cli && node --test scripts/watch-exports.test.mjs",
 		"clip:vault": "node scripts/archive-papers.mjs",
 		"test:vault": "node --test scripts/archive-papers.test.mjs",
 		"accept:vault": "node scripts/accept-vault.mjs",

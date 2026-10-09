@@ -46,6 +46,10 @@ Existing Vault notes and annotations are never replaced. See
 [Paper Agent](docs/paper-agent.md), [unified command](docs/clip.md), and
 [authorized export contract](docs/html-export.md).
 
+For automatic import of exports from your normally logged-in browser, run
+`npm run clip:watch -- "PATH_TO_DEDICATED_INBOX"` in the foreground. Both the
+HTML and JSON files must land in that folder. See [inbox watcher](docs/watch-exports.md).
+
 Optional Codex Skill installation:
 
 ```sh
