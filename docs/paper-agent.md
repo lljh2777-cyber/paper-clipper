@@ -1,5 +1,10 @@
 # Paper Agent
 
+For the primary interactive workflow using your usual browser's existing login,
+use the [paired extension queue](browser-queue.md). The machine entry point below
+keeps its existing defaults; HTTP and dedicated-browser acquisition are optional
+alternatives, not silent fallbacks from the extension queue.
+
 ## Purpose and boundaries
 
 Given a paper title, DOI or publisher URL, obtain an accessible publisher HTML

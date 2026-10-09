@@ -41,6 +41,7 @@ module.exports = (env, argv) => {
 		entry: {
 			'content-loader': './src/content-loader.ts',
 			popup: './src/core/popup.ts',
+			'paper-queue': './src/core/paper-queue.ts',
 			settings: './src/core/settings.ts',
 			highlights: './src/core/highlights.ts',
 			'reader-page': './src/core/reader-view.ts',
@@ -145,6 +146,8 @@ module.exports = (env, argv) => {
 						to: "manifest.json" 
 					},
 					{ from: "src/popup.html", to: "popup.html" },
+					{ from: "src/paper-queue.html", to: "paper-queue.html" },
+					{ from: "src/styles/paper-queue.css", to: "paper-queue.css" },
 					{ from: "src/side-panel.html", to: "side-panel.html" },
 					{ from: "src/settings.html", to: "settings.html" },
 					{ from: "src/highlights.html", to: "highlights.html" },

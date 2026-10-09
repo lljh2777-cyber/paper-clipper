@@ -27,6 +27,16 @@ or run the entry point with `--help`. Do not load the whole repository routinely
 
 ## Save workflow
 
+- Prefer the usual-browser extension queue for interactive acquisition when the
+  user wants to reuse their normal browser login. Read `docs/browser-queue.md` in
+  the runtime repository and invoke `scripts/browser-queue.mjs` there with the
+  configured Node executable. The user must pair and keep the extension queue
+  page open. Do not silently use HTTP or the dedicated browser if it is absent.
+  This is a long-running interactive command, not the single-JSON entry point
+  below; report its queue result, stop owned local services when finished, and
+  leave human login/verification to the user. Preserve the standalone entry
+  point for explicit HTTP/dedicated-browser or authorized-file requests.
+
 - Pass the full title, DOI or HTTP(S) URL as one positional argument. For a vague
   description with no identifier, request a title/DOI/URL rather than inventing one.
 - For saving a paper, add `--download-assets` unless the user requests text-only,
