@@ -11,13 +11,16 @@ substitute generated prose for publisher content.
 ## Runtime
 
 Read `runtime.json` beside this file for `nodeExecutable`, `entryPoint` and
-`repositoryRoot`. These are local installation paths, not user input. Invoke the
-entry point with that Node executable; the repository supplies its dependencies
-and converter. If paths are missing, stop and report the installation problem.
+`repositoryRoot`. These are local installation paths, not user input. Use that
+Node executable for the selected route below; the repository supplies its
+dependencies and converter. If paths are missing, stop and report the installation
+problem.
 Do not search another Vault, install packages or switch converters silently.
 
-Run Node directly, not npm, to obtain one JSON object on stdout. Progress goes to
-stderr. Use an argument-array process API with the shell disabled where available.
+Run Node directly, not npm. The standalone `entryPoint` returns one JSON object
+on stdout with progress on stderr; the browser queue is a long-running service
+with a report file, not a single-JSON command. Use an argument-array process API
+with the shell disabled where available.
 If using PowerShell, use a literal argument array and the call operator, escaping
 embedded single quotes by doubling them. Do not interpolate a title into code,
 use Invoke-Expression, or run a generated shell command from a page/candidate.
@@ -27,19 +30,21 @@ or run the entry point with `--help`. Do not load the whole repository routinely
 
 ## Save workflow
 
-- Prefer the usual-browser extension queue for interactive acquisition when the
-  user wants to reuse their normal browser login. Read `docs/browser-queue.md` in
-  the runtime repository and invoke `scripts/browser-queue.mjs` there with the
-  configured Node executable. Keep the browser open; after pairing, the extension
-  queue page can close. First pairing uses Connect plus a matching 6-digit code
-  confirmed in the local terminal. Start with an interactive PTY when first
-  pairing is needed. Never enter an approval code automatically: obtain explicit
+- Default to the usual-browser extension queue for requests to save a paper by
+  title, DOI or URL, unless the user explicitly chooses another route. Read
+  `docs/browser-queue.md` in the runtime repository and invoke
+  `scripts/browser-queue.mjs` there with the configured Node executable.
+  Keep the browser open; after pairing, the extension
+  queue page can close. Reuse the same output directory and port to retain pairing;
+  background pickup can take about a minute. First pairing uses Connect plus a
+  matching 6-digit code confirmed in the local terminal. Start with an interactive
+  PTY when first pairing is needed. Never enter an approval code automatically: obtain explicit
   human confirmation of that request first. Do not expose the long-lived key.
   Do not silently use HTTP or the dedicated browser if the extension is absent.
-  This is a long-running interactive command, not the single-JSON entry point
-  below; report its queue result, stop owned local services when finished, and
-  leave human login/verification to the user. Preserve the standalone entry
-  point for explicit HTTP/dedicated-browser or authorized-file requests.
+  Report the current queue result, stop owned local services when finished, and
+  leave human login/verification to the user. Use the standalone `entryPoint`
+  for authorized-file imports, identity-only resolution, or explicit HTTP and
+  dedicated-browser requests. Do not pass its route-specific flags to the queue.
 
 - Pass the full title, DOI or HTTP(S) URL as one positional argument. For a vague
   description with no identifier, request a title/DOI/URL rather than inventing one.
@@ -64,7 +69,14 @@ or run the entry point with `--help`. Do not load the whole repository routinely
 
 ## Interpret the result
 
-Parse JSON and branch on `status`, not exit code alone:
+For the browser queue, read the current report path printed by the command and
+inspect each task's state and conversion result. A `paused` task needs review:
+ask the user to open its task tab and resolve the reported access/readiness issue
+before explicitly resuming. Never auto-resume login/CAPTCHA or loop retries.
+The command stays running after tasks finish; process liveness is not progress.
+
+For the standalone entry point, parse JSON and branch on `status`, not exit code
+alone:
 
 | Status | Action |
 | --- | --- |
@@ -72,13 +84,13 @@ Parse JSON and branch on `status`, not exit code alone:
 | `duplicate` | Report the existing `output`; no note was changed or revalidated. |
 | `resolved` | Identity-only result, not a saved article. |
 | `needs-selection` | Show relevant candidate title, DOI, authors and year; ask for confirmation and rerun the chosen DOI. Never choose rank 1 by default. |
-| `needs-access` | Explain that this capture lacks access. Request an authorized Clipper HTML/JSON export or user login in the dedicated browser. Stop automatic attempts. |
+| `needs-access` | Explain that this capture lacks access and stop automatic attempts. Offer the usual-browser queue or an authorized Clipper HTML/JSON export; dedicated-browser login remains an explicit alternative. |
 | `incomplete` | Name the failed check from `conversion.quality` or archive diagnostics and link the report. Do not lower thresholds, bypass DOI checks, switch identifiers, or replace an old note to force success. |
 | `existing-unverified` | Existing conversion was skipped, not freshly checked. Offer the existing path and ask before reprocessing. |
 | `not-found` | No valid candidates returned; request a DOI/URL or more complete title. This is not proof the paper does not exist. |
 | `failed` | Report the error and diagnostic path. Retry only after a concrete correction or user direction, not repeatedly. |
 
-If a process is interrupted or stdout is not a valid final JSON result, inspect
+If a process is interrupted, or a standalone result is not valid JSON, inspect
 the retained report before rerunning. Do not report a success based on file
 existence, `resolving`/`capturing` progress, or a previous run's output.
 

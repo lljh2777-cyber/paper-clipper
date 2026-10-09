@@ -48,6 +48,11 @@ test('installs exactly the instruction/UI/config files; installed runtime works 
 	assert.equal(result.status, 'resolved');
 	assert.equal(result.saved, false);
 	assert.equal(result.resolution.selected.doi, '10.1234/skill-fixture');
+	const queueEntry = path.join(runtime.repositoryRoot, 'scripts/browser-queue.mjs');
+	const { stdout: queueHelp } = await exec(runtime.nodeExecutable, [queueEntry, '--help'], { cwd: directory });
+	assert.match(queueHelp, /--download-assets/);
+	assert.match(queueHelp, /--vault/);
+	assert.match(queueHelp, /--output-dir/);
 	const yaml = parseDocument(await readFile(path.join(config.destination, 'agents/openai.yaml'), 'utf8'));
 	assert.deepEqual(yaml.errors, []);
 	const metadata = yaml.toJS();
