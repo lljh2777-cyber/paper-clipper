@@ -45,7 +45,7 @@
 		"message": "Geen API-sleutel"
 	},
 	"apiKeysWarning": {
-		"message": "Door een externe provider te gebruiken ga je akkoord met hun voorwaarden en privacybeleid. Interpreter-verzoeken worden direct naar de provider van jouw keuze gestuurd. Obsidian verzamelt of bewaart geen gegevens over je verzoeken."
+		"message": "Interpreter requests go directly to the provider you configure, subject to that provider's terms and privacy policy. Paper Clipper has no hosted inference service."
 	},
 	"appendToDaily": {
 		"message": "Toevoegen aan dagelijkse notitie, onderaan"
@@ -118,7 +118,7 @@
 		"message": "Sluiten"
 	},
 	"commandOpenClipper": {
-		"message": "Open Obsidian Clipper"
+		"message": "Open Paper Clipper"
 	},
 	"commandQuickClip": {
 		"message": "Snel knippen"
@@ -272,7 +272,7 @@
 		"message": "Eigenschappen exporteren"
 	},
 	"exportPropertiesDescription": {
-		"message": "Sla Web Clipper eigenschappen op in een $strong_start$types.json$strong_end$ bestand dat kan worden geïmporteerd in je Obsidian kluis of in Web Clipper op andere apparaten.",
+		"message": "Sla Paper Clipper eigenschappen op in een $strong_start$types.json$strong_end$ bestand dat kan worden geïmporteerd in je Obsidian kluis of in Paper Clipper op andere apparaten.",
 		"placeholders": {
 			"strong_end": {
 				"content": "</strong>"
@@ -283,10 +283,10 @@
 		}
 	},
 	"extensionDescription": {
-		"message": "Sla webinhoud op in een privé en duurzaam formaat dat je offline kunt bekijken. De officiële browserextensie voor Obsidian."
+		"message": "Archive academic papers from authorized browser HTML as local Markdown. Independent project, not affiliated with Obsidian."
 	},
 	"extensionName": {
-		"message": "Obsidian Web Clipper"
+		"message": "Paper Clipper"
 	},
 	"failedToCopyText": {
 		"message": "Tekst kopiëren mislukt"
@@ -337,7 +337,7 @@
 		"message": "Feedback"
 	},
 	"feedbackDescription": {
-		"message": "Hoe kunnen we Web Clipper verbeteren? Bezoek alstublieft onze hulppagina, waar u bugs kunt melden, functies kunt voorstellen en hulp kunt krijgen bij veelvoorkomende problemen."
+		"message": "Hoe kunnen we Paper Clipper verbeteren? Bezoek alstublieft onze hulppagina, waar u bugs kunt melden, functies kunt voorstellen en hulp kunt krijgen bij veelvoorkomende problemen."
 	},
 	"feedbackTitle": {
 		"message": "Bedankt voor uw feedback"
@@ -358,7 +358,7 @@
 		"message": "Help"
 	},
 	"helpDescription": {
-		"message": "Leer hoe je Web Clipper gebruikt en krijg hulp bij probleemoplossing."
+		"message": "Leer hoe je Paper Clipper gebruikt en krijg hulp bij probleemoplossing."
 	},
 	"highlightInline": {
 		"message": "Markeer de pagina-inhoud"
@@ -570,7 +570,7 @@
 		"message": "Openen"
 	},
 	"openBehaviorDescription": {
-		"message": "Kies hoe Web Clipper standaard wordt geopend."
+		"message": "Kies hoe Paper Clipper standaard wordt geopend."
 	},
 	"openBehaviorTitle": {
 		"message": "Open gedrag"
@@ -714,7 +714,7 @@
 		"message": "Providers"
 	},
 	"rateExtensionDescription": {
-		"message": "Geniet u van Web Clipper? Help ons door het een beoordeling te geven."
+		"message": "Geniet u van Paper Clipper? Help ons door het een beoordeling te geven."
 	},
 	"read": {
 		"message": "Gelezen"

@@ -45,7 +45,7 @@
 		"message": "Ei API-avainta"
 	},
 	"apiKeysWarning": {
-		"message": "Käyttämällä ulkoista palveluntarjoajaa hyväksyt heidän käyttöehtonsa ja tietosuojakäytäntönsä. Tulkin pyynnöt lähetetään suoraan valitsemallesi palveluntarjoajalle. Obsidian ei kerää tai tallenna mitään tietoja pyynnöistäsi."
+		"message": "Interpreter requests go directly to the provider you configure, subject to that provider's terms and privacy policy. Paper Clipper has no hosted inference service."
 	},
 	"appendToDaily": {
 		"message": "Lisää päivittäiseen muistiinpanoon, loppuun"
@@ -118,7 +118,7 @@
 		"message": "Sulje"
 	},
 	"commandOpenClipper": {
-		"message": "Avaa Obsidian Clipper"
+		"message": "Avaa Paper Clipper"
 	},
 	"commandQuickClip": {
 		"message": "Pikaleikkaus"
@@ -272,7 +272,7 @@
 		"message": "Vie ominaisuudet"
 	},
 	"exportPropertiesDescription": {
-		"message": "Tallenna Web Clipperin ominaisuudet $strong_start$types.json$strong_end$ -tiedostoon, jonka voit tuoda Obsidian-holviin tai Web Clipperiin muilla laitteilla",
+		"message": "Tallenna Paper Clipperin ominaisuudet $strong_start$types.json$strong_end$ -tiedostoon, jonka voit tuoda Obsidian-holviin tai Paper Clipperiin muilla laitteilla",
 		"placeholders": {
 			"strong_end": {
 				"content": "</strong>"
@@ -283,10 +283,10 @@
 		}
 	},
 	"extensionDescription": {
-		"message": "Tallenna verkkosisältöä yksityisessä ja kestävässä muodossa, jota voit käyttää offline-tilassa. Obsidianin virallinen selainlaajennus."
+		"message": "Archive academic papers from authorized browser HTML as local Markdown. Independent project, not affiliated with Obsidian."
 	},
 	"extensionName": {
-		"message": "Obsidian Web Clipper"
+		"message": "Paper Clipper"
 	},
 	"failedToCopyText": {
 		"message": "Tekstin kopiointi epäonnistui"
@@ -337,7 +337,7 @@
 		"message": "Palaute"
 	},
 	"feedbackDescription": {
-		"message": "Miten voimme parantaa Web Clipperia? Vieraile ohjesivullamme, jossa voit raportoida virheitä, ehdottaa ominaisuuksia ja saada apua yleisiin ongelmiin."
+		"message": "Miten voimme parantaa Paper Clipperia? Vieraile ohjesivullamme, jossa voit raportoida virheitä, ehdottaa ominaisuuksia ja saada apua yleisiin ongelmiin."
 	},
 	"feedbackTitle": {
 		"message": "Kiitos palautteestasi"
@@ -358,7 +358,7 @@
 		"message": "Ohje"
 	},
 	"helpDescription": {
-		"message": "Opi käyttämään Web Clipperia ja saa apua ongelmien ratkaisemiseen"
+		"message": "Opi käyttämään Paper Clipperia ja saa apua ongelmien ratkaisemiseen"
 	},
 	"highlightInline": {
 		"message": "Korosta sivun sisältö"
@@ -570,7 +570,7 @@
 		"message": "Avaa"
 	},
 	"openBehaviorDescription": {
-		"message": "Valitse, miten Web Clipper avautuu oletuksena."
+		"message": "Valitse, miten Paper Clipper avautuu oletuksena."
 	},
 	"openBehaviorTitle": {
 		"message": "Avautumiskäyttäytyminen"
@@ -722,7 +722,7 @@
 		"message": "Palveluntarjoajat"
 	},
 	"rateExtensionDescription": {
-		"message": "Pidätkö Web Clipperista? Auta meitä antamalla sille arvostelu."
+		"message": "Pidätkö Paper Clipperista? Auta meitä antamalla sille arvostelu."
 	},
 	"read": {
 		"message": "Luettu"

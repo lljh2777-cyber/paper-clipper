@@ -45,7 +45,7 @@
 		"message": "គ្មានសោ API"
 	},
 	"apiKeysWarning": {
-		"message": "ដោយប្រើអ្នកផ្តល់សេវាខាងក្រៅ អ្នកយល់ព្រមតាមលក្ខខណ្ឌ និងគោលការណ៍ឯកជនភាពរបស់ពួកគេ។ សំណើ Interpreter ត្រូវបានផ្ញើដោយផ្ទាល់ទៅកាន់អ្នកផ្តល់សេវាដែលអ្នកជ្រើសរើស។ Obsidian មិនប្រមូល ឬរក្សាទុកទិន្នន័យណាមួយអំពីសំណើរបស់អ្នកទេ។"
+		"message": "Interpreter requests go directly to the provider you configure, subject to that provider's terms and privacy policy. Paper Clipper has no hosted inference service."
 	},
 	"appendToDaily": {
 		"message": "បន្ថែមទៅកំណត់ត្រាប្រចាំថ្ងៃ នៅខាងក្រោម"
@@ -118,7 +118,7 @@
 		"message": "បិទ"
 	},
 	"commandOpenClipper": {
-		"message": "បើក Obsidian Clipper"
+		"message": "បើក Paper Clipper"
 	},
 	"commandQuickClip": {
 		"message": "កាត់យករហ័ស"
@@ -272,7 +272,7 @@
 		"message": "នាំចេញលក្ខណៈសម្បត្តិ"
 	},
 	"exportPropertiesDescription": {
-		"message": "រក្សាទុកលក្ខណៈសម្បត្តិ Web Clipper ទៅឯកសារ $strong_start$types.json$strong_end$ ដែលអាចនាំចូលទៅក្នុង vault របស់ Obsidian របស់អ្នក ឬទៅក្នុង Web Clipper លើឧបករណ៍ផ្សេងៗ។",
+		"message": "រក្សាទុកលក្ខណៈសម្បត្តិ Paper Clipper ទៅឯកសារ $strong_start$types.json$strong_end$ ដែលអាចនាំចូលទៅក្នុង vault របស់ Obsidian របស់អ្នក ឬទៅក្នុង Paper Clipper លើឧបករណ៍ផ្សេងៗ។",
 		"placeholders": {
 			"strong_end": {
 				"content": "</strong>"
@@ -283,10 +283,10 @@
 		}
 	},
 	"extensionDescription": {
-		"message": "រក្សាទុកមាតិកាពីបណ្ដាញក្នុងទម្រង់ឯកជន និងប្រើបានយូរ ដែលអ្នកអាចចូលប្រើក្រៅបណ្ដាញបាន។ ផ្នែកបន្ថែមកម្មវិធីរុករកផ្លូវការរបស់ Obsidian។"
+		"message": "Archive academic papers from authorized browser HTML as local Markdown. Independent project, not affiliated with Obsidian."
 	},
 	"extensionName": {
-		"message": "Obsidian Web Clipper"
+		"message": "Paper Clipper"
 	},
 	"failedToCopyText": {
 		"message": "បានបរាជ័យក្នុងការចម្លងអត្ថបទ"
@@ -337,7 +337,7 @@
 		"message": "មតិយោបល់"
 	},
 	"feedbackDescription": {
-		"message": "តើយើងអាចកែលម្អ Web Clipper ដោយរបៀបណា? សូមចូលទៅទំព័រជំនួយរបស់យើង ដែលអ្នកអាចរាយការណ៍កំហុស ស្នើមុខងារ និងទទួលជំនួយសម្រាប់បញ្ហាទូទៅ។"
+		"message": "តើយើងអាចកែលម្អ Paper Clipper ដោយរបៀបណា? សូមចូលទៅទំព័រជំនួយរបស់យើង ដែលអ្នកអាចរាយការណ៍កំហុស ស្នើមុខងារ និងទទួលជំនួយសម្រាប់បញ្ហាទូទៅ។"
 	},
 	"feedbackTitle": {
 		"message": "អរគុណសម្រាប់មតិយោបល់របស់អ្នក"
@@ -358,7 +358,7 @@
 		"message": "ជំនួយ"
 	},
 	"helpDescription": {
-		"message": "ស្វែងយល់ពីរបៀបប្រើ Web Clipper និងទទួលជំនួយដោះស្រាយបញ្ហា។"
+		"message": "ស្វែងយល់ពីរបៀបប្រើ Paper Clipper និងទទួលជំនួយដោះស្រាយបញ្ហា។"
 	},
 	"highlightInline": {
 		"message": "រំលេចមាតិកាទំព័រ"
@@ -570,7 +570,7 @@
 		"message": "បើក"
 	},
 	"openBehaviorDescription": {
-		"message": "ជ្រើសរើសរបៀបដែល Web Clipper បើកជាលំនាំដើម។"
+		"message": "ជ្រើសរើសរបៀបដែល Paper Clipper បើកជាលំនាំដើម។"
 	},
 	"openBehaviorTitle": {
 		"message": "ឥរិយាបថការបើក"
@@ -714,7 +714,7 @@
 		"message": "អ្នកផ្តល់សេវា"
 	},
 	"rateExtensionDescription": {
-		"message": "តើអ្នកកំពុងរីករាយជាមួយ Web Clipper មែនទេ? ជួយយើងដោយផ្តល់ការវាយតម្លៃ។"
+		"message": "តើអ្នកកំពុងរីករាយជាមួយ Paper Clipper មែនទេ? ជួយយើងដោយផ្តល់ការវាយតម្លៃ។"
 	},
 	"read": {
 		"message": "បានអាន"

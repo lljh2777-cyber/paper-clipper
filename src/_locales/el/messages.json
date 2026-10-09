@@ -45,7 +45,7 @@
 		"message": "Λείπει το κλειδί API"
 	},
 	"apiKeysWarning": {
-		"message": "Χρησιμοποιώντας έναν εξωτερικό πάροχο, αποδέχεστε τους όρους χρήσης και την πολιτική απορρήτου τους. Τα αιτήματα διερμηνέα αποστέλλονται απευθείας στον επιλεγμένο πάροχό σας. Το Obsidian δεν συλλέγει ούτε αποθηκεύει πληροφορίες για τα αιτήματά σας."
+		"message": "Interpreter requests go directly to the provider you configure, subject to that provider's terms and privacy policy. Paper Clipper has no hosted inference service."
 	},
 	"appendToDaily": {
 		"message": "Προσθήκη στην ημερήσια σημείωση, στο τέλος"
@@ -118,7 +118,7 @@
 		"message": "Κλείσιμο"
 	},
 	"commandOpenClipper": {
-		"message": "Άνοιγμα Obsidian Clipper"
+		"message": "Άνοιγμα Paper Clipper"
 	},
 	"commandQuickClip": {
 		"message": "Γρήγορη αποκοπή"
@@ -272,7 +272,7 @@
 		"message": "Εξαγωγή ιδιοτήτων"
 	},
 	"exportPropertiesDescription": {
-		"message": "Αποθηκεύστε τις ιδιότητες του Web Clipper σε ένα αρχείο $strong_start$types.json$strong_end$ που μπορεί να εισαχθεί στο θησαυροφυλάκιο Obsidian σας ή στο Web Clipper σε άλλες συσκευές",
+		"message": "Αποθηκεύστε τις ιδιότητες του Paper Clipper σε ένα αρχείο $strong_start$types.json$strong_end$ που μπορεί να εισαχθεί στο θησαυροφυλάκιο Obsidian σας ή στο Paper Clipper σε άλλες συσκευές",
 		"placeholders": {
 			"strong_end": {
 				"content": "</strong>"
@@ -283,10 +283,10 @@
 		}
 	},
 	"extensionDescription": {
-		"message": "Αποθηκεύστε περιεχόμενο από τον ιστό σε ιδιωτική και βιώσιμη μορφή στην οποία έχετε πρόσβαση εκτός σύνδεσης. Η επίσημη επέκταση περιηγητή για το Obsidian."
+		"message": "Archive academic papers from authorized browser HTML as local Markdown. Independent project, not affiliated with Obsidian."
 	},
 	"extensionName": {
-		"message": "Obsidian Web Clipper"
+		"message": "Paper Clipper"
 	},
 	"failedToCopyText": {
 		"message": "Αποτυχία αντιγραφής κειμένου"
@@ -337,7 +337,7 @@
 		"message": "Ανατροφοδότηση"
 	},
 	"feedbackDescription": {
-		"message": "Πώς μπορούμε να βελτιώσουμε το Web Clipper; Επισκεφθείτε τη σελίδα βοήθειάς μας όπου μπορείτε να αναφέρετε σφάλματα, να προτείνετε λειτουργίες και να λάβετε βοήθεια για κοινά προβλήματα."
+		"message": "Πώς μπορούμε να βελτιώσουμε το Paper Clipper; Επισκεφθείτε τη σελίδα βοήθειάς μας όπου μπορείτε να αναφέρετε σφάλματα, να προτείνετε λειτουργίες και να λάβετε βοήθεια για κοινά προβλήματα."
 	},
 	"feedbackTitle": {
 		"message": "Ευχαριστούμε για την ανατροφοδότηση"
@@ -358,7 +358,7 @@
 		"message": "Βοήθεια"
 	},
 	"helpDescription": {
-		"message": "Μάθετε πώς να χρησιμοποιείτε το Web Clipper και λάβετε βοήθεια για την αντιμετώπιση προβλημάτων"
+		"message": "Μάθετε πώς να χρησιμοποιείτε το Paper Clipper και λάβετε βοήθεια για την αντιμετώπιση προβλημάτων"
 	},
 	"highlightInline": {
 		"message": "Επισήμανση περιεχομένου σελίδας"
@@ -562,7 +562,7 @@
 		"message": "Άνοιγμα"
 	},
 	"openBehaviorDescription": {
-		"message": "Επιλέξτε πώς θα ανοίγει από προεπιλογή το Web Clipper."
+		"message": "Επιλέξτε πώς θα ανοίγει από προεπιλογή το Paper Clipper."
 	},
 	"openBehaviorTitle": {
 		"message": "Συμπεριφορά ανοίγματος"
@@ -706,7 +706,7 @@
 		"message": "Πάροχοι"
 	},
 	"rateExtensionDescription": {
-		"message": "Σας αρέσει το Web Clipper; Βοηθήστε μας δίνοντάς του μια αξιολόγηση."
+		"message": "Σας αρέσει το Paper Clipper; Βοηθήστε μας δίνοντάς του μια αξιολόγηση."
 	},
 	"read": {
 		"message": "Διαβασμένες"

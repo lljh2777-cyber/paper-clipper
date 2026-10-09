@@ -34,10 +34,14 @@ jobs:
         run: npm run test:browser-queue
       - name: Build development extension without cleanup
         run: npx webpack --env BROWSER=chrome --env SKIP_CLEANUP=true --mode development
+      - name: Verify extension branding and packaged attribution
+        run: npm run test:extension-brand
       - name: Install Chromium
         run: node node_modules/playwright/cli.js install --with-deps chromium
       - name: Exercise extension queue with synthetic pages only
         run: npm run test:browser-queue:e2e
+      - name: Exercise branded settings and queue navigation
+        run: node scripts/test-extension-brand-e2e.mjs
 
   core:
     name: Core / ${{ matrix.os }} / Node ${{ matrix.node }}

@@ -45,7 +45,7 @@
 		"message": "\"APIキーがありません\""
 	},
 	"apiKeysWarning": {
-		"message": "外部プロバイダーを使用することで、そのプロバイダーの利用規約とプライバシーポリシーに同意したことになります。インタープリターのリクエストは選択したプロバイダーに直接送信されます。Obsidianはリクエストに関するデータを収集または保存しません。"
+		"message": "Interpreter requests go directly to the provider you configure, subject to that provider's terms and privacy policy. Paper Clipper has no hosted inference service."
 	},
 	"appendToDaily": {
 		"message": "デイリーノートの末尾に追加"
@@ -118,7 +118,7 @@
 		"message": "閉じる"
 	},
 	"commandOpenClipper": {
-		"message": "Obsidian Clipperを開く"
+		"message": "Paper Clipperを開く"
 	},
 	"commandQuickClip": {
 		"message": "クイッククリップ"
@@ -272,7 +272,7 @@
 		"message": "プロパティをエクスポート"
 	},
 	"exportPropertiesDescription": {
-		"message": "Web Clipperのプロパティを$strong_start$types.json$strong_end$ファイルに保存します。このファイルはObsidian保管庫や他のデバイスのWeb Clipperにインポートできます。",
+		"message": "Paper Clipperのプロパティを$strong_start$types.json$strong_end$ファイルに保存します。このファイルはObsidian保管庫や他のデバイスのPaper Clipperにインポートできます。",
 		"placeholders": {
 			"strong_end": {
 				"content": "</strong>"
@@ -283,10 +283,10 @@
 		}
 	},
 	"extensionDescription": {
-		"message": "Webコンテンツをプライベートで永続的なオフラインアクセス可能な形式で保存します。Obsidianの公式ブラウザ拡張機能です。"
+		"message": "Archive academic papers from authorized browser HTML as local Markdown. Independent project, not affiliated with Obsidian."
 	},
 	"extensionName": {
-		"message": "Obsidian Web Clipper"
+		"message": "Paper Clipper"
 	},
 	"failedToCopyText": {
 		"message": "テキストのコピーに失敗しました"
@@ -337,7 +337,7 @@
 		"message": "フィードバック"
 	},
 	"feedbackDescription": {
-		"message": "Web Clipperをどのように改善できるでしょうか？バグを報告したり、機能を提案したり、一般的な問題に対するヘルプを得るために、ヘルプページをご覧ください。"
+		"message": "Paper Clipperをどのように改善できるでしょうか？バグを報告したり、機能を提案したり、一般的な問題に対するヘルプを得るために、ヘルプページをご覧ください。"
 	},
 	"feedbackTitle": {
 		"message": "フィードバックありがとうございます"
@@ -358,7 +358,7 @@
 		"message": "ヘルプ"
 	},
 	"helpDescription": {
-		"message": "Web Clipperの使い方とトラブルシューティングのヘルプを参照してください。"
+		"message": "Paper Clipperの使い方とトラブルシューティングのヘルプを参照してください。"
 	},
 	"highlightInline": {
 		"message": "ページ内容をハイライトする"
@@ -570,7 +570,7 @@
 		"message": "開く"
 	},
 	"openBehaviorDescription": {
-		"message": "Web Clipperがデフォルトでどのように開くかを選択します。"
+		"message": "Paper Clipperがデフォルトでどのように開くかを選択します。"
 	},
 	"openBehaviorTitle": {
 		"message": "開く動作"
@@ -714,7 +714,7 @@
 		"message": "プロバイダー"
 	},
 	"rateExtensionDescription": {
-		"message": "Web Clipperを楽しんでいますか？評価をつけることで私たちを支えてください。"
+		"message": "Paper Clipperを楽しんでいますか？評価をつけることで私たちを支えてください。"
 	},
 	"read": {
 		"message": "読了"

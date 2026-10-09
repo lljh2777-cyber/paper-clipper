@@ -45,7 +45,7 @@
 		"message": "无 API 密钥"
 	},
 	"apiKeysWarning": {
-		"message": "使用外部提供商即表示您同意其条款和隐私政策。解释器请求直接发送给您选择的提供商。Obsidian 不会收集或存储任何关于您请求的数据。"
+		"message": "解释器请求会直接发送给你配置的服务提供方，受其条款和隐私政策约束。Paper Clipper 不提供托管推理服务。"
 	},
 	"appendToDaily": {
 		"message": "添加到日记末尾"
@@ -118,7 +118,7 @@
 		"message": "关闭"
 	},
 	"commandOpenClipper": {
-		"message": "打开 Obsidian 剪藏器"
+		"message": "打开 Paper Clipper"
 	},
 	"commandQuickClip": {
 		"message": "快速剪藏"
@@ -256,14 +256,30 @@
 	"export": {
 		"message": "导出"
 	},
-	"exportPageHtml": { "message": "导出页面 HTML" },
-	"htmlExportInProgress": { "message": "正在导出 HTML..." },
-	"htmlExportDownloadsStarted": { "message": "已发起 HTML 与 JSON 下载。" },
-	"htmlExportFailed": { "message": "HTML 导出失败，请刷新页面后重试。" },
-	"htmlExportUnsupportedPage": { "message": "请打开原始 HTTP 或 HTTPS 网页后导出 HTML。" },
-	"htmlExportExitReader": { "message": "请退出阅读模式后再导出 HTML。" },
-	"htmlExportTooLarge": { "message": "页面 HTML 超过 30 MiB 限制。" },
-	"htmlExportPageChanged": { "message": "导出时页面已发生跳转，请刷新剪藏器后重试。" },
+	"exportPageHtml": {
+		"message": "导出页面 HTML"
+	},
+	"htmlExportInProgress": {
+		"message": "正在导出 HTML..."
+	},
+	"htmlExportDownloadsStarted": {
+		"message": "已发起 HTML 与 JSON 下载。"
+	},
+	"htmlExportFailed": {
+		"message": "HTML 导出失败，请刷新页面后重试。"
+	},
+	"htmlExportUnsupportedPage": {
+		"message": "请打开原始 HTTP 或 HTTPS 网页后导出 HTML。"
+	},
+	"htmlExportExitReader": {
+		"message": "请退出阅读模式后再导出 HTML。"
+	},
+	"htmlExportTooLarge": {
+		"message": "页面 HTML 超过 30 MiB 限制。"
+	},
+	"htmlExportPageChanged": {
+		"message": "导出时页面已发生跳转，请刷新剪藏器后重试。"
+	},
 	"exportAllSettings": {
 		"message": "导出所有设置"
 	},
@@ -291,10 +307,10 @@
 		}
 	},
 	"extensionDescription": {
-		"message": "以私密且持久的格式保存网页内容，可离线访问。Obsidian 官方浏览器扩展。"
+		"message": "将浏览器中有权访问的论文 HTML 归档为本地 Markdown。独立项目，非 Obsidian 官方扩展。"
 	},
 	"extensionName": {
-		"message": "Obsidian 网页剪藏器"
+		"message": "Paper Clipper"
 	},
 	"failedToCopyText": {
 		"message": "复制文本失败"
@@ -345,7 +361,7 @@
 		"message": "反馈"
 	},
 	"feedbackDescription": {
-		"message": "我们如何改进Web Clipper？请访问我们的帮助页面，您可以在那里报告错误，建议功能，并获得常见问题的帮助。"
+		"message": "我们如何改进Paper Clipper？请访问我们的帮助页面，您可以在那里报告错误，建议功能，并获得常见问题的帮助。"
 	},
 	"feedbackTitle": {
 		"message": "感谢您的反馈"
@@ -366,7 +382,7 @@
 		"message": "帮助"
 	},
 	"helpDescription": {
-		"message": "了解如何使用 Web Clipper 并获取故障排除帮助。"
+		"message": "了解如何使用 Paper Clipper 并获取故障排除帮助。"
 	},
 	"highlightInline": {
 		"message": "高亮页面内容"
@@ -578,7 +594,7 @@
 		"message": "打开"
 	},
 	"openBehaviorDescription": {
-		"message": "选择Web Clipper默认的打开方式。"
+		"message": "选择Paper Clipper默认的打开方式。"
 	},
 	"openBehaviorTitle": {
 		"message": "打开行为"
@@ -722,7 +738,7 @@
 		"message": "提供商"
 	},
 	"rateExtensionDescription": {
-		"message": "您喜欢使用Web Clipper吗？请帮助我们给它评分。"
+		"message": "您喜欢使用Paper Clipper吗？请帮助我们给它评分。"
 	},
 	"read": {
 		"message": "已阅读"
@@ -1102,5 +1118,29 @@
 	},
 	"version": {
 		"message": "版本"
+	},
+	"paperQueue": {
+		"message": "论文队列"
+	},
+	"projectSource": {
+		"message": "项目源码"
+	},
+	"reportIssue": {
+		"message": "反馈问题"
+	},
+	"developmentBuild": {
+		"message": "本地开发版本"
+	},
+	"projectAttribution": {
+		"message": "基于 Obsidian Web Clipper 的独立项目，与 Obsidian 官方无关联，未获其背书。"
+	},
+	"upstreamSource": {
+		"message": "上游源码"
+	},
+	"thirdPartyNotices": {
+		"message": "许可与署名"
+	},
+	"settingsTitle": {
+		"message": "Paper Clipper 设置"
 	}
 }

@@ -45,7 +45,7 @@
 		"message": "Kein API-Schlüssel"
 	},
 	"apiKeysWarning": {
-		"message": "Durch die Nutzung eines externen Anbieters stimmst du dessen Nutzungsbedingungen und Datenschutzrichtlinien zu. Interpreter-Anfragen werden direkt an den von Dir gewählten Anbieter gesendet. Obsidian sammelt und speichert keine Daten über Deine Anfragen."
+		"message": "Interpreter requests go directly to the provider you configure, subject to that provider's terms and privacy policy. Paper Clipper has no hosted inference service."
 	},
 	"appendToDaily": {
 		"message": "Zum Ende der Tagesnotiz hinzufügen"
@@ -118,7 +118,7 @@
 		"message": "Schließen"
 	},
 	"commandOpenClipper": {
-		"message": "Obsidian Web-Clipper öffnen"
+		"message": "Paper Clipper Web-Clipper öffnen"
 	},
 	"commandQuickClip": {
 		"message": "Schnelles Ausschneiden"
@@ -283,10 +283,10 @@
 		}
 	},
 	"extensionDescription": {
-		"message": "Speichet Deine Webinhalte in einem privaten und dauerhaften Format, auf das Du offline zugreifen kannst. Die offizielle Browser-Erweiterung für Obsidian."
+		"message": "Archive academic papers from authorized browser HTML as local Markdown. Independent project, not affiliated with Obsidian."
 	},
 	"extensionName": {
-		"message": "Obsidian Web-Clipper"
+		"message": "Paper Clipper"
 	},
 	"failedToCopyText": {
 		"message": "Text konnte nicht kopiert werden"
@@ -337,7 +337,7 @@
 		"message": "Feedback"
 	},
 	"feedbackDescription": {
-		"message": "Wie können wir den Web Clipper verbessern? Bitte besuchen Sie unsere Hilfeseite, wo Sie Fehler melden, Funktionen vorschlagen und Hilfe bei häufigen Problemen erhalten können."
+		"message": "Wie können wir den Paper Clipper verbessern? Bitte besuchen Sie unsere Hilfeseite, wo Sie Fehler melden, Funktionen vorschlagen und Hilfe bei häufigen Problemen erhalten können."
 	},
 	"feedbackTitle": {
 		"message": "Vielen Dank für Ihr Feedback"
@@ -570,7 +570,7 @@
 		"message": "Öffnen"
 	},
 	"openBehaviorDescription": {
-		"message": "Wählen Sie, wie der Web Clipper standardmäßig geöffnet wird."
+		"message": "Wählen Sie, wie der Paper Clipper standardmäßig geöffnet wird."
 	},
 	"openBehaviorTitle": {
 		"message": "Öffnungsverhalten"
@@ -714,7 +714,7 @@
 		"message": "Anbieter"
 	},
 	"rateExtensionDescription": {
-		"message": "Gefällt Ihnen der Web Clipper? Helfen Sie uns, indem Sie ihm eine Bewertung geben."
+		"message": "Gefällt Ihnen der Paper Clipper? Helfen Sie uns, indem Sie ihm eine Bewertung geben."
 	},
 	"read": {
 		"message": "Gelesen"

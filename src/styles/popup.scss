@@ -389,3 +389,13 @@
 		}
 	}
 }
+.paper-brand {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 28px;
+	margin-bottom: 6px;
+	font-size: var(--font-ui-small);
+	font-weight: 600;
+	img { flex-shrink: 0; }
+}

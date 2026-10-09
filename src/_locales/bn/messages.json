@@ -45,7 +45,7 @@
 		"message": "API কী নেই"
 	},
 	"apiKeysWarning": {
-		"message": "বাহ্যিক প্রোভাইডার ব্যবহার করে আপনি তাদের শর্তাবলী এবং গোপনীয়তা নীতির সাথে সম্মত হচ্ছেন। ইন্টারপ্রিটার রিকোয়েস্টগুলি আপনার নির্বাচিত প্রোভাইডারের কাছে সরাসরি পাঠানো হয়। Obsidian আপনার রিকোয়েস্ট সম্পর্কিত কোনও তথ্য সংগ্রহ বা সংরক্ষণ করে না।"
+		"message": "Interpreter requests go directly to the provider you configure, subject to that provider's terms and privacy policy. Paper Clipper has no hosted inference service."
 	},
 	"appendToDaily": {
 		"message": "ডেইলি নোটের শেষে যোগ করুন"
@@ -118,7 +118,7 @@
 		"message": "বন্ধ করুন"
 	},
 	"commandOpenClipper": {
-		"message": "Obsidian Clipper খুলুন"
+		"message": "Paper Clipper খুলুন"
 	},
 	"commandQuickClip": {
 		"message": "দ্রুত ক্লিপ করুন"
@@ -283,10 +283,10 @@
 		}
 	},
 	"extensionDescription": {
-		"message": "ওয়েব থেকে বিষয়বস্তু একটি ব্যক্তিগত এবং স্থায়ী ফর্ম্যাটে সংরক্ষণ করুন যা আপনি অফলাইনে অ্যাক্সেস করতে পারেন। Obsidian এর জন্য অফিসিয়াল ব্রাউজার এক্সটেনশান।"
+		"message": "Archive academic papers from authorized browser HTML as local Markdown. Independent project, not affiliated with Obsidian."
 	},
 	"extensionName": {
-		"message": "Obsidian Web Clipper"
+		"message": "Paper Clipper"
 	},
 	"failedToCopyText": {
 		"message": "টেক্সট কপি করতে ব্যর্থ হয়েছে"

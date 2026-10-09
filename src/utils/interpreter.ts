@@ -161,8 +161,8 @@ export async function sendToLLM(promptContext: string, content: string, promptVa
 			};
 			headers = {
 				...headers,
-				'HTTP-Referer': 'https://obsidian.md/',
-				'X-Title': 'Obsidian Web Clipper',
+				'HTTP-Referer': 'https://github.com/lljh2777-cyber/paper-clipper',
+				'X-Title': 'Paper Clipper',
 				'Authorization': `Bearer ${provider.apiKey}`
 			};
 		} else if (provider.name.toLowerCase().includes('ollama')) {
@@ -192,8 +192,8 @@ export async function sendToLLM(promptContext: string, content: string, promptVa
 			};
 			headers = {
 				...headers,
-				'HTTP-Referer': 'https://obsidian.md/',
-				'X-Title': 'Obsidian Web Clipper',
+				'HTTP-Referer': 'https://github.com/lljh2777-cyber/paper-clipper',
+				'X-Title': 'Paper Clipper',
 				'Authorization': `Bearer ${provider.apiKey}`
 			};
 		}

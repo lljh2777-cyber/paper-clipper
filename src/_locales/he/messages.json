@@ -45,7 +45,7 @@
 		"message": "חסר מפתח API"
 	},
 	"apiKeysWarning": {
-		"message": "השימוש בספק חיצוני מהווה הסכמה לתנאי השימוש ומדיניות הפרטיות שלהם. בקשות המתרגם נשלחות ישירות לספק שבחרת. Obsidian אינו אוסף או מאחסן מידע על הבקשות שלך."
+		"message": "Interpreter requests go directly to the provider you configure, subject to that provider's terms and privacy policy. Paper Clipper has no hosted inference service."
 	},
 	"appendToDaily": {
 		"message": "הוסף לרשימה היומית, בסוף"
@@ -118,7 +118,7 @@
 		"message": "סגור"
 	},
 	"commandOpenClipper": {
-		"message": "פתח את Obsidian Clipper"
+		"message": "פתח את Paper Clipper"
 	},
 	"commandQuickClip": {
 		"message": "גזירה מהירה"
@@ -272,7 +272,7 @@
 		"message": "ייצא מאפיינים"
 	},
 	"exportPropertiesDescription": {
-		"message": "שמור את מאפייני Web Clipper לקובץ $strong_start$types.json$strong_end$ שניתן לייבא לכספת Obsidian שלך או ל-Web Clipper במכשירים אחרים",
+		"message": "שמור את מאפייני Paper Clipper לקובץ $strong_start$types.json$strong_end$ שניתן לייבא לכספת Obsidian שלך או ל-Paper Clipper במכשירים אחרים",
 		"placeholders": {
 			"strong_end": {
 				"content": "</strong>"
@@ -283,10 +283,10 @@
 		}
 	},
 	"extensionDescription": {
-		"message": "שמור תוכן מהאינטרנט בפורמט פרטי ובר-קיימא שניתן לגשת אליו במצב לא מקוון. הרחבת הדפדפן הרשמית של Obsidian."
+		"message": "Archive academic papers from authorized browser HTML as local Markdown. Independent project, not affiliated with Obsidian."
 	},
 	"extensionName": {
-		"message": "Obsidian Web Clipper"
+		"message": "Paper Clipper"
 	},
 	"failedToCopyText": {
 		"message": "נכשל בהעתקת טקסט"
@@ -337,7 +337,7 @@
 		"message": "משוב"
 	},
 	"feedbackDescription": {
-		"message": "כיצד נוכל לשפר את Web Clipper? בקר/י בדף העזרה שלנו כדי לדווח על באגים, להציע תכונות ולקבל עזרה בבעיות נפוצות."
+		"message": "כיצד נוכל לשפר את Paper Clipper? בקר/י בדף העזרה שלנו כדי לדווח על באגים, להציע תכונות ולקבל עזרה בבעיות נפוצות."
 	},
 	"feedbackTitle": {
 		"message": "תודה על המשוב"
@@ -358,7 +358,7 @@
 		"message": "עזרה"
 	},
 	"helpDescription": {
-		"message": "למד/י כיצד להשתמש ב-Web Clipper וקבל/י עזרה בפתרון בעיות"
+		"message": "למד/י כיצד להשתמש ב-Paper Clipper וקבל/י עזרה בפתרון בעיות"
 	},
 	"highlightInline": {
 		"message": "סמן תוכן בדף"
@@ -706,7 +706,7 @@
 		"message": "ספקים"
 	},
 	"rateExtensionDescription": {
-		"message": "אוהב את Web Clipper? עזור לנו על ידי דירוג."
+		"message": "אוהב את Paper Clipper? עזור לנו על ידי דירוג."
 	},
 	"read": {
 		"message": "נקראו"

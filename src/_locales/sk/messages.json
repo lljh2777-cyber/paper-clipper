@@ -45,7 +45,7 @@
 		"message": "Chýba API kľúč"
 	},
 	"apiKeysWarning": {
-		"message": "Používaním externého poskytovateľa súhlasíte s jeho podmienkami a zásadami ochrany súkromia. Požiadavky tlmočníka sa odosielajú priamo poskytovateľovi, ktorého si vyberiete. Obsidian nezhromažďuje ani neukladá žiadne údaje o vašich požiadavkách."
+		"message": "Interpreter requests go directly to the provider you configure, subject to that provider's terms and privacy policy. Paper Clipper has no hosted inference service."
 	},
 	"appendToDaily": {
 		"message": "Pridať do dennej poznámky, na koniec"
@@ -118,7 +118,7 @@
 		"message": "Zavrieť"
 	},
 	"commandOpenClipper": {
-		"message": "Otvoriť Obsidian Clipper"
+		"message": "Otvoriť Paper Clipper"
 	},
 	"commandQuickClip": {
 		"message": "Rýchly výstrižok"
@@ -272,7 +272,7 @@
 		"message": "Exportovať vlastnosti"
 	},
 	"exportPropertiesDescription": {
-		"message": "Uložiť vlastnosti Web Clippera do súboru $strong_start$types.json$strong_end$, ktorý možno importovať do vášho Obsidian vaultu alebo do Web Clippera na iných zariadeniach.",
+		"message": "Uložiť vlastnosti Paper Clippera do súboru $strong_start$types.json$strong_end$, ktorý možno importovať do vášho Obsidian vaultu alebo do Paper Clippera na iných zariadeniach.",
 		"placeholders": {
 			"strong_end": {
 				"content": "</strong>"
@@ -283,10 +283,10 @@
 		}
 	},
 	"extensionDescription": {
-		"message": "Ukladajte obsah z webu v súkromnom a trvácnom formáte, ku ktorému máte prístup aj offline. Oficiálne rozšírenie prehliadača pre Obsidian."
+		"message": "Archive academic papers from authorized browser HTML as local Markdown. Independent project, not affiliated with Obsidian."
 	},
 	"extensionName": {
-		"message": "Obsidian Web Clipper"
+		"message": "Paper Clipper"
 	},
 	"failedToCopyText": {
 		"message": "Nepodarilo sa skopírovať text"
@@ -337,7 +337,7 @@
 		"message": "Spätná väzba"
 	},
 	"feedbackDescription": {
-		"message": "Ako môžeme zlepšiť Web Clipper? Navštívte našu stránku pomoci, kde môžete nahlásiť chyby, navrhnúť funkcie a získať pomoc s bežnými problémami."
+		"message": "Ako môžeme zlepšiť Paper Clipper? Navštívte našu stránku pomoci, kde môžete nahlásiť chyby, navrhnúť funkcie a získať pomoc s bežnými problémami."
 	},
 	"feedbackTitle": {
 		"message": "Ďakujeme za vašu spätnú väzbu"
@@ -358,7 +358,7 @@
 		"message": "Pomoc"
 	},
 	"helpDescription": {
-		"message": "Zistite, ako používať Web Clipper, a získajte pomoc pri riešení problémov."
+		"message": "Zistite, ako používať Paper Clipper, a získajte pomoc pri riešení problémov."
 	},
 	"highlightInline": {
 		"message": "Zvýrazniť obsah stránky"
@@ -570,7 +570,7 @@
 		"message": "Otvoriť"
 	},
 	"openBehaviorDescription": {
-		"message": "Vyberte, ako sa má Web Clipper predvolene otvárať."
+		"message": "Vyberte, ako sa má Paper Clipper predvolene otvárať."
 	},
 	"openBehaviorTitle": {
 		"message": "Správanie pri otvorení"
@@ -714,7 +714,7 @@
 		"message": "Poskytovatelia"
 	},
 	"rateExtensionDescription": {
-		"message": "Páči sa vám Web Clipper? Pomôžte nám tým, že mu dáte hodnotenie."
+		"message": "Páči sa vám Paper Clipper? Pomôžte nám tým, že mu dáte hodnotenie."
 	},
 	"read": {
 		"message": "Prečítané"

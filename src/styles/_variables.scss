@@ -6,9 +6,9 @@
 	--safe-area-inset-left: env(safe-area-inset-left);
 	--safe-area-inset-right: env(safe-area-inset-right);
 
-	--accent-h: 258;
-	--accent-s: 88%;
-	--accent-l: 66%;
+	--accent-h: 175;
+	--accent-s: 65%;
+	--accent-l: 33%;
 
 	--background-primary: var(--color-base-00);
 	--background-primary-alt: var(--color-base-10);
@@ -288,6 +288,9 @@
 
 @media (prefers-color-scheme: dark) {
 	:root {
+		--accent-s: 48%;
+		--accent-l: 58%;
+		--text-on-accent: #102c29;
 		--background-modifier-cover: rgba(10, 10, 10, .4);
 		--background-modifier-hover: rgba(var(--mono-rgb-100), .15);
 

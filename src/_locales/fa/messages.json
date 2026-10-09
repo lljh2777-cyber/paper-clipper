@@ -45,7 +45,7 @@
 		"message": "کلید API وجود ندارد"
 	},
 	"apiKeysWarning": {
-		"message": "با استفاده از یک ارائه‌دهنده خارجی، شما با شرایط و سیاست حریم خصوصی آنها موافقت می‌کنید. درخواست‌های مفسر مستقیماً به ارائه‌دهنده انتخابی شما ارسال می‌شود. Obsidian هیچ داده‌ای در مورد درخواست‌های شما جمع‌آوری یا ذخیره نمی‌کند."
+		"message": "Interpreter requests go directly to the provider you configure, subject to that provider's terms and privacy policy. Paper Clipper has no hosted inference service."
 	},
 	"appendToDaily": {
 		"message": "اضافه کردن به یادداشت روزانه، در آخر آن "
@@ -272,7 +272,7 @@
 		"message": "استخراج خواص"
 	},
 	"exportPropertiesDescription": {
-		"message": "ویژگی‌های Web Clipper را در یک فایل $strong_start$types.json$strong_end$ ذخیره کنید که می‌تواند به خزانه ابسیدین شما یا در دستگاه‌های دیگر به Web Clipper وارد شود.",
+		"message": "ویژگی‌های Paper Clipper را در یک فایل $strong_start$types.json$strong_end$ ذخیره کنید که می‌تواند به خزانه ابسیدین شما یا در دستگاه‌های دیگر به Paper Clipper وارد شود.",
 		"placeholders": {
 			"strong_end": {
 				"content": "</strong>"
@@ -283,10 +283,10 @@
 		}
 	},
 	"extensionDescription": {
-		"message": "محتوای وب را در قالبی خصوصی و بادوام ذخیره کنید که بتوانید به صورت آفلاین به آن دسترسی داشته باشید. پسوند رسمی مرورگر برای ابسیدین."
+		"message": "Archive academic papers from authorized browser HTML as local Markdown. Independent project, not affiliated with Obsidian."
 	},
 	"extensionName": {
-		"message": "Obsidian Web Clipper"
+		"message": "Paper Clipper"
 	},
 	"failedToCopyText": {
 		"message": "متن کپی نشد"
@@ -358,7 +358,7 @@
 		"message": "راهنما"
 	},
 	"helpDescription": {
-		"message": "نحوه استفاده از Web Clipper را بیاموزید و در رفع مشکلات کمک بگیرید."
+		"message": "نحوه استفاده از Paper Clipper را بیاموزید و در رفع مشکلات کمک بگیرید."
 	},
 	"highlightInline": {
 		"message": "محتوای صفحه را برجسته کنید"

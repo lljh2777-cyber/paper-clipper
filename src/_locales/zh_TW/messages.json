@@ -45,7 +45,7 @@
 		"message": "無 API 金鑰"
 	},
 	"apiKeysWarning": {
-		"message": "使用外部提供者即表示您同意其條款和隐私政策。解譯器請求直接發送給您選擇的提供者。Obsidian 不會收集或儲存任何關於您請求的資料。"
+		"message": "解譯器請求會直接傳送給你設定的服務提供者，受其條款與隱私政策約束。Paper Clipper 不提供託管推論服務。"
 	},
 	"appendToDaily": {
 		"message": "新增到每日筆記底部"
@@ -118,7 +118,7 @@
 		"message": "關閉"
 	},
 	"commandOpenClipper": {
-		"message": "開啟 Obsidian Clipper"
+		"message": "開啟 Paper Clipper"
 	},
 	"commandQuickClip": {
 		"message": "快速擷取"
@@ -256,14 +256,30 @@
 	"export": {
 		"message": "匯出"
 	},
-	"exportPageHtml": { "message": "匯出頁面 HTML" },
-	"htmlExportInProgress": { "message": "正在匯出 HTML..." },
-	"htmlExportDownloadsStarted": { "message": "已請求下載 HTML 與 JSON。" },
-	"htmlExportFailed": { "message": "HTML 匯出失敗，請重新整理頁面後重試。" },
-	"htmlExportUnsupportedPage": { "message": "請開啟原始 HTTP 或 HTTPS 網頁後匯出 HTML。" },
-	"htmlExportExitReader": { "message": "請退出閱讀模式後再匯出 HTML。" },
-	"htmlExportTooLarge": { "message": "頁面 HTML 超過 30 MiB 限制。" },
-	"htmlExportPageChanged": { "message": "匯出時頁面已發生跳轉，請重新整理剪藏器後重試。" },
+	"exportPageHtml": {
+		"message": "匯出頁面 HTML"
+	},
+	"htmlExportInProgress": {
+		"message": "正在匯出 HTML..."
+	},
+	"htmlExportDownloadsStarted": {
+		"message": "已請求下載 HTML 與 JSON。"
+	},
+	"htmlExportFailed": {
+		"message": "HTML 匯出失敗，請重新整理頁面後重試。"
+	},
+	"htmlExportUnsupportedPage": {
+		"message": "請開啟原始 HTTP 或 HTTPS 網頁後匯出 HTML。"
+	},
+	"htmlExportExitReader": {
+		"message": "請退出閱讀模式後再匯出 HTML。"
+	},
+	"htmlExportTooLarge": {
+		"message": "頁面 HTML 超過 30 MiB 限制。"
+	},
+	"htmlExportPageChanged": {
+		"message": "匯出時頁面已發生跳轉，請重新整理剪藏器後重試。"
+	},
 	"exportAllSettings": {
 		"message": "匯出所有設定"
 	},
@@ -280,7 +296,7 @@
 		"message": "匯出屬性"
 	},
 	"exportPropertiesDescription": {
-		"message": "將 Web Clipper 屬性儲存到 $strong_start$types.json$strong_end$ 檔案，可以匯入到您的 Obsidian 儲存庫，或匯入到其他裝置上的 Web Clipper。",
+		"message": "將 Paper Clipper 屬性儲存到 $strong_start$types.json$strong_end$ 檔案，可以匯入到您的 Obsidian 儲存庫，或匯入到其他裝置上的 Paper Clipper。",
 		"placeholders": {
 			"strong_end": {
 				"content": "</strong>"
@@ -291,10 +307,10 @@
 		}
 	},
 	"extensionDescription": {
-		"message": "將網路內容以私密且穩定的格式儲存下來，供您離線存取使用。這是 Obsidian 官方推出的瀏覽器擴充套件。"
+		"message": "將瀏覽器中有權存取的論文 HTML 封存為本機 Markdown。獨立專案，非 Obsidian 官方擴充套件。"
 	},
 	"extensionName": {
-		"message": "Obsidian 網頁擷取器"
+		"message": "Paper Clipper"
 	},
 	"failedToCopyText": {
 		"message": "複製文字失敗"
@@ -345,7 +361,7 @@
 		"message": "反饋"
 	},
 	"feedbackDescription": {
-		"message": "我們如何改善Web Clipper？請訪問我們的幫助頁面，您可以在那裡報告錯誤，建議功能，並獲得常見問題的幫助。"
+		"message": "我們如何改善Paper Clipper？請訪問我們的幫助頁面，您可以在那裡報告錯誤，建議功能，並獲得常見問題的幫助。"
 	},
 	"feedbackTitle": {
 		"message": "感謝您的反饋"
@@ -578,7 +594,7 @@
 		"message": "開啟"
 	},
 	"openBehaviorDescription": {
-		"message": "選擇 Web Clipper 預設的開啟方式。"
+		"message": "選擇 Paper Clipper 預設的開啟方式。"
 	},
 	"openBehaviorTitle": {
 		"message": "開啟行為"
@@ -722,7 +738,7 @@
 		"message": "提供者"
 	},
 	"rateExtensionDescription": {
-		"message": "您喜歡Web Clipper嗎？請幫助我們給它評分。"
+		"message": "您喜歡Paper Clipper嗎？請幫助我們給它評分。"
 	},
 	"read": {
 		"message": "已閱讀"
@@ -1102,5 +1118,29 @@
 	},
 	"version": {
 		"message": "版本"
+	},
+	"paperQueue": {
+		"message": "論文佇列"
+	},
+	"projectSource": {
+		"message": "專案原始碼"
+	},
+	"reportIssue": {
+		"message": "回報問題"
+	},
+	"developmentBuild": {
+		"message": "本機開發版本"
+	},
+	"projectAttribution": {
+		"message": "基於 Obsidian Web Clipper 的獨立專案，與 Obsidian 官方無關聯，未獲其背書。"
+	},
+	"upstreamSource": {
+		"message": "上游原始碼"
+	},
+	"thirdPartyNotices": {
+		"message": "授權與署名"
+	},
+	"settingsTitle": {
+		"message": "Paper Clipper 設定"
 	}
 }

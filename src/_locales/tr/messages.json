@@ -45,7 +45,7 @@
 		"message": "API anahtarı yok"
 	},
 	"apiKeysWarning": {
-		"message": "Harici sağlayıcı kullandığınızda, onların şartlarını ve gizlilik politikasını kabul edersiniz..."
+		"message": "Interpreter requests go directly to the provider you configure, subject to that provider's terms and privacy policy. Paper Clipper has no hosted inference service."
 	},
 	"appendToDaily": {
 		"message": "Günlük nota, sona ekle"
@@ -118,7 +118,7 @@
 		"message": "Kapat"
 	},
 	"commandOpenClipper": {
-		"message": "Obsidian Kırpıcı'yı aç"
+		"message": "Paper Clipper Kırpıcı'yı aç"
 	},
 	"commandQuickClip": {
 		"message": "Hızlı kırp"
@@ -283,10 +283,10 @@
 		}
 	},
 	"extensionDescription": {
-		"message": "Web içeriğini çevrimdışı erişebileceğiniz özel ve kalıcı bir formatta kaydedin. Obsidian'ın resmi tarayıcı uzantısı."
+		"message": "Archive academic papers from authorized browser HTML as local Markdown. Independent project, not affiliated with Obsidian."
 	},
 	"extensionName": {
-		"message": "Obsidian Web Kırpıcı"
+		"message": "Paper Clipper"
 	},
 	"failedToCopyText": {
 		"message": "Metin kopyalanamadı"
@@ -337,7 +337,7 @@
 		"message": "Geri bildirim"
 	},
 	"feedbackDescription": {
-		"message": "Web Clipper'ı nasıl geliştirebiliriz? Lütfen yardım sayfamızı ziyaret edin, burada hataları bildirebilir, özellikler önerabilir ve yaygın sorunlarla ilgili yardım alabilirsiniz."
+		"message": "Paper Clipper'ı nasıl geliştirebiliriz? Lütfen yardım sayfamızı ziyaret edin, burada hataları bildirebilir, özellikler önerabilir ve yaygın sorunlarla ilgili yardım alabilirsiniz."
 	},
 	"feedbackTitle": {
 		"message": "Geri bildiriminiz için teşekkür ederiz"
@@ -570,7 +570,7 @@
 		"message": "Aç"
 	},
 	"openBehaviorDescription": {
-		"message": "Web Clipper'ın varsayılan olarak nasıl açılacağını seçin."
+		"message": "Paper Clipper'ın varsayılan olarak nasıl açılacağını seçin."
 	},
 	"openBehaviorTitle": {
 		"message": "Açma davranışı"
@@ -714,7 +714,7 @@
 		"message": "Sağlayıcılar"
 	},
 	"rateExtensionDescription": {
-		"message": "Web Clipper'ı beğeniyor musunuz? Bize bir puan vererek yardımcı olun."
+		"message": "Paper Clipper'ı beğeniyor musunuz? Bize bir puan vererek yardımcı olun."
 	},
 	"read": {
 		"message": "Okundu"

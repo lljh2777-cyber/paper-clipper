@@ -45,7 +45,7 @@
 		"message": "No API key"
 	},
 	"apiKeysWarning": {
-		"message": "By using an external provider you agree to their terms and privacy policy. Interpreter requests are sent directly to the provider you choose. Obsidian does not gather or store any data about your requests."
+		"message": "Interpreter requests go directly to the provider you configure, subject to that provider's terms and privacy policy. Paper Clipper has no hosted inference service."
 	},
 	"appendToDaily": {
 		"message": "Add to daily note, at the bottom"
@@ -118,7 +118,7 @@
 		"message": "Close"
 	},
 	"commandOpenClipper": {
-		"message": "Open Obsidian Clipper"
+		"message": "Open Paper Clipper"
 	},
 	"commandQuickClip": {
 		"message": "Quick clip"
@@ -256,14 +256,30 @@
 	"export": {
 		"message": "Export"
 	},
-	"exportPageHtml": { "message": "Export page HTML" },
-	"htmlExportInProgress": { "message": "Exporting HTML..." },
-	"htmlExportDownloadsStarted": { "message": "HTML and JSON downloads requested." },
-	"htmlExportFailed": { "message": "HTML export failed. Reload the page and try again." },
-	"htmlExportUnsupportedPage": { "message": "Open the original HTTP or HTTPS page to export HTML." },
-	"htmlExportExitReader": { "message": "Exit reader mode before exporting HTML." },
-	"htmlExportTooLarge": { "message": "This page exceeds the 30 MiB HTML limit." },
-	"htmlExportPageChanged": { "message": "The page changed during export. Refresh the clipper and try again." },
+	"exportPageHtml": {
+		"message": "Export page HTML"
+	},
+	"htmlExportInProgress": {
+		"message": "Exporting HTML..."
+	},
+	"htmlExportDownloadsStarted": {
+		"message": "HTML and JSON downloads requested."
+	},
+	"htmlExportFailed": {
+		"message": "HTML export failed. Reload the page and try again."
+	},
+	"htmlExportUnsupportedPage": {
+		"message": "Open the original HTTP or HTTPS page to export HTML."
+	},
+	"htmlExportExitReader": {
+		"message": "Exit reader mode before exporting HTML."
+	},
+	"htmlExportTooLarge": {
+		"message": "This page exceeds the 30 MiB HTML limit."
+	},
+	"htmlExportPageChanged": {
+		"message": "The page changed during export. Refresh the clipper and try again."
+	},
 	"exportAllSettings": {
 		"message": "Export all settings"
 	},
@@ -280,7 +296,7 @@
 		"message": "Export properties"
 	},
 	"exportPropertiesDescription": {
-		"message": "Save Web Clipper properties to a $strong_start$types.json$strong_end$ file that can be imported into your Obsidian vault, or into Web Clipper on other devices.",
+		"message": "Save Paper Clipper properties to a $strong_start$types.json$strong_end$ file that can be imported into your Obsidian vault, or into Paper Clipper on other devices.",
 		"placeholders": {
 			"strong_end": {
 				"content": "</strong>"
@@ -291,10 +307,10 @@
 		}
 	},
 	"extensionDescription": {
-		"message": "Save content from the web in a private and durable format that you can access offline. The official browser extension for Obsidian."
+		"message": "Archive academic papers from authorized browser HTML as local Markdown. Independent project, not affiliated with Obsidian."
 	},
 	"extensionName": {
-		"message": "Obsidian Web Clipper"
+		"message": "Paper Clipper"
 	},
 	"failedToCopyText": {
 		"message": "Failed to copy text"
@@ -345,7 +361,7 @@
 		"message": "Feedback"
 	},
 	"feedbackDescription": {
-		"message": "How can we improve Web Clipper? Please visit our help page, where you can report bugs, suggest features, and get help with common issues."
+		"message": "How can we improve Paper Clipper? Please visit our help page, where you can report bugs, suggest features, and get help with common issues."
 	},
 	"feedbackTitle": {
 		"message": "Thanks for your feedback"
@@ -366,7 +382,7 @@
 		"message": "Help"
 	},
 	"helpDescription": {
-		"message": "Learn how to use Web Clipper and get help troubleshooting."
+		"message": "Learn how to use Paper Clipper and get help troubleshooting."
 	},
 	"highlightInline": {
 		"message": "Highlight the page content"
@@ -578,7 +594,7 @@
 		"message": "Open"
 	},
 	"openBehaviorDescription": {
-		"message": "Choose how Web Clipper opens by default."
+		"message": "Choose how Paper Clipper opens by default."
 	},
 	"openBehaviorTitle": {
 		"message": "Open behavior"
@@ -722,7 +738,7 @@
 		"message": "Providers"
 	},
 	"rateExtensionDescription": {
-		"message": "Are you enjoying Web Clipper? Help us by giving it a rating."
+		"message": "Are you enjoying Paper Clipper? Help us by giving it a rating."
 	},
 	"read": {
 		"message": "Read"
@@ -1102,5 +1118,29 @@
 	},
 	"version": {
 		"message": "Version"
+	},
+	"paperQueue": {
+		"message": "Paper queue"
+	},
+	"projectSource": {
+		"message": "Project source"
+	},
+	"reportIssue": {
+		"message": "Report an issue"
+	},
+	"developmentBuild": {
+		"message": "Local development build"
+	},
+	"projectAttribution": {
+		"message": "Independent project based on Obsidian Web Clipper. Not affiliated with or endorsed by Obsidian."
+	},
+	"upstreamSource": {
+		"message": "Upstream source"
+	},
+	"thirdPartyNotices": {
+		"message": "Licenses and attribution"
+	},
+	"settingsTitle": {
+		"message": "Paper Clipper settings"
 	}
 }

@@ -1,7 +1,26 @@
 @import 'sidebar';
 
 .logo {
-	fill: var(--color-accent-1);
+	width: 24px;
+	height: 24px;
+	flex-shrink: 0;
+}
+.paper-project {
+	margin: 0 0 24px;
+	padding-inline: 1rem;
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	p { margin: 0 0 16px; line-height: 1.6; }
+}
+.paper-project-links {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 12px 20px;
+	a { display: inline-flex; align-items: center; gap: 6px; color: var(--text-accent); text-decoration: none; }
+	a:hover { text-decoration: underline; }
+	.btn { width: auto; color: var(--text-on-accent); }
+	svg { width: 16px; height: 16px; }
 }
 .warning-container {
 	background-color: var(--background-modifier-warning);

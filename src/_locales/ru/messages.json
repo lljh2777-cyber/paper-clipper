@@ -45,7 +45,7 @@
 		"message": "Отсутствует API ключ"
 	},
 	"apiKeysWarning": {
-		"message": "Используя внешнего провайдера, вы соглашаетесь с их условиями использования и политикой конфиденциальности. Запросы интерпретатора отправляются напрямую выбранному вами провайдеру. Obsidian не собирает и не хранит никаких данных о ваших запросах."
+		"message": "Interpreter requests go directly to the provider you configure, subject to that provider's terms and privacy policy. Paper Clipper has no hosted inference service."
 	},
 	"appendToDaily": {
 		"message": "Добавлять в конец ежедневной заметки"
@@ -118,7 +118,7 @@
 		"message": "Закрыть"
 	},
 	"commandOpenClipper": {
-		"message": "Открыть Obsidian Clipper"
+		"message": "Открыть Paper Clipper"
 	},
 	"commandQuickClip": {
 		"message": "Быстрое сохранение"
@@ -272,7 +272,7 @@
 		"message": "Экспорт свойств"
 	},
 	"exportPropertiesDescription": {
-		"message": "Сохраните свойства Web Clipper в файле $strong_start$types.json$strong_end$, который можно импортировать в хранилище Obsidian или в Web Clipper на других устройствах.",
+		"message": "Сохраните свойства Paper Clipper в файле $strong_start$types.json$strong_end$, который можно импортировать в хранилище Obsidian или в Paper Clipper на других устройствах.",
 		"placeholders": {
 			"strong_end": {
 				"content": "</strong>"
@@ -283,10 +283,10 @@
 		}
 	},
 	"extensionDescription": {
-		"message": "Сохраняйте содержимое веб-страниц в конфиденциальном и долговременном формате, к которому можно получить доступ в автономном режиме. Официальное расширение для браузера Obsidian."
+		"message": "Archive academic papers from authorized browser HTML as local Markdown. Independent project, not affiliated with Obsidian."
 	},
 	"extensionName": {
-		"message": "Obsidian Web Clipper"
+		"message": "Paper Clipper"
 	},
 	"failedToCopyText": {
 		"message": "Не удалось скопировать текст"
@@ -337,7 +337,7 @@
 		"message": "Обратная связь"
 	},
 	"feedbackDescription": {
-		"message": "Как мы можем улучшить Web Clipper? Пожалуйста, посетите нашу страницу помощи, где вы можете сообщить о багах, предложить функции и получить помощь по распространенным проблемам."
+		"message": "Как мы можем улучшить Paper Clipper? Пожалуйста, посетите нашу страницу помощи, где вы можете сообщить о багах, предложить функции и получить помощь по распространенным проблемам."
 	},
 	"feedbackTitle": {
 		"message": "Спасибо за ваш отзыв"
@@ -358,7 +358,7 @@
 		"message": "Помощь"
 	},
 	"helpDescription": {
-		"message": "Узнайте, как использовать Web Clipper и получите помощь в устранении неполадок."
+		"message": "Узнайте, как использовать Paper Clipper и получите помощь в устранении неполадок."
 	},
 	"highlightInline": {
 		"message": "Выделить содержимое страницы"
@@ -570,7 +570,7 @@
 		"message": "Открыть"
 	},
 	"openBehaviorDescription": {
-		"message": "Выберите, как по умолчанию открывается Web Clipper."
+		"message": "Выберите, как по умолчанию открывается Paper Clipper."
 	},
 	"openBehaviorTitle": {
 		"message": "Поведение при открытии"
@@ -714,7 +714,7 @@
 		"message": "Провайдеры"
 	},
 	"rateExtensionDescription": {
-		"message": "Вам нравится Web Clipper? Помогите нам, оценив его."
+		"message": "Вам нравится Paper Clipper? Помогите нам, оценив его."
 	},
 	"read": {
 		"message": "Прочитано"

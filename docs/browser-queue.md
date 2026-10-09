@@ -14,8 +14,13 @@ npx webpack --env BROWSER=chrome --env SKIP_CLEANUP=true --mode development
 ```
 
 Load/reload the resulting `dev` directory in Chrome's extension manager. This is
-a local development build, not an official Obsidian release or a distributable
-rebranded package. Existing loaded builds pointing at `dist` will not acquire
+a local Paper Clipper development build, not an official Obsidian release.
+It uses its own name and document icon, with upstream attribution in settings.
+Reload the existing `dev` installation in place after updating; do not remove and
+reinstall it just to refresh branding, as removal clears extension-local data.
+The Chrome build retains its permissions, storage keys and loading path, so an
+in-place reload retains pairing and settings. It may pause an interrupted task;
+finish or review active tasks before reloading. Existing builds pointing at `dist` will not acquire
 the new queue until you load the updated directory. Keep only the intended custom
 build enabled to avoid confusing it with the official extension.
 

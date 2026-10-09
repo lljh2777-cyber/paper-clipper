@@ -45,7 +45,7 @@
 		"message": "لا يوجد مفتاح API"
 	},
 	"apiKeysWarning": {
-		"message": "باستخدام مزود خارجي، فإنك توافق على شروطهم وسياسة الخصوصية الخاصة بهم. يتم إرسال طلبات المفسر مباشرة إلى المزود الذي تختاره. لا يقوم Obsidian بجمع أو تخزين أي بيانات حول طلباتك."
+		"message": "Interpreter requests go directly to the provider you configure, subject to that provider's terms and privacy policy. Paper Clipper has no hosted inference service."
 	},
 	"appendToDaily": {
 		"message": "إضافة إلى الملاحظة اليومية، في النهاية"
@@ -283,10 +283,10 @@
 		}
 	},
 	"extensionDescription": {
-		"message": "احفظ المحتوى من الويب بتنسيق خاص ودائم يمكنك الوصول إليه دون اتصال. الإضافة الرسمية للمتصفح لأوبسيديان."
+		"message": "Archive academic papers from authorized browser HTML as local Markdown. Independent project, not affiliated with Obsidian."
 	},
 	"extensionName": {
-		"message": "قاصّ أوبسيديان للويب"
+		"message": "Paper Clipper"
 	},
 	"failedToCopyText": {
 		"message": "فشل نسخ النص"
@@ -337,7 +337,7 @@
 		"message": "الملاحظات"
 	},
 	"feedbackDescription": {
-		"message": "كيف يمكننا تحسين Web Clipper؟ يرجى زيارة صفحة المساعدة الخاصة بنا، حيث يمكنك الإبلاغ عن الأخطاء، اقتراح الميزات، والحصول على المساعدة في المشكلات الشائعة."
+		"message": "كيف يمكننا تحسين Paper Clipper؟ يرجى زيارة صفحة المساعدة الخاصة بنا، حيث يمكنك الإبلاغ عن الأخطاء، اقتراح الميزات، والحصول على المساعدة في المشكلات الشائعة."
 	},
 	"feedbackTitle": {
 		"message": "شكراً لملاحظاتك"
@@ -570,7 +570,7 @@
 		"message": "فتح"
 	},
 	"openBehaviorDescription": {
-		"message": "اختر كيف يفتح Web Clipper بشكل افتراضي."
+		"message": "اختر كيف يفتح Paper Clipper بشكل افتراضي."
 	},
 	"openBehaviorTitle": {
 		"message": "سلوك الفتح"
@@ -714,7 +714,7 @@
 		"message": "المزودون"
 	},
 	"rateExtensionDescription": {
-		"message": "هل تستمتع بـ Web Clipper؟ ساعدنا عن طريق تقييمه."
+		"message": "هل تستمتع بـ Paper Clipper؟ ساعدنا عن طريق تقييمه."
 	},
 	"read": {
 		"message": "مقروءة"

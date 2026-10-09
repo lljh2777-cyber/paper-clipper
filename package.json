@@ -14,6 +14,8 @@
 		"./api": "./dist/api.mjs"
 	},
 	"scripts": {
+		"build:icons": "node scripts/build-paper-icons.mjs",
+		"test:extension-brand": "node --test scripts/extension-brand.test.mjs",
 		"defuddle-dev": "node scripts/set-defuddle-dev.js",
 		"defuddle-prod": "node scripts/set-defuddle-prod.js",
 		"dev:chrome": "webpack --watch --env BROWSER=chrome --mode development",

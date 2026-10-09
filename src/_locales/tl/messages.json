@@ -45,7 +45,7 @@
 		"message": "Nawawala ang API key"
 	},
 	"apiKeysWarning": {
-		"message": "Sa paggamit ng external provider, tinatanggap mo ang kanilang mga tuntunin at patakaran sa privacy. Ang mga kahilingan sa interpreter ay direktang ipinapadala sa iyong napiling provider. Hindi nangongolekta o nag-iimbak ang Obsidian ng impormasyon tungkol sa iyong mga kahilingan."
+		"message": "Interpreter requests go directly to the provider you configure, subject to that provider's terms and privacy policy. Paper Clipper has no hosted inference service."
 	},
 	"appendToDaily": {
 		"message": "Idagdag sa daily note, sa dulo"
@@ -118,7 +118,7 @@
 		"message": "Isara"
 	},
 	"commandOpenClipper": {
-		"message": "Buksan ang Obsidian Clipper"
+		"message": "Buksan ang Paper Clipper"
 	},
 	"commandQuickClip": {
 		"message": "Quick clip"
@@ -272,7 +272,7 @@
 		"message": "I-export ang mga property"
 	},
 	"exportPropertiesDescription": {
-		"message": "I-save ang mga Web Clipper property sa $strong_start$types.json$strong_end$ file, na maaaring i-import sa iyong Obsidian vault o Web Clipper sa ibang device",
+		"message": "I-save ang mga Paper Clipper property sa $strong_start$types.json$strong_end$ file, na maaaring i-import sa iyong Obsidian vault o Paper Clipper sa ibang device",
 		"placeholders": {
 			"strong_end": {
 				"content": "</strong>"
@@ -283,10 +283,10 @@
 		}
 	},
 	"extensionDescription": {
-		"message": "I-save ang web content sa pribado at pangmatagalang format, na maaaring ma-access offline. Ang opisyal na browser extension para sa Obsidian."
+		"message": "Archive academic papers from authorized browser HTML as local Markdown. Independent project, not affiliated with Obsidian."
 	},
 	"extensionName": {
-		"message": "Obsidian Web Clipper"
+		"message": "Paper Clipper"
 	},
 	"failedToCopyText": {
 		"message": "Hindi makopya ang text"
@@ -337,7 +337,7 @@
 		"message": "Feedback"
 	},
 	"feedbackDescription": {
-		"message": "Paano namin mapapabuti ang Web Clipper? Bisitahin ang aming help page para mag-report ng bugs, magmungkahi ng mga feature, at makakuha ng tulong sa mga karaniwang problema."
+		"message": "Paano namin mapapabuti ang Paper Clipper? Bisitahin ang aming help page para mag-report ng bugs, magmungkahi ng mga feature, at makakuha ng tulong sa mga karaniwang problema."
 	},
 	"feedbackTitle": {
 		"message": "Salamat sa iyong feedback"
@@ -358,7 +358,7 @@
 		"message": "Tulong"
 	},
 	"helpDescription": {
-		"message": "Alamin kung paano gamitin ang Web Clipper at makakuha ng tulong sa troubleshooting"
+		"message": "Alamin kung paano gamitin ang Paper Clipper at makakuha ng tulong sa troubleshooting"
 	},
 	"highlightInline": {
 		"message": "I-highlight ang content sa pahina"
@@ -562,7 +562,7 @@
 		"message": "Buksan"
 	},
 	"openBehaviorDescription": {
-		"message": "Pumili kung paano magbubukas ang Web Clipper bilang default."
+		"message": "Pumili kung paano magbubukas ang Paper Clipper bilang default."
 	},
 	"openBehaviorTitle": {
 		"message": "Pag-uugali ng pagbubukas"
@@ -706,7 +706,7 @@
 		"message": "Mga provider"
 	},
 	"rateExtensionDescription": {
-		"message": "Nagustuhan mo ba ang Web Clipper? Tulungan mo kami sa pamamagitan ng pagbibigay ng rating."
+		"message": "Nagustuhan mo ba ang Paper Clipper? Tulungan mo kami sa pamamagitan ng pagbibigay ng rating."
 	},
 	"read": {
 		"message": "Nabasa"

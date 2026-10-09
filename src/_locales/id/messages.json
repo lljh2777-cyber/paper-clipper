@@ -45,7 +45,7 @@
 		"message": "Tidak ada kunci API"
 	},
 	"apiKeysWarning": {
-		"message": "Dengan menggunakan penyedia eksternal, Anda menyetujui persyaratan dan kebijakan privasi mereka. Permintaan interpreter dikirim langsung ke penyedia yang Anda pilih. Obsidian tidak mengumpulkan atau menyimpan data apa pun tentang permintaan Anda."
+		"message": "Interpreter requests go directly to the provider you configure, subject to that provider's terms and privacy policy. Paper Clipper has no hosted inference service."
 	},
 	"appendToDaily": {
 		"message": "Tambah ke catatan harian, di bagian akhir"
@@ -118,7 +118,7 @@
 		"message": "Tutup"
 	},
 	"commandOpenClipper": {
-		"message": "Buka Obsidian Clipper"
+		"message": "Buka Paper Clipper"
 	},
 	"commandQuickClip": {
 		"message": "Klip cepat"
@@ -272,7 +272,7 @@
 		"message": "Ekspor properti"
 	},
 	"exportPropertiesDescription": {
-		"message": "Simpan properti Web Clipper ke file $strong_start$types.json$strong_end$ yang dapat diimpor ke dalam vault Obsidian, atau ke Web Clipper di perangkat lain.",
+		"message": "Simpan properti Paper Clipper ke file $strong_start$types.json$strong_end$ yang dapat diimpor ke dalam vault Obsidian, atau ke Paper Clipper di perangkat lain.",
 		"placeholders": {
 			"strong_end": {
 				"content": "</strong>"
@@ -283,10 +283,10 @@
 		}
 	},
 	"extensionDescription": {
-		"message": "Simpan konten dari web dalam format yang bersifat privat dan tahan lama dan dapat diakses secara luring. Ekstensi browser resmi untuk Obsidian."
+		"message": "Archive academic papers from authorized browser HTML as local Markdown. Independent project, not affiliated with Obsidian."
 	},
 	"extensionName": {
-		"message": "Obsidian Web Clipper"
+		"message": "Paper Clipper"
 	},
 	"failedToCopyText": {
 		"message": "Gagal menyalin teks"
@@ -337,7 +337,7 @@
 		"message": "Umpan balik"
 	},
 	"feedbackDescription": {
-		"message": "Bagaimana kami bisa meningkatkan Web Clipper? Silakan kunjungi halaman bantuan kami, di mana Anda dapat melaporkan bug, menyarankan fitur, dan mendapatkan bantuan dengan masalah umum."
+		"message": "Bagaimana kami bisa meningkatkan Paper Clipper? Silakan kunjungi halaman bantuan kami, di mana Anda dapat melaporkan bug, menyarankan fitur, dan mendapatkan bantuan dengan masalah umum."
 	},
 	"feedbackTitle": {
 		"message": "Terima kasih atas umpan balik Anda"
@@ -358,7 +358,7 @@
 		"message": "Bantuan"
 	},
 	"helpDescription": {
-		"message": "Pelajari cara menggunakan Web Clipper dan dapatkan bantuan pemecahan masalah."
+		"message": "Pelajari cara menggunakan Paper Clipper dan dapatkan bantuan pemecahan masalah."
 	},
 	"highlightInline": {
 		"message": "Sorot konten laman web"
@@ -570,7 +570,7 @@
 		"message": "Buka"
 	},
 	"openBehaviorDescription": {
-		"message": "Pilih bagaimana Web Clipper dibuka secara default."
+		"message": "Pilih bagaimana Paper Clipper dibuka secara default."
 	},
 	"openBehaviorTitle": {
 		"message": "Perilaku buka"
@@ -714,7 +714,7 @@
 		"message": "Penyedia"
 	},
 	"rateExtensionDescription": {
-		"message": "Apakah Anda menikmati Web Clipper? Bantu kami dengan memberikan penilaian."
+		"message": "Apakah Anda menikmati Paper Clipper? Bantu kami dengan memberikan penilaian."
 	},
 	"read": {
 		"message": "Dibaca"

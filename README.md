@@ -49,10 +49,12 @@ and Linux, with Node.js 22.12 and 24. It uses synthetic tests, not private paper
 or logged-in browser profiles. Hosted results are available after the workflow
 is pushed and runs in GitHub Actions.
 
-It is not an official Obsidian release or a distribution-ready rebranded browser
-extension. Upstream copyright and license notices are retained. Brand assets,
-icons and marketing materials are excluded from upstream's MIT grant; review and
-replace or separately license those materials before packaging a derived release.
+The Chromium development extension now identifies itself as Paper Clipper, with
+a document icon, independent project links and explicit upstream attribution.
+It is not an official Obsidian release. Upstream copyright and license notices
+are retained and bundled. Historical marketing assets and the native Safari
+wrapper are not rebranded or part of the Chromium package. A complete release
+and dependency-license review remains separate from this UI update.
 Third-party components retain their respective licenses.
 See [Third-Party Notices](THIRD_PARTY_NOTICES.md) for the development repository
 and [Core notices](docs/core/THIRD_PARTY_NOTICES.md) for the exported edition.

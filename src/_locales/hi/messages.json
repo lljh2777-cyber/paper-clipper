@@ -45,7 +45,7 @@
 		"message": "API key nahi hai"
 	},
 	"apiKeysWarning": {
-		"message": "External provider ka use karte samay, aap unki terms aur privacy policy se agree karte hain..."
+		"message": "Interpreter requests go directly to the provider you configure, subject to that provider's terms and privacy policy. Paper Clipper has no hosted inference service."
 	},
 	"appendToDaily": {
 		"message": "Daily note mein, ant mein jodein"
@@ -118,7 +118,7 @@
 		"message": "Band karein"
 	},
 	"commandOpenClipper": {
-		"message": "Obsidian Clipper kholein"
+		"message": "Paper Clipper kholein"
 	},
 	"commandQuickClip": {
 		"message": "Quick clip"
@@ -272,7 +272,7 @@
 		"message": "Properties export karein"
 	},
 	"exportPropertiesDescription": {
-		"message": "Web Clipper properties ko $strong_start$types.json$strong_end$ file mein save karein jise aapke Obsidian vault mein, ya dusre devices par Web Clipper mein import kiya ja sakta hai.",
+		"message": "Paper Clipper properties ko $strong_start$types.json$strong_end$ file mein save karein jise aapke Obsidian vault mein, ya dusre devices par Paper Clipper mein import kiya ja sakta hai.",
 		"placeholders": {
 			"strong_end": {
 				"content": "</strong>"
@@ -283,10 +283,10 @@
 		}
 	},
 	"extensionDescription": {
-		"message": "Web se content ko ek private aur durable format mein save karein jise aap offline access kar sakte hain. Obsidian ka official browser extension."
+		"message": "Archive academic papers from authorized browser HTML as local Markdown. Independent project, not affiliated with Obsidian."
 	},
 	"extensionName": {
-		"message": "Obsidian Web Clipper"
+		"message": "Paper Clipper"
 	},
 	"failedToCopyText": {
 		"message": "Text copy karne mein fail"
@@ -358,7 +358,7 @@
 		"message": "Help"
 	},
 	"helpDescription": {
-		"message": "Web Clipper ka upyog karna seekhein aur troubleshooting help prapt karein."
+		"message": "Paper Clipper ka upyog karna seekhein aur troubleshooting help prapt karein."
 	},
 	"highlightInline": {
 		"message": "Page content highlight karein"

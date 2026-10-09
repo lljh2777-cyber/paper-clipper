@@ -45,7 +45,7 @@
 		"message": "Відсутній API-ключ"
 	},
 	"apiKeysWarning": {
-		"message": "Використовуючи зовнішнього провайдера, ви погоджуєтесь з їхніми умовами використання та політикою конфіденційності. Запити інтерпретатора надсилаються безпосередньо вибраному вами провайдеру. Obsidian не збирає та не зберігає інформацію про ваші запити."
+		"message": "Interpreter requests go directly to the provider you configure, subject to that provider's terms and privacy policy. Paper Clipper has no hosted inference service."
 	},
 	"appendToDaily": {
 		"message": "Додати до щоденної нотатки, в кінець"
@@ -118,7 +118,7 @@
 		"message": "Закрити"
 	},
 	"commandOpenClipper": {
-		"message": "Відкрити Obsidian Clipper"
+		"message": "Відкрити Paper Clipper"
 	},
 	"commandQuickClip": {
 		"message": "Швидке вирізання"
@@ -272,7 +272,7 @@
 		"message": "Експортувати властивості"
 	},
 	"exportPropertiesDescription": {
-		"message": "Зберегти властивості Web Clipper у файл $strong_start$types.json$strong_end$, який можна імпортувати у ваше сховище Obsidian або Web Clipper на інших пристроях",
+		"message": "Зберегти властивості Paper Clipper у файл $strong_start$types.json$strong_end$, який можна імпортувати у ваше сховище Obsidian або Paper Clipper на інших пристроях",
 		"placeholders": {
 			"strong_end": {
 				"content": "</strong>"
@@ -283,10 +283,10 @@
 		}
 	},
 	"extensionDescription": {
-		"message": "Зберігайте веб-вміст у приватному та довговічному форматі, доступному офлайн. Офіційне браузерне розширення для Obsidian."
+		"message": "Archive academic papers from authorized browser HTML as local Markdown. Independent project, not affiliated with Obsidian."
 	},
 	"extensionName": {
-		"message": "Obsidian Web Clipper"
+		"message": "Paper Clipper"
 	},
 	"failedToCopyText": {
 		"message": "Не вдалося скопіювати текст"
@@ -337,7 +337,7 @@
 		"message": "Відгук"
 	},
 	"feedbackDescription": {
-		"message": "Як ми можемо покращити Web Clipper? Відвідайте нашу сторінку допомоги, щоб повідомити про помилки, запропонувати функції та отримати допомогу з поширеними проблемами."
+		"message": "Як ми можемо покращити Paper Clipper? Відвідайте нашу сторінку допомоги, щоб повідомити про помилки, запропонувати функції та отримати допомогу з поширеними проблемами."
 	},
 	"feedbackTitle": {
 		"message": "Дякуємо за відгук"
@@ -358,7 +358,7 @@
 		"message": "Допомога"
 	},
 	"helpDescription": {
-		"message": "Дізнайтеся, як користуватися Web Clipper та отримайте допомогу з усунення несправностей"
+		"message": "Дізнайтеся, як користуватися Paper Clipper та отримайте допомогу з усунення несправностей"
 	},
 	"highlightInline": {
 		"message": "Виділити вміст на сторінці"
@@ -562,7 +562,7 @@
 		"message": "Відкрити"
 	},
 	"openBehaviorDescription": {
-		"message": "Виберіть, як за замовчуванням відкривається Web Clipper."
+		"message": "Виберіть, як за замовчуванням відкривається Paper Clipper."
 	},
 	"openBehaviorTitle": {
 		"message": "Поведінка при відкритті"
@@ -706,7 +706,7 @@
 		"message": "Провайдери"
 	},
 	"rateExtensionDescription": {
-		"message": "Подобається Web Clipper? Допоможіть нам, поставивши оцінку."
+		"message": "Подобається Paper Clipper? Допоможіть нам, поставивши оцінку."
 	},
 	"read": {
 		"message": "Прочитано"

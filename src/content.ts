@@ -294,7 +294,7 @@ declare global {
 				highlighter.updatePageDomainSettings({ site: defuddled.site, favicon: defuddled.favicon });
 				sendResponse(response);
 			}).catch((error: unknown) => {
-				console.error('[Obsidian Clipper] getPageContent error:', error);
+				console.error('[Paper Clipper] getPageContent error:', error);
 				sendResponse({ success: false, error: error instanceof Error ? error.message : String(error) });
 			});
 			return true;
@@ -443,7 +443,7 @@ declare global {
 	// finished loading. This keeps the first lazy-loaded action from racing
 	// content-script initialization.
 	initializationPromise = initializeHighlighter().catch((error) => {
-		console.error('[Obsidian Clipper] Failed to initialize highlighter:', error);
+		console.error('[Paper Clipper] Failed to initialize highlighter:', error);
 	});
 
 	// Expose highlighter API on window so reader-script.js (a separate
