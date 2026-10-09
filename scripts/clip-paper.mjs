@@ -8,7 +8,7 @@ import { parseHTML } from 'linkedom';
 import { MathMLToLaTeX } from 'mathml-to-latex';
 import { browserFlags, fetchPage, resolveBrowserOptions } from './fetch-page.mjs';
 import { localizeImages } from './paper-assets.mjs';
-import { assessPaper, bodyCheckVersion, inspectHtml, qualitySummary, qualityVersion, withOutputQuality } from './paper-validation.mjs';
+import { assessPaper, bodyCheckVersion, inspectHtml, qualitySummary, qualityVersion, reviewSectionRule, withOutputQuality } from './paper-validation.mjs';
 import { sourceSectionsVersion } from './paper-sections.mjs';
 
 export { assessMarkdown } from './paper-validation.mjs';
@@ -218,7 +218,7 @@ export async function clipPaper(options) {
 	const report = {
 		requestedUrl: options.url, mode: options.mode, startedAt: new Date().toISOString(),
 		status: 'error', output: options.output, outputWritten: false, artifactDirectory: directory,
-		checks: { quality: qualityVersion, bodyCheck: bodyCheckVersion, sourceSections: sourceSectionsVersion, minWords: options.minWords, requiredSections: options.requiredSections, minMainSections: 2, figureCaptions: 'nature-v1', expectedDoi: options.expectedDoi },
+		checks: { quality: qualityVersion, bodyCheck: bodyCheckVersion, sourceSections: sourceSectionsVersion, minWords: options.minWords, requiredSections: options.requiredSections, minMainSections: 2, alternativeSectionRule: reviewSectionRule, figureCaptions: 'nature-v1', expectedDoi: options.expectedDoi },
 		attempts: [],
 	};
 	let exitCode = 1;

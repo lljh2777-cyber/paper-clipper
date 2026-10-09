@@ -9,6 +9,7 @@ import { promisify } from 'node:util';
 import { clipPaper, normalizeMathJaxTex, normalizeMathMLForReader, normalizePublisherLinks, parseOptions } from './clip-paper.mjs';
 import { assessMarkdown, bodyCheckVersion } from './paper-validation.mjs';
 import { parseHTML } from 'linkedom';
+import { reviewHtml, reviewDoi, reviewUrl } from './fixtures/nature-review.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const run = promisify(execFile);
@@ -215,6 +216,31 @@ test('Nature legends outside figcaption survive the actual CLI in order with lin
 	assert.equal(markdown.split('Detailed caption').length, 2);
 	assert.ok(markdown.indexOf('Detailed caption') > markdown.indexOf('Fig. 1: Overview.'));
 	assert.ok(markdown.indexOf('Detailed caption') < markdown.indexOf('After figure marker.'));
+});
+
+test('single-section review and grouped caption citations pass the actual CLI and full-content templates', async () => {
+	const figure = '<figure><figcaption>Fig. 1: Synthetic model.</figcaption><img src="/figure.png" width="685" height="395"><div class="c-article-section__figure-description"><p>Model details cite sources <sup><a href="#ref-CR1">1</a>,<a href="#ref-CR2">2</a></sup>.</p></div></figure>';
+	const source = reviewHtml.replace('</article>', `${figure}<h2>References</h2><ol><li id="ref-CR1">First synthetic source.</li><li id="ref-CR2">Second synthetic source.</li></ol></article>`);
+	const input = path.join(directory, 'review.html'), template = path.join(directory, 'review-template.json');
+	await writeFile(input, source);
+	await writeFile(template, JSON.stringify({ noteNameFormat: '{{title}}', noteContentFormat: '# {{title}}\n\n{{content}}', properties: [] }));
+	const config = { ...options('review', '/unused', ['--html', input, '--min-words', '1000']), url: reviewUrl, expectedDoi: reviewDoi };
+	for (const [name, extra] of [['review', {}], ['review-custom', { template }]]) {
+		const result = await clipPaper({ ...config, output: path.join(directory, name + '.md'), ...extra });
+		assert.equal(result.exitCode, 0);
+		const quality = result.report.attempts[0].quality;
+		assert.equal(quality.sectionRule, 'nature-review-source-v1');
+		assert.equal(quality.outputQuality.sectionRule, 'nature-review-source-v1');
+		assert.equal(quality.figureCaptions.status, 'passed');
+		assert.equal(quality.outputFigureCaptions.status, 'passed');
+		assert.match(await readFile(result.report.output, 'utf8'), /\[\^1\],\[\^2\]/);
+		assert.equal(await readFile(result.report.attempts[0].html, 'utf8'), source);
+	}
+	await writeFile(template, JSON.stringify({ noteNameFormat: '{{title}}', noteContentFormat: '# {{title}}', properties: [] }));
+	const rejected = await clipPaper({ ...config, output: path.join(directory, 'review-rejected.md'), template });
+	assert.equal(rejected.exitCode, 2);
+	assert.equal(rejected.report.outputWritten, false);
+	assert.ok(rejected.report.attempts[0].quality.reasons.includes('output-source-sections'));
 });
 
 test('lost source legends fail real conversion before publishing or replacing an accepted paper', async () => {

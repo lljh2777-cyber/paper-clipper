@@ -77,15 +77,30 @@ text, raw HTML blocks, footnote definitions or standalone `$$` display math.
 These excluded formats remain in the saved Markdown; this rule only controls
 the body-length gate, not conversion or preservation of those structures.
 
-Reports identify `bodyCheck: "markdown-sections-v1"` and provide `sections` with
+Reports identify `bodyCheck: "markdown-sections-v2"` and provide `sections` with
 heading, level, kind, exclusion status, prose words and paragraph counts.
 `mainBodyWords` drives the length decision. `bodyWords` and
 `wordsBeforeReferences` remain approximate raw-Markdown diagnostics, not gates.
 New reasons include `empty-main-section:<heading>` and `empty-section:<heading>`;
 existing `too-short` and `missing-main-sections` reasons are retained.
 
-This is a Markdown-side structural heuristic, not a publisher-HTML body-container
-check or source-to-output section-preservation proof. Raw HTML body layouts and
+The default remains two distinct nonempty main sections. For a known Nature
+single-`Main` review layout, `sectionRule: nature-review-source-v1` provides a
+source-backed alternative, not a lower word threshold. It requires unambiguous
+publisher `dc.type=ReviewPaper` metadata, exactly one supported source section
+named `Main`, at least two source prose paragraphs, no skipped paragraphs, and
+every compared paragraph preserved in order. Matched source prose must itself
+meet the same `minWords` threshold; captions, lists and unrelated output cannot
+pad it. The Markdown body threshold, required headings, access, DOI and caption
+checks still apply. Ordinary articles, unknown publishers and unsupported review
+layouts retain the existing two-section rule. `reviewStructure` explains the
+evidence or failure, and `checks.alternativeSectionRule` declares the policy.
+All conversion, custom-template, cached-archive and standalone-archive routes
+recompute this evidence from retained HTML, rather than trusting old pass flags.
+
+The default two-section rule is a Markdown-side structural heuristic, not a
+publisher-HTML body-container check or source-to-output preservation proof. The
+review alternative adds only the bounded source comparison above. Raw HTML layouts and
 unsupported section names can still be rejected. It does not mark references,
 tables or math as verified, and does not weaken the separate access/DOI/caption
 checks. Conversion-only cached output is still skipped; the unified Vault route
@@ -110,7 +125,7 @@ output is retained as `*.rendered.md`; nothing is published or downloaded.
 
 ### Independent quality states
 
-`quality.version = paper-quality-v1` separates three dimensions:
+`quality.version = paper-quality-v2` separates three dimensions:
 
 | Field | States | Meaning |
 | --- | --- | --- |
@@ -165,7 +180,10 @@ without `--vault` still does not revalidate or change the existing Markdown.
 
 ### Source section checks
 
-`scripts/paper-sections.mjs` adds the independent `nature-sections-v1` check.
+`scripts/paper-sections.mjs` adds the independent `nature-sections-v2` check.
+It reports checked/matched source prose words as well as paragraphs. These
+counts support the bounded single-section review rule; they are not a whole-paper
+completeness percentage. Private source HTML remains local acceptance data.
 On Nature pages with one `.c-article-body .main-content` container and its known
 `section[data-title]` layout, it compares the captured source with Markdown:
 

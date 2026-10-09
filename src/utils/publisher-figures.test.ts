@@ -69,4 +69,30 @@ describe('Nature full figure legends', () => {
 		const result = await clip({ html, url, template, documentParser: new DOMParser() });
 		expectLegend(result.content);
 	});
+	test('preserves comma-separated citation groups through manual and API extraction without changing the source', async () => {
+		const citations = '<sup><a href="#ref-CR1">1</a>,<a href="#ref-CR2">2</a></sup>';
+		const fixture = html.replace('Detailed panel description', `Detailed panel description ${citations}`)
+			.replace('</article>', '<h2>References</h2><ol><li id="ref-CR1">First synthetic source.</li><li id="ref-CR2">Second synthetic source.</li></ol></article>');
+		const source = new DOMParser().parseFromString(fixture, 'text/html');
+		const before = source.documentElement.outerHTML;
+		const prepared = prepareDocumentForExtraction(source, url);
+		expect(prepared.querySelector('#figure-1-desc')?.textContent).toContain('1,2');
+		expect(prepared.querySelectorAll('#figure-1-desc sup')).toHaveLength(2);
+		expect(source.documentElement.outerHTML).toBe(before);
+		for (const asyncMode of [false, true]) {
+			const parser = new Defuddle(prepareDocumentForExtraction(source, url), { url });
+			const result = asyncMode ? await parser.parseAsync() : parser.parse();
+			expect(createMarkdownContent(result.content, url)).toContain('[^1],[^2]');
+		}
+		const result = await clip({ html: fixture, url, template, documentParser: new DOMParser() });
+		expect(result.content).toContain('[^1],[^2]');
+	});
+	test('does not rewrite scientific superscripts, non-citation links or references to another article', () => {
+		for (const sup of ['<sup>x<a href="#ref-CR1">1</a>,<a href="#ref-CR2">2</a></sup>',
+			'<sup><a href="#ref-CR1">label</a>,<a href="#ref-CR2">2</a></sup>',
+			'<sup><a href="https://example.com/#ref-CR1">1</a>,<a href="#ref-CR2">2</a></sup>']) {
+			const source = new DOMParser().parseFromString(html.replace('Detailed panel description', sup), 'text/html');
+			expect(prepareDocumentForExtraction(source, url).querySelector('#figure-1-desc sup')?.outerHTML).toBe(sup);
+		}
+	});
 });

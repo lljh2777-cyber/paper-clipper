@@ -2,7 +2,7 @@ import { Marked } from 'marked';
 import { parseHTML } from 'linkedom';
 
 const marked = new Marked({ gfm: true });
-export const sourceSectionsVersion = 'nature-sections-v1';
+export const sourceSectionsVersion = 'nature-sections-v2';
 const excluded = 'figure, figcaption, table, ul, ol, blockquote, pre, script, style, template, noscript, [hidden], [aria-hidden="true"]';
 const math = 'math, mjx-container, .mathjax-tex, .c-article-equation, [data-tex], [data-latex]';
 const canonical = value => value.replace(/\s+/g, '');
@@ -16,7 +16,7 @@ function citationId(link, url) {
 	return id && link.textContent.trim() === id ? id : null;
 }
 
-function textOf(element, url, markdown = false) {
+function textOf(element, url, markdown = false, compact = true) {
 	const clone = element.cloneNode(true);
 	for (const node of clone.querySelectorAll(excluded + ', img')) node.remove();
 	// Clipper turns numeric Nature citation groups into adjacent footnote markers.
@@ -31,7 +31,7 @@ function textOf(element, url, markdown = false) {
 		if (id) link.textContent = citationMarker(id);
 	}
 	const text = markdown ? clone.textContent.replace(/\[\^(\d+)\]/g, (_, id) => citationMarker(id)) : clone.textContent;
-	return canonical(text);
+	return compact ? canonical(text) : text;
 }
 
 function markdownSections(markdown, url) {
@@ -65,7 +65,8 @@ function sourceSections(section, url) {
 			const reason = element.querySelector(math) || /\\[([]|\$/.test(element.textContent) ? 'math-or-dollar-content'
 				: element.querySelector('img') ? 'inline-image' : null;
 			const text = textOf(element, url);
-			if (text || reason) sections.at(-1).paragraphs.push({ text, reason });
+			const words = textOf(element, url, false, false).trim().split(/\s+/).filter(Boolean).length;
+			if (text || reason) sections.at(-1).paragraphs.push({ text, reason, words });
 		}
 	}
 	if (!sections.length || sections[0].text !== canonical(heading.textContent)) throw new Error('Source heading is not visible.');
@@ -75,7 +76,7 @@ function sourceSections(section, url) {
 export function checkSourceSections(html, markdown, url) {
 	const result = { version: sourceSectionsVersion, status: 'not-applicable', publisher: null,
 		scope: 'main-content headings and plain prose paragraphs', expectedSections: 0, checkedParagraphs: 0,
-		matchedParagraphs: 0, skippedParagraphs: 0, sections: [] };
+		matchedParagraphs: 0, checkedWords: 0, matchedWords: 0, skippedParagraphs: 0, sections: [] };
 	try {
 		if (!/(^|\.)nature\.com$/.test(new URL(url).hostname)) return { ...result, reason: 'unsupported-publisher' };
 		result.publisher = 'nature';
@@ -113,11 +114,12 @@ export function checkSourceSections(html, markdown, url) {
 					}
 					item.checked++;
 					result.checkedParagraphs++;
+					result.checkedWords += paragraph.words;
 					const count = section.paragraphs.filter(entry => !entry.reason && entry.text === paragraph.text).length;
 					const positions = paragraphs.map((text, i) => text === paragraph.text ? i : -1).filter(i => i >= 0);
 					const position = positions.find(i => i >= cursor);
 					if (positions.length !== count || position === undefined) item.errors.push(`paragraph:${paragraphIndex + 1}:missing-changed-duplicated-or-reordered`);
-					else { cursor = position + 1; item.matched++; result.matchedParagraphs++; }
+					else { cursor = position + 1; item.matched++; result.matchedParagraphs++; result.matchedWords += paragraph.words; }
 				}
 			}
 		}

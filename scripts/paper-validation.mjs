@@ -5,8 +5,9 @@ import { checkSourceSections } from './paper-sections.mjs';
 import { assessPaperIdentity, normalizeDoi } from './paper-metadata.mjs';
 
 const marked = new Marked({ gfm: true });
-export const bodyCheckVersion = 'markdown-sections-v1';
-export const qualityVersion = 'paper-quality-v1';
+export const bodyCheckVersion = 'markdown-sections-v2';
+export const qualityVersion = 'paper-quality-v2';
+export const reviewSectionRule = 'nature-review-source-v1';
 export const previewPattern = /this is a preview of subscription content|sign in to access (?:the )?full (?:text|article)|purchase access to (?:the|this) article/i;
 const mainPattern = /^(?:introduction|background|main|results|discussion|methods|materials and methods|methodology|conclusions?)(?:$|[\s:])/i;
 const excludedPattern = /^(?:abstract|references?|bibliography|acknowledg(?:e)?ments?|funding|author(?:s|['\u2019]s)?[\s\u2019']+(?:contributions?|information|details)|declarations|ethics declarations|competing interests|conflicts? of interest|data availability|availability of data|code availability|supplementary|supporting information|additional information|peer review information|publisher['\u2019]s note|copyright|rights and permissions|about this article|article information)(?:$|[\s:])/i;
@@ -63,7 +64,8 @@ export function assessPaper(html, markdown, url, checks, page = inspectHtml(html
 	const figureCaptions = checkFigureCaptions(html, markdown, url);
 	const sourceSections = checkSourceSections(html, markdown, url);
 	const paperIdentity = checks.expectedDoi ? assessPaperIdentity(html, checks.expectedDoi) : undefined;
-	const quality = assessMarkdown(markdown, checks, { ...page, figureCaptions, sourceSections, paperIdentity });
+	const reviewStructure = assessReviewStructure(html, sourceSections, checks.minWords);
+	const quality = assessMarkdown(markdown, checks, { ...page, figureCaptions, sourceSections, paperIdentity, reviewStructure });
 	const comparisons = { figureCaptions: figureCaptions.status, sourceSections: sourceSections.status };
 	const applicable = Object.values(comparisons).some(status => status !== 'not-applicable');
 	const contentReasons = quality.reasons.filter(reason => !['figure-captions', 'source-sections', 'paper-identity'].includes(reason));
@@ -75,6 +77,22 @@ export function assessPaper(html, markdown, url, checks, page = inspectHtml(html
 			limitations: ['Heuristic checks do not prove full-text completeness.',
 				'Only applicable figure-legend and plain-prose source comparisons are verified.',
 				'Math, tables, lists, references, unloaded content and unsupported layouts are not fully compared.'] } };
+}
+
+function assessReviewStructure(html, source, minWords) {
+	if (source.publisher !== 'nature') return undefined;
+	const document = parseHTML(html).document;
+	const types = [...document.querySelectorAll('head meta[name]')]
+		.filter(meta => meta.getAttribute('name').toLowerCase() === 'dc.type')
+		.map(meta => canonical(meta.getAttribute('content') ?? ''));
+	if (!types.length || !types.every(type => type === 'reviewpaper')) return undefined;
+	const reasons = [];
+	if (source.status !== 'passed') reasons.push('source-sections-not-verified');
+	if (source.expectedSections !== 1 || canonical(source.sections[0]?.heading ?? '') !== 'main') reasons.push('not-single-main-source');
+	if (source.skippedParagraphs || source.checkedParagraphs < 2 || source.matchedParagraphs !== source.checkedParagraphs) reasons.push('source-prose-not-fully-compared');
+	if (source.matchedWords < minWords) reasons.push('insufficient-matched-source-prose');
+	return { rule: reviewSectionRule, status: reasons.length ? 'failed' : 'passed', reasons,
+		articleType: 'ReviewPaper', requiredWords: minWords, matchedWords: source.matchedWords };
 }
 
 export function withOutputQuality(extraction, output) {
@@ -151,7 +169,9 @@ export function assessMarkdown(markdown, { minWords, requiredSections = [] }, pa
 	if (page.sourceSections?.status === 'failed') reasons.push('source-sections');
 	if (page.paperIdentity?.status === 'failed') reasons.push('paper-identity');
 	if (mainBodyWords < minWords) reasons.push('too-short');
-	if (mainSections.length < 2) reasons.push('missing-main-sections');
+	const sourceBackedReview = page.reviewStructure?.status === 'passed' && main.length === 1 &&
+		mainSections.length === 1 && canonical(mainSections[0]) === 'main';
+	if (mainSections.length < 2 && !sourceBackedReview) reasons.push('missing-main-sections');
 	for (const section of main.filter(section => !section.words)) reasons.push(`empty-main-section:${section.heading}`);
 	for (const heading of requiredSections) {
 		const matches = eligible.filter(section => canonical(section.heading) === canonical(heading));
@@ -161,6 +181,8 @@ export function assessMarkdown(markdown, { minWords, requiredSections = [] }, pa
 	return { passed: reasons.length === 0, bodyCheck: bodyCheckVersion,
 		bodyWords: words(body), wordsBeforeReferences: words(body.slice(0, referenceOffset)), mainBodyWords,
 		headings: sections.map(section => section.heading), mainSections, sections, reasons,
+		sectionRule: sourceBackedReview ? reviewSectionRule : 'two-main-sections',
+		...(page.reviewStructure ? { reviewStructure: page.reviewStructure } : {}),
 		...(page.figureCaptions ? { figureCaptions: page.figureCaptions } : {}),
 		...(page.sourceSections ? { sourceSections: page.sourceSections } : {}),
 		...(page.paperIdentity ? { paperIdentity: page.paperIdentity } : {}) };

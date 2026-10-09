@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { archiveRequirements, assessMarkdown, assessPaper, bodyCheckVersion, qualitySummary, withOutputQuality } from './paper-validation.mjs';
+import { reviewHtml, reviewMarkdown, reviewParagraphs, reviewDoi, reviewUrl } from './fixtures/nature-review.mjs';
 
 const paragraph = 'Cells were measured across independent biological samples. '.repeat(80);
 const valid = `## Results\n\n${paragraph}\n\n## Methods\n\n${paragraph}`;
@@ -184,4 +185,54 @@ test('archive requirements keep the stronger saved/current threshold, required s
 		assert.throws(() => archiveRequirements(invalid));
 		assert.throws(() => archiveRequirements({}, invalid));
 	}
+});
+
+test('single Main reviews require publisher type plus a complete source-prose comparison at the unchanged threshold', () => {
+	const result = assessPaper(reviewHtml, reviewMarkdown, reviewUrl, { minWords: 1000, expectedDoi: reviewDoi });
+	assert.equal(result.passed, true);
+	assert.equal(result.sectionRule, 'nature-review-source-v1');
+	assert.equal(result.reviewStructure.requiredWords, 1000);
+	assert.ok(result.reviewStructure.matchedWords >= 1000);
+	assert.equal(result.sourceSections.checkedWords, result.sourceSections.matchedWords);
+	assert.equal(result.paperIdentity.status, 'passed');
+	assert.equal(result.completeness.status, 'passed-heuristics');
+	assert.equal(result.coverage.status, 'partial-source');
+	assert.equal(check(reviewMarkdown).passed, false);
+	assert.equal(assessPaper(reviewHtml, reviewMarkdown, reviewUrl, { minWords: 2000 }).passed, false);
+	assert.equal(assessPaper(reviewHtml, reviewMarkdown, reviewUrl, { minWords: 1000, requiredSections: ['Methods'] }).passed, false);
+});
+
+test('review metadata alone cannot certify absent, skipped, altered, duplicated or padded source prose', () => {
+	for (const [html, markdown, url = reviewUrl] of [
+		[reviewHtml.replace('ReviewPaper', 'Article'), reviewMarkdown],
+		[reviewHtml.replace('<meta name="dc.type" content="ReviewPaper">', ''), reviewMarkdown],
+		[reviewHtml.replace('</head>', '<meta name="dc.type" content="Article"></head>'), reviewMarkdown],
+		[reviewHtml, reviewMarkdown, 'https://publisher.example/review'],
+		[reviewHtml.replace('main-content', 'unsupported'), reviewMarkdown],
+		[reviewHtml.replace('<p>', '<p><math><mi>x</mi></math>'), reviewMarkdown],
+		[reviewHtml, reviewMarkdown.replace(reviewParagraphs[0], '')],
+		[reviewHtml, reviewMarkdown.replace('Independent', 'Changed')],
+		[reviewHtml, reviewMarkdown + reviewParagraphs[0]],
+		[reviewHtml, reviewMarkdown + '\n## Main\n\nExtra duplicate heading.'],
+		[reviewHtml.replace(reviewParagraphs[0], 'Short prose.').replace(reviewParagraphs[1], 'Another sentence.'),
+			'## Main\n\nShort prose.\n\nAnother sentence.\n\n' + paragraph + paragraph],
+	]) {
+		const result = assessPaper(html, markdown, url, { minWords: 1000 });
+		assert.equal(result.passed, false);
+		assert.ok(result.reasons.includes('missing-main-sections'));
+	}
+});
+
+test('review structure does not bypass access, DOI or caption checks, including custom output checks', () => {
+	for (const [html, markdown, doi = reviewDoi, reason] of [
+		[reviewHtml, reviewMarkdown, '10.1234/wrong', 'paper-identity'],
+		[reviewHtml.replace('</article>', '<p>This is a preview of subscription content</p></article>'), reviewMarkdown, reviewDoi, 'subscription-preview'],
+		[reviewHtml.replace('</article>', '<figure><figcaption>Fig. 1: Test.</figcaption><div class="c-article-section__figure-description"><p>Required legend.</p></div></figure></article>'), reviewMarkdown, reviewDoi, 'figure-captions'],
+	]) {
+		const result = assessPaper(html, markdown, reviewUrl, { minWords: 1000, expectedDoi: doi });
+		assert.equal(result.passed, false);
+		assert.ok(result.reasons.includes(reason));
+	}
+	const assess = md => assessPaper(reviewHtml, md, reviewUrl, { minWords: 1000 });
+	assert.equal(withOutputQuality(assess(reviewMarkdown), assess('# Title only')).passed, false);
 });

@@ -7,7 +7,8 @@ import { after, before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { clip, parseOptions, printResult } from './clip.mjs';
-import { splitFrontmatter } from './archive-papers.mjs';
+import { archivePapers, parseOptions as archiveOptions, splitFrontmatter } from './archive-papers.mjs';
+import { reviewHtml, reviewDoi, reviewUrl, reviewParagraphs } from './fixtures/nature-review.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const exec = promisify(execFile);
@@ -296,6 +297,45 @@ test('legacy Nature caches missing a prose paragraph fail both archive routes wi
 		assert.equal((await stat(note)).mtimeMs, mtime);
 		await assert.rejects(stat(path.join(s.vault, 'Papers')), { code: 'ENOENT' });
 	}
+	assert.equal(requests, before);
+});
+
+test('single-section review checks agree for conversion, old cache and standalone archive; missing prose still blocks', async () => {
+	const s = setup('review-cache');
+	const input = await exportPair(path.join(directory, 'review-cache/input'), 'review.html', reviewHtml, reviewUrl);
+	const initial = await clip(parseOptions([input, '-o', s.output]));
+	assert.equal(initial.exitCode, 0);
+	const item = initial.report.items[0];
+	assert.equal(item.quality.sectionRule, 'nature-review-source-v1');
+	const report = JSON.parse(await readFile(`${item.output}.report.json`, 'utf8'));
+	delete report.checks.alternativeSectionRule;
+	report.checks.bodyCheck = 'markdown-sections-v1';
+	report.attempts[0].quality = { passed: true };
+	await writeFile(`${item.output}.report.json`, JSON.stringify(report));
+	const before = requests;
+	const cached = await clip(parseOptions([input, '-o', s.output, '--vault', s.vault]));
+	assert.equal(cached.report.items[0].status, 'skipped');
+	assert.equal(cached.report.items[0].archive.status, 'archived');
+	const note = cached.report.items[0].archive.output;
+	const annotated = await readFile(note, 'utf8') + '\nUser annotations remain.\n';
+	await writeFile(note, annotated);
+	const otherVault = path.join(directory, 'review-standalone/Vault');
+	const standalone = await archivePapers(archiveOptions([item.output, '--vault', otherVault]));
+	assert.equal(standalone.exitCode, 0);
+	assert.equal(standalone.report.items[0].metadata.doi, reviewDoi);
+	const damaged = (await readFile(item.output, 'utf8')).replace(reviewParagraphs[0], '');
+	await writeFile(item.output, damaged);
+	await writeFile(path.join(report.artifactDirectory, 'accepted.md'), damaged);
+	for (const args of [[input, '-o', s.output], [reviewUrl, '--output', item.output]]) {
+		const blockedCache = await clip(parseOptions([...args, '--vault', s.vault]));
+		assert.equal(blockedCache.report.items[0].archive.code, 'source-sections');
+	}
+	for (const flags of [[], ['--dry-run']]) {
+		const blocked = await archivePapers(archiveOptions([item.output, '--vault', otherVault, ...flags]));
+		assert.equal(blocked.exitCode, 1);
+		assert.equal(blocked.report.items[0].code, 'source-sections');
+	}
+	assert.equal(await readFile(note, 'utf8'), annotated);
 	assert.equal(requests, before);
 });
 
