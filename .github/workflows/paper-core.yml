@@ -1,0 +1,64 @@
+name: Paper Core
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: paper-core-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: Core / ${{ matrix.os }} / Node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ['22.12.0', '24']
+    env:
+      CI: 'true'
+    steps:
+      - name: Check out source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
+
+      - name: Test core exporter without extension dependencies
+        run: node --test scripts/export-paper-core.test.mjs
+
+      - name: Export core outside the source checkout
+        run: node scripts/export-paper-core.mjs -o "${{ runner.temp }}/paper-clipper-core"
+
+      - name: Prune the seeded lockfile without installing packages
+        working-directory: ${{ runner.temp }}/paper-clipper-core
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Install the independent core from its lockfile
+        working-directory: ${{ runner.temp }}/paper-clipper-core
+        run: npm ci --no-audit --no-fund
+
+      - name: Install Chromium and system dependencies
+        working-directory: ${{ runner.temp }}/paper-clipper-core
+        run: node node_modules/playwright/cli.js install --with-deps chromium
+
+      - name: Build and test the independent core
+        working-directory: ${{ runner.temp }}/paper-clipper-core
+        run: npm test
+
+      - name: Smoke-test the Agent entry point
+        working-directory: ${{ runner.temp }}/paper-clipper-core
+        run: node scripts/save-paper.mjs --help

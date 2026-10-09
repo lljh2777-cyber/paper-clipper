@@ -29,6 +29,11 @@ Chromium first for browser tests). See [the extraction guide](docs/core-extracti
 Export refuses an existing destination and never deletes files or copies local
 papers, Vaults, browser profiles, build output or installed Skill paths.
 
+[Core CI](docs/core-ci.md) exports and tests the independent edition on Windows
+and Linux, with Node.js 22.12 and 24. It uses synthetic tests, not private papers
+or logged-in browser profiles. Hosted results are available after the workflow
+is pushed and runs in GitHub Actions.
+
 It is not an official Obsidian release or a distribution-ready rebranded browser
 extension. Upstream copyright and license notices are retained. Brand assets,
 icons and marketing materials are excluded from upstream's MIT grant; review and
