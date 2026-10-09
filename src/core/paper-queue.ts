@@ -1,5 +1,5 @@
 import browser from '../utils/browser-polyfill';
-import { createIcons, Link, Unplug, Play, ExternalLink, X } from 'lucide';
+import { createIcons, Link, Unplug, Play, ExternalLink, X, RotateCw } from 'lucide';
 import { PaperTaskTab, queueApi, QueueJob } from '../utils/paper-queue-client';
 
 const endpoint = document.getElementById('endpoint') as HTMLInputElement;
@@ -7,10 +7,11 @@ const key = document.getElementById('key') as HTMLInputElement;
 const status = document.getElementById('connection')!;
 const errorBox = document.getElementById('error')!;
 const taskTab = new PaperTaskTab();
-const icons = () => createIcons({ icons: { Link, Unplug, Play, ExternalLink, X } });
+const icons = () => createIcons({ icons: { Link, Unplug, Play, ExternalLink, X, RotateCw } });
 const showError = (error: unknown) => { errorBox.hidden = false; errorBox.textContent = error instanceof Error ? error.message : String(error); };
 let api: ReturnType<typeof queueApi> | undefined, polling = false, active = false, busy = false;
 let disconnectRequested = false;
+let connectedEndpoint = '';
 const terminal = new Set(['saved', 'duplicate', 'failed', 'cancelled', 'existing-unverified']);
 
 function render(jobs: QueueJob[]) {
@@ -74,7 +75,14 @@ async function tick() {
 			} finally { busy = false; }
 			await refresh();
 		}
-	} catch (error) { status.textContent = 'Waiting for local queue'; showError(error); }
+	} catch (error) {
+		if (error && typeof error === 'object' && 'status' in error && error.status === 401) {
+			active = false; api = undefined; key.value = '';
+			await browser.storage.local.remove('paperQueuePairing');
+			status.textContent = 'Re-pair required';
+		} else status.textContent = 'Waiting for local queue';
+		showError(error);
+	}
 	finally { polling = false; if (disconnectRequested) { active = false; disconnectRequested = false; status.textContent = 'Disconnected'; } }
 }
 
@@ -82,6 +90,7 @@ async function connect() {
 	if (polling) throw new Error('Wait for the current task to finish.');
 	api = queueApi(endpoint.value.trim(), key.value.trim());
 	await api('/v1/jobs');
+	connectedEndpoint = endpoint.value.trim();
 	await browser.storage.local.set({ paperQueuePairing: { endpoint: endpoint.value.trim(), key: key.value.trim() } });
 	errorBox.hidden = true; active = true; await tick();
 }
@@ -95,6 +104,29 @@ document.getElementById('forget')!.addEventListener('click', async () => {
 	if (polling) { showError(new Error('Disconnect after the current task before forgetting pairing.')); return; }
 	active = false; api = undefined; key.value = ''; await browser.storage.local.remove('paperQueuePairing'); status.textContent = 'Disconnected';
 });
+document.getElementById('reset-pairing')!.addEventListener('click', async () => {
+	if (polling || !api) { showError(new Error('Connect and wait for the current task before resetting pairing.')); return; }
+	const wasActive = active; active = false;
+	if (!window.confirm('Reset this local queue pairing? Other controllers must re-pair. Unfinished captures will pause. Publisher login and saved notes are unchanged.')) { active = wasActive; return; }
+	polling = true;
+	try {
+		const result = await api('/v1/pairing/reset', {});
+		const next = queueApi(connectedEndpoint, result.key);
+		await browser.storage.local.set({ paperQueuePairing: { endpoint: connectedEndpoint, key: result.key } });
+		endpoint.value = connectedEndpoint;
+		api = next; key.value = result.key; active = wasActive; errorBox.hidden = true;
+		const notice = document.getElementById('pairing-notice')!;
+		notice.hidden = false; notice.textContent = 'Pairing reset. This controller is updated; other controllers must re-pair.';
+		await refresh();
+	} catch (error) {
+		if (error && typeof error === 'object' && 'status' in error && error.status === 409) {
+			active = wasActive; showError(error); return;
+		}
+		// A lost reset response may mean rotation succeeded. Never retry with the old key.
+		api = undefined; key.value = ''; active = false;
+		await browser.storage.local.remove('paperQueuePairing'); status.textContent = 'Re-pair required'; showError(error);
+	} finally { polling = false; }
+});
 window.addEventListener('beforeunload', event => { if (busy) { event.preventDefault(); event.returnValue = ''; } });
 icons();
 
@@ -104,7 +136,7 @@ navigator.locks.request('paper-queue-controller', { ifAvailable: true }, async l
 	const saved = (await browser.storage.local.get('paperQueuePairing')).paperQueuePairing as { endpoint?: unknown; key?: unknown } | undefined;
 	if (saved && typeof saved.endpoint === 'string' && typeof saved.key === 'string') {
 		endpoint.value = saved.endpoint; key.value = saved.key;
-		try { api = queueApi(saved.endpoint, saved.key); active = true; } catch (error) { showError(error); }
+		try { api = queueApi(saved.endpoint, saved.key); connectedEndpoint = saved.endpoint; active = true; } catch (error) { showError(error); }
 	}
 	await tick();
 	await new Promise<void>(() => { setInterval(() => { tick().catch(showError); }, 2500); });

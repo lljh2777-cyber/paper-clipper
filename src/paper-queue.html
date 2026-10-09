@@ -16,7 +16,8 @@
 			<button type="submit"><i data-lucide="link"></i>Connect</button>
 			<button id="disconnect" type="button" title="Disconnect" aria-label="Disconnect"><i data-lucide="unplug"></i></button>
 		</form>
-		<div class="toolbar"><h2>Tasks <span id="count">0</span></h2><button id="forget" type="button">Forget pairing</button></div>
+		<div class="toolbar"><h2>Tasks <span id="count">0</span></h2><div class="actions"><button id="reset-pairing" type="button"><i data-lucide="rotate-cw"></i>Reset pairing</button><button id="forget" type="button">Forget pairing</button></div></div>
+		<p id="pairing-notice" role="status" hidden></p>
 		<p id="error" role="alert" hidden></p>
 		<section id="jobs" aria-label="Paper tasks"><p class="empty">No tasks</p></section>
 	</main>

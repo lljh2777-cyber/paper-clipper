@@ -30,6 +30,13 @@ it('sends a bearer token only to the loopback service, never browser cookies or 
 	expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:43127/v1/jobs', expect.objectContaining({ credentials: 'omit', redirect: 'error', headers: { Authorization: `Bearer ${'a'.repeat(64)}` } }));
 });
 
+it('preserves authentication and conflict status for safe pairing recovery', async () => {
+	for (const status of [401, 409]) {
+		vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status, json: async () => ({ error: 'Pairing recovery required' }) }));
+		await expect(queueApi('http://127.0.0.1:43127', 'a'.repeat(64))('/v1/pairing/reset', {})).rejects.toMatchObject({ status, message: 'Pairing recovery required' });
+	}
+});
+
 it('creates only its task tab, waits for stable content and closes that tab after acceptance', async () => {
 	const worker = new PaperTaskTab(async () => {});
 	expect(await worker.snapshot(job)).toEqual(snapshot);

@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
-import { access, lstat, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { access, lstat, mkdir, mkdtemp, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -26,6 +26,7 @@ No daily-profile access, cookie extraction, PDF/OCR or dedicated-browser fallbac
       --require-section <heading>  Repeatable
   -t, --template <path>   Existing full-content template
       --timeout <ms>     Conversion timeout (default: 60000)
+      --show-pairing-key Print the private key explicitly; without tasks, read only
   -h, --help             Show help
 
 Accepts 1-20 tasks. The local service stays open until Ctrl+C; it does not install
@@ -35,19 +36,24 @@ Dedicated browser remains available via save-paper.mjs --fetch browser.
 `;
 
 export function parseOptions(args) {
-	const { values, positionals } = parseArgs({ args, allowPositionals: true, options: {
+	const { values, positionals, tokens } = parseArgs({ args, allowPositionals: true, tokens: true, options: {
 		'output-dir': { type: 'string', short: 'o' }, port: { type: 'string', default: '43127' },
 		vault: { type: 'string' }, 'papers-dir': { type: 'string' }, template: { type: 'string', short: 't' },
 		'download-assets': { type: 'boolean', default: false }, 'min-words': { type: 'string', default: '1000' },
 		'require-section': { type: 'string', multiple: true, default: [] }, timeout: { type: 'string', default: '60000' },
 		help: { type: 'boolean', short: 'h' },
+		'show-pairing-key': { type: 'boolean', default: false },
 	} });
 	if (values.help) return { help: true };
+	const outputDir = path.resolve(values['output-dir'] ?? path.join(root, 'output/browser-queue'));
+	if (!positionals.length && values['show-pairing-key']) {
+		if (tokens.some(token => token.kind === 'option' && !['show-pairing-key', 'output-dir'].includes(token.name))) throw new Error('Key viewing accepts only --output-dir.');
+		return { showKeyOnly: true, outputDir };
+	}
 	if (!positionals.length || positionals.length > 20) throw new Error('Provide 1-20 paper identifiers.');
 	positionals.forEach(classifyQuery);
 	const port = Number(values.port);
 	if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Port must be 1024-65535.');
-	const outputDir = path.resolve(values['output-dir'] ?? path.join(root, 'output/browser-queue'));
 	const forward = ['--output-dir', outputDir];
 	for (const name of ['vault', 'papers-dir', 'template', 'download-assets', 'min-words', 'require-section', 'timeout']) {
 		const value = values[name];
@@ -56,7 +62,7 @@ export function parseOptions(args) {
 		else if (typeof value === 'string') forward.push(`--${name}`, value);
 	}
 	clipOptions(['sample.html', ...forward]);
-	return { queries: positionals, port, outputDir, forward };
+	return { queries: positionals, port, outputDir, forward, showPairingKey: values['show-pairing-key'] };
 }
 
 async function plainDirectory(directory) {
@@ -72,6 +78,12 @@ async function pairingKey(directory) {
 	const file = path.join(directory, 'pairing-key.txt');
 	try { await writeFile(file, randomBytes(32).toString('hex'), { flag: 'wx', mode: 0o600 }); }
 	catch (error) { if (error.code !== 'EEXIST') throw error; }
+	return readPairingKey(directory);
+}
+
+export async function readPairingKey(directory) {
+	await plainDirectory(directory);
+	const file = path.join(directory, 'pairing-key.txt');
 	const stat = await lstat(file);
 	if (!stat.isFile() || stat.isSymbolicLink() || stat.size !== 64) throw new Error('Pairing key must be a regular 64-byte file.');
 	const key = await readFile(file, 'utf8');
@@ -97,7 +109,7 @@ export async function startQueue(options, { resolve = resolvePaper, runPaper = s
 	if (config.archive) await validateVaultDestination(config.archive, [options.outputDir]);
 	await access(path.join(root, 'dist/cli.cjs'));
 	await mkdir(options.outputDir, { recursive: true });
-	const key = await pairingKey(options.outputDir);
+	let key = await pairingKey(options.outputDir), rotating = false;
 	const runDir = await mkdtemp(path.join(options.outputDir, 'queue-'));
 	const reportPath = path.join(runDir, 'report.json');
 	const jobs = [];
@@ -134,10 +146,33 @@ export async function startQueue(options, { resolve = resolvePaper, runPaper = s
 		}
 		const credential = Buffer.from((request.headers.authorization ?? '').replace(/^Bearer /, ''));
 		if (credential.length !== 64 || !timingSafeEqual(credential, Buffer.from(key))) { reply(401, { error: 'Pairing required.' }); return; }
+		const authenticatedKey = key;
 		try {
 			if (request.method === 'GET' && request.url === '/v1/jobs') { reply(200, { jobs: jobs.map(publicJob) }); return; }
 			if (request.method !== 'POST' || stopping) { reply(404, { error: 'No route.' }); return; }
 			const data = await body(request);
+			// Requests authenticated before a rotation cannot finish under the old key.
+			if (authenticatedKey !== key) { reply(401, { error: 'Pairing changed. Re-pair this controller.' }); return; }
+			if (rotating) { reply(409, { error: 'Pairing reset in progress.' }); return; }
+			if (request.url === '/v1/pairing/reset') {
+				if (jobs.some(job => job.status === 'processing')) { reply(409, { error: 'Wait for conversion to finish before resetting pairing.' }); return; }
+				rotating = true;
+				try {
+					if (await readPairingKey(options.outputDir) !== key) throw new Error('Pairing file changed; restart the service before resetting.');
+					const nextKey = randomBytes(32).toString('hex');
+					const temporary = path.join(options.outputDir, `pairing-key-${randomUUID()}.tmp`);
+					await writeFile(temporary, nextKey, { flag: 'wx', mode: 0o600 });
+					await rename(temporary, path.join(options.outputDir, 'pairing-key.txt'));
+					key = nextKey;
+					for (const job of jobs) {
+						if (job.status === 'claimed') { job.status = 'paused'; job.error = 'Pairing reset. Resume explicitly after checking the task tab.'; }
+						delete job.lease;
+					}
+					await persist(); log('Pairing reset. Other controllers must re-pair; key hidden.');
+					reply(200, { key });
+				} finally { rotating = false; }
+				return;
+			}
 			if (request.url === '/v1/claim') {
 				if (jobs.some(job => ['claimed', 'processing', 'needs-access', 'paused'].includes(job.status))) { reply(200, { job: null }); return; }
 				const job = jobs.find(job => job.status === 'queued');
@@ -184,15 +219,20 @@ export async function startQueue(options, { resolve = resolvePaper, runPaper = s
 	server.requestTimeout = 45000;
 	server.headersTimeout = 10000;
 	await new Promise((resolveListen, reject) => { server.once('error', reject); server.listen(options.port, '127.0.0.1', resolveListen); });
-	return { url: `http://127.0.0.1:${server.address().port}`, key, reportPath,
+	return { url: `http://127.0.0.1:${server.address().port}`, get key() { return key; }, reportPath,
 		close: async () => { stopping = true; await new Promise(resolveClose => server.close(resolveClose)); await writes; } };
+}
+
+export function startupMessage(queue, showKey = false) {
+	return `Paper browser queue: ${queue.url}\n${showKey ? `Pairing key (private): ${queue.key}` : 'Pairing key: hidden. For first pairing, run this script with --show-pairing-key (and the same --output-dir).'}\nReport: ${queue.reportPath}\nOpen Paper queue in the extension and pair once. Ctrl+C stops the local service.`;
 }
 
 export async function main(args = process.argv.slice(2)) {
 	const options = parseOptions(args);
 	if (options.help) { console.log(usage); return; }
+	if (options.showKeyOnly) { console.log(`Pairing key (private): ${await readPairingKey(options.outputDir)}`); return; }
 	const queue = await startQueue(options);
-	console.log(`Paper browser queue: ${queue.url}\nPairing key (private): ${queue.key}\nReport: ${queue.reportPath}\nOpen Paper queue in the extension and pair once. Ctrl+C stops the local service.`);
+	console.log(startupMessage(queue, options.showPairingKey));
 	await new Promise(resolve => { const stop = () => { process.off('SIGINT', stop); process.off('SIGTERM', stop); resolve(); }; process.once('SIGINT', stop); process.once('SIGTERM', stop); });
 	await queue.close();
 }

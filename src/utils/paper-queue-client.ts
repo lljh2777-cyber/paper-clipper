@@ -20,7 +20,7 @@ export function queueApi(endpoint: string, key: string) {
 			headers: { Authorization: `Bearer ${key}`, ...(data === undefined ? {} : { 'Content-Type': 'application/json' }) },
 			body: data === undefined ? undefined : JSON.stringify(data) });
 		const result = await response.json();
-		if (!response.ok) throw new Error(result.error || `Queue HTTP ${response.status}`);
+		if (!response.ok) throw Object.assign(new Error(result.error || `Queue HTTP ${response.status}`), { status: response.status });
 		return result;
 	};
 }

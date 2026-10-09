@@ -53,6 +53,22 @@ try {
 	assert.deepEqual(report.jobs.map(job => job.status), ['saved', 'saved']);
 	assert.ok(report.jobs.every(job => job.result.conversion.quality.completeness.status === 'passed-heuristics'));
 	assert.equal(await page.locator('#error').isVisible(), false);
+	await page.getByRole('button', { name: 'Disconnect', exact: true }).click();
+	await page.getByText('Disconnected', { exact: true }).waitFor();
+	const oldKey = queue.key;
+	const originals = await Promise.all(report.jobs.map(job => readFile(job.result.output, 'utf8')));
+	// Editing the form must not redirect a reset of the connected service.
+	await page.locator('#endpoint').fill('http://127.0.0.1:1024');
+	page.once('dialog', dialog => dialog.accept());
+	await page.getByRole('button', { name: 'Reset pairing', exact: true }).click();
+	await page.locator('#pairing-notice').waitFor();
+	assert.notEqual(queue.key, oldKey);
+	assert.equal(await readFile(path.join(options.outputDir, 'pairing-key.txt'), 'utf8'), queue.key);
+	assert.equal((await fetch(`${queue.url}/v1/jobs`, { headers: { Authorization: `Bearer ${oldKey}` } })).status, 401);
+	assert.equal(await page.locator('#endpoint').inputValue(), queue.url);
+	assert.equal(await page.locator('#key').getAttribute('type'), 'password');
+	assert.ok(!(await page.locator('body').innerText()).includes(queue.key));
+	assert.deepEqual(await Promise.all(report.jobs.map(job => readFile(job.result.output, 'utf8'))), originals);
 	await page.locator('#key').fill('');
 	await page.setViewportSize({ width: 1280, height: 800 });
 	await page.screenshot({ path: path.join(directory, 'desktop.png'), fullPage: true });
@@ -64,7 +80,12 @@ try {
 	await page.close(); await second.reload();
 	await second.getByText('Connected', { exact: true }).waitFor({ timeout: 10000 });
 	assert.deepEqual(errors, []);
-	console.log(JSON.stringify({ status: 'passed', directory, checks: ['real extension capture', 'human fixture access pause/resume', 'automatic conversion', 'task-tab cleanup', 'unrelated tab retained', 'pairing reload', 'single controller', 'desktop/mobile layout', 'no page errors'] }, null, 2));
+	const externalReset = await fetch(`${queue.url}/v1/pairing/reset`, { method: 'POST', headers: { Authorization: `Bearer ${queue.key}`, 'Content-Type': 'application/json' }, body: '{}' });
+	assert.equal(externalReset.status, 200); await externalReset.json();
+	await second.getByText('Re-pair required', { exact: true }).waitFor({ timeout: 10000 });
+	assert.equal(await second.locator('#key').inputValue(), '');
+	assert.equal(await second.evaluate(async () => (await chrome.storage.local.get('paperQueuePairing')).paperQueuePairing), undefined);
+	console.log(JSON.stringify({ status: 'passed', directory, checks: ['real extension capture', 'human fixture access pause/resume', 'automatic conversion', 'task-tab cleanup', 'unrelated tab retained', 'pairing reset/reload', 'old key revoked', 'saved notes unchanged', 'single controller', 'desktop/mobile layout', 'no page errors'] }, null, 2));
 } finally {
 	await context?.close(); await queue?.close();
 	await new Promise(resolve => fixture.close(resolve));

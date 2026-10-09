@@ -27,11 +27,35 @@ node scripts/browser-queue.mjs "10.1038/s41592-025-02899-6" --download-assets
 ```
 
 Open **Paper queue** (clipboard-list icon) in the extension popup or sidebar.
-Enter the loopback endpoint and private pairing key printed by the local command,
+The terminal hides the key by default. For first pairing, explicitly view it in
+another terminal (add the same `--output-dir` if customized):
+
+```sh
+node scripts/browser-queue.mjs --show-pairing-key
+```
+
+This reads an existing key without starting a queue or creating one. Alternatively,
+add `--show-pairing-key` when starting a queue to opt into printing it.
+Enter the loopback endpoint and private pairing key in the extension,
 then Connect. The key is kept in extension **local**, not sync, storage and in
 `<output-dir>/pairing-key.txt`. Do not share it, screenshot it, or commit it.
 On Windows this file inherits the output directory's ACL: keep that directory
 private to your OS user. Forget pairing clears the extension copy only.
+
+### Reset An Exposed Key
+
+After updating, restart the local service and reload the development extension.
+In the paired queue page, click **Reset pairing** and confirm. The service replaces
+its key, updates this controller, and rejects the old key. Other controllers must
+re-pair. Claimed captures pause and require explicit Resume; a conversion already
+in progress blocks reset until it finishes. Saved notes and publisher login are
+unchanged. Use only one service per output directory, even on different ports.
+
+Updating code alone does not rotate an exposed key. Old terminal output or shared
+screenshots remain visible, so explicitly reset it. If the reset response is lost,
+view the current key explicitly and reconnect; do not retry blindly. Pairing files
+and any temporary key files are private local data. **Forget pairing** is not a
+server-key reset.
 
 Keep this queue page and the local command open. The page is a foreground task
 controller, not an always-running background service. Closing it stops acquisition;
