@@ -1,4 +1,10 @@
 {
+	"saveImageArchive": { "message": "下載 Markdown＋圖片 ZIP" },
+	"imageArchiveProgress": { "message": "正在下載圖片：$1 / $2" },
+	"imageArchiveReady": { "message": "已發起 ZIP 下載（$1 張圖片）。" },
+	"imageArchiveError_download": { "message": "未產生 ZIP：第 $1 張圖片下載失敗，可能需要登入、重新導向或更新連結。筆記未改動。" },
+	"imageArchiveError_unsupported": { "message": "未產生 ZIP：存在不支援的圖片網址、格式或 HTML 媒體。筆記未改動。" },
+	"imageArchiveError_limit": { "message": "未產生 ZIP：圖片數量或大小超過限制。筆記未改動。" },
 	"activity": {
 		"message": "活動"
 	},

@@ -32,6 +32,8 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Test queue service and snapshot client
         run: npm run test:browser-queue
+      - name: Test manual image archives
+        run: npx vitest run src/utils/image-archive.test.ts
       - name: Build development extension without cleanup
         run: npx webpack --env BROWSER=chrome --env SKIP_CLEANUP=true --mode development
       - name: Verify extension branding and packaged attribution
@@ -42,6 +44,8 @@ jobs:
         run: npm run test:browser-queue:e2e
       - name: Exercise branded settings and queue navigation
         run: node scripts/test-extension-brand-e2e.mjs
+      - name: Exercise manual image ZIP downloads
+        run: node scripts/test-image-archive-e2e.mjs
 
   core:
     name: Core / ${{ matrix.os }} / Node ${{ matrix.node }}

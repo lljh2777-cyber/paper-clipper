@@ -1,4 +1,10 @@
 {
+	"saveImageArchive": { "message": "Download Markdown + images ZIP" },
+	"imageArchiveProgress": { "message": "Downloading images: $1 / $2" },
+	"imageArchiveReady": { "message": "ZIP download requested ($1 images)." },
+	"imageArchiveError_download": { "message": "ZIP not created: image $1 could not be downloaded. It may require authentication, a redirect, or a fresh link. Your note is unchanged." },
+	"imageArchiveError_unsupported": { "message": "ZIP not created: unsupported image address, format, or HTML media. Your note is unchanged." },
+	"imageArchiveError_limit": { "message": "ZIP not created: image count or size limit exceeded. Your note is unchanged." },
 	"activity": {
 		"message": "Activity"
 	},

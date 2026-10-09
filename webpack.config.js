@@ -156,6 +156,7 @@ module.exports = (env, argv) => {
 					{ from: "LICENSE", to: "LICENSE.txt" },
 					{ from: "THIRD_PARTY_NOTICES.md", to: "THIRD_PARTY_NOTICES.md" },
 					{ from: "node_modules/lucide/LICENSE", to: "LICENSE-lucide.txt" },
+					{ from: "node_modules/fflate/LICENSE", to: "LICENSE-fflate.txt" },
 					{ from: "node_modules/webextension-polyfill/dist/browser-polyfill.min.js", to: "browser-polyfill.min.js" },
 					{ from: "src/flatten-shadow-dom.js", to: "flatten-shadow-dom.js" },
 					{

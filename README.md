@@ -9,6 +9,12 @@ and a DOI-deduplicated note into a chosen Vault. Existing notes are not overwrit
 Start with [Paper Agent](docs/paper-agent.md) for the command-line interface,
 local Codex Skill, installation instructions, limitations and validation results.
 
+For manual clipping without a local service, use the extension's save menu:
+**Download Markdown + images ZIP**. Extract the enclosing folder into your Vault
+to keep supported Markdown images beside the note. See
+[manual image archives](docs/manual-image-archive.md) for limits and failure handling.
+The existing Add to Obsidian and plain Markdown actions do not download images.
+
 The primary interactive route is now the [usual-browser queue](docs/browser-queue.md):
 pair the modified extension once, keep the browser open (the queue page may close), then run
 `npm run paper:browser -- "DOI" --download-assets`. Paper tabs are captured and

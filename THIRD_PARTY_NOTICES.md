@@ -46,6 +46,9 @@ Git history would not remove the requirement to retain applicable notices.
 
 ## Dependencies And Paper Content
 
+Manual image ZIP export uses fflate (MIT), copyright (c) 2026 Arjun Barrett.
+Extension builds include its full notice in `LICENSE-fflate.txt`.
+
 Third-party dependencies retain their respective licenses and notices. Consult
 their installed license files before distributing bundled dependencies or
 binaries. This document is attribution and scope guidance, not an exhaustive

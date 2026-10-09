@@ -21,6 +21,7 @@ import { memoizeWithExpiration } from '../utils/memoize';
 import { debounce } from '../utils/debounce';
 import { sanitizeFileName } from '../utils/string-utils';
 import { saveFile } from '../utils/file-utils';
+import { createImageArchive, downloadImageArchive, ImageArchiveError } from '../utils/image-archive';
 import { translatePage, getMessage, setupLanguageAndDirection } from '../utils/i18n';
 import { formatPropertyValue } from '../utils/shared';
 import { exportPageHtml } from '../utils/page-html-export';
@@ -1314,6 +1315,41 @@ async function handleSaveToDownloads() {
 	}
 }
 
+let imageArchiveBusy = false;
+async function handleSaveImageArchive() {
+	if (imageArchiveBusy) return;
+	imageArchiveBusy = true;
+	let status = document.getElementById('image-archive-status');
+	if (!status) {
+		status = document.createElement('div');
+		status.id = 'image-archive-status';
+		status.setAttribute('role', 'status');
+		status.style.cssText = 'padding:8px;overflow-wrap:anywhere;white-space:normal';
+		document.getElementById('clip-btn')?.parentElement?.before(status);
+	}
+	const button = document.getElementById('save-image-archive');
+	button?.setAttribute('aria-busy', 'true');
+	button?.setAttribute('aria-disabled', 'true');
+	document.getElementById('more-dropdown')?.classList.remove('show');
+	try {
+		const content = (document.getElementById('note-content-field') as HTMLTextAreaElement).value;
+		const title = (document.getElementById('note-name-field') as HTMLInputElement).value;
+		const frontmatter = await generateFrontmatter(getPropertiesFromDOM());
+		const tab = await getCurrentTabInfo();
+		const archive = await createImageArchive(frontmatter + content, title, tab.url,
+			(done, total) => { status!.textContent = getMessage('imageArchiveProgress', [String(done), String(total)]); });
+		downloadImageArchive(archive.bytes, archive.fileName);
+		status.textContent = getMessage('imageArchiveReady', String(archive.imageCount));
+	} catch (error) {
+		const reason = error instanceof ImageArchiveError ? error.reason : 'download';
+		status.textContent = getMessage(`imageArchiveError_${reason}`, String(error instanceof ImageArchiveError ? error.imageNumber : 0));
+	} finally {
+		imageArchiveBusy = false;
+		button?.removeAttribute('aria-busy');
+		button?.removeAttribute('aria-disabled');
+	}
+}
+
 function determineMainAction() {
 	const mainButton = document.getElementById('clip-btn');
 	const moreDropdown = document.getElementById('more-dropdown');
@@ -1346,6 +1382,7 @@ function determineMainAction() {
 			addSecondaryAction(secondaryActions, 'copyToClipboard', copyContent);
 			addSecondaryAction(secondaryActions, 'saveFile', handleSaveToDownloads);
 	}
+	addSecondaryAction(secondaryActions, 'saveImageArchive', handleSaveImageArchive);
 }
 
 async function handleClipObsidian(): Promise<void> {
@@ -1405,6 +1442,14 @@ async function handleClipObsidian(): Promise<void> {
 function addSecondaryAction(container: Element, actionType: string, handler: () => void) {
 	const menuItem = document.createElement('div');
 	menuItem.className = 'menu-item';
+	if (actionType === 'saveImageArchive') {
+		menuItem.id = 'save-image-archive';
+		menuItem.setAttribute('role', 'button');
+		menuItem.tabIndex = 0;
+		menuItem.addEventListener('keydown', event => {
+			if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); handler(); }
+		});
+	}
 	
 	// Create menu item icon container
 	const menuItemIcon = document.createElement('div');
@@ -1433,6 +1478,7 @@ function getActionIcon(actionType: string): string {
 	switch (actionType) {
 		case 'copyToClipboard': return 'copy';
 		case 'saveFile': return 'file-down';
+		case 'saveImageArchive': return 'archive';
 		case 'addToObsidian': return 'pen-line';
 		default: return 'plus';
 	}
