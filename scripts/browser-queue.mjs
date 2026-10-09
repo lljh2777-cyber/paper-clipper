@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
-import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createInterface } from 'node:readline';
 import { access, lstat, mkdir, mkdtemp, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -91,25 +92,68 @@ export async function readPairingKey(directory) {
 	return key;
 }
 
-async function body(request) {
+async function body(request, limit = maxBody) {
 	if (!/^application\/json(?:;|$)/i.test(request.headers['content-type'] ?? '')) throw new Error('JSON required.');
 	let size = 0; const chunks = [];
 	for await (const chunk of request) {
 		size += chunk.length;
-		if (size > maxBody) throw new Error('Request too large.');
+		if (size > limit) throw new Error('Request too large.');
 		chunks.push(chunk);
 	}
 	return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
 
+// Approval is deliberately a local function, not an HTTP endpoint.
+export function pairingHandshake({ onRequest, now = Date.now } = {}) {
+	let pending, lastRequest = -Infinity;
+	const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
+	const validate = (data, origin) => {
+		if (!data || typeof data.extensionId !== 'string' || typeof data.nonce !== 'string' || !/^[a-p]{32}$/.test(data.extensionId) || !/^[a-f0-9]{64}$/.test(data.nonce)) fail(400, 'Invalid pairing request.');
+		if (origin && origin !== `chrome-extension://${data.extensionId}`) fail(403, 'Pairing origin mismatch.');
+		if (pending && now() >= pending.expiresAt) pending = undefined;
+	};
+	const matches = data => pending?.extensionId === data.extensionId && timingSafeEqual(Buffer.from(pending.nonce), Buffer.from(data.nonce));
+	const summary = () => ({ status: pending.status, code: pending.code, expiresAt: pending.expiresAt });
+	return {
+		request(data, origin) {
+			validate(data, origin);
+			if (!onRequest) fail(503, 'Local confirmation unavailable. Start the queue in an interactive terminal, or use Advanced manual pairing.');
+			if (pending) { if (matches(data)) return summary(); fail(409, 'Another pairing request is pending. Wait for it to finish or expire.'); }
+			if (now() - lastRequest < 10000) fail(429, 'Wait 10 seconds before requesting pairing again.');
+			lastRequest = now();
+			pending = { extensionId: data.extensionId, nonce: data.nonce, code: String(randomInt(100000, 1000000)), expiresAt: now() + 120000, status: 'pending' };
+			onRequest({ extensionId: pending.extensionId, code: pending.code, expiresAt: pending.expiresAt });
+			return summary();
+		},
+		poll(data, origin, key) {
+			validate(data, origin);
+			if (!pending || !matches(data)) fail(410, 'Pairing request expired or no longer available. Click Connect again.');
+			const result = pending.status === 'approved' ? { status: 'approved', key } : summary();
+			if (pending.status !== 'pending') pending = undefined;
+			return result;
+		},
+		confirm(code, approve = true) {
+			if (!pending || pending.status !== 'pending' || now() >= pending.expiresAt || pending.code !== code) return false;
+			pending.status = approve ? 'approved' : 'denied'; return true;
+		},
+		clear() { pending = undefined; },
+	};
+}
+
+export function confirmPairingLine(line, confirm) {
+	const match = /^(?:(deny) )?(\d{6})$/.exec(line.trim());
+	return !!match && confirm(match[2], !match[1]);
+}
+
 // Jobs and output destinations originate only from the local command, never a web page.
-export async function startQueue(options, { resolve = resolvePaper, runPaper = savePaper, log = console.log } = {}) {
+export async function startQueue(options, { resolve = resolvePaper, runPaper = savePaper, log = console.log, onPairingRequest } = {}) {
 	const config = clipOptions(['sample.html', ...options.forward]);
 	await plainDirectory(options.outputDir);
 	if (config.archive) await validateVaultDestination(config.archive, [options.outputDir]);
 	await access(path.join(root, 'dist/cli.cjs'));
 	await mkdir(options.outputDir, { recursive: true });
 	let key = await pairingKey(options.outputDir), rotating = false;
+	const pairing = pairingHandshake({ onRequest: onPairingRequest });
 	const runDir = await mkdtemp(path.join(options.outputDir, 'queue-'));
 	const reportPath = path.join(runDir, 'report.json');
 	const jobs = [];
@@ -144,6 +188,14 @@ export async function startQueue(options, { resolve = resolvePaper, runPaper = s
 		if (request.method === 'OPTIONS') {
 			response.writeHead(204, { 'Access-Control-Allow-Origin': origin ?? '', 'Access-Control-Allow-Methods': 'GET, POST', 'Access-Control-Allow-Headers': 'Authorization, Content-Type', Vary: 'Origin' }); response.end(); return;
 		}
+		if (request.method === 'POST' && ['/v1/pairing/request', '/v1/pairing/status'].includes(request.url)) {
+			try {
+				const data = await body(request, 2048);
+				if (stopping || rotating) { reply(409, { error: 'Local queue is changing. Try pairing later.' }); return; }
+				reply(200, request.url.endsWith('/request') ? pairing.request(data, origin) : pairing.poll(data, origin, key));
+			} catch (error) { reply(error.status ?? 400, { error: error.message }); }
+			return;
+		}
 		const credential = Buffer.from((request.headers.authorization ?? '').replace(/^Bearer /, ''));
 		if (credential.length !== 64 || !timingSafeEqual(credential, Buffer.from(key))) { reply(401, { error: 'Pairing required.' }); return; }
 		const authenticatedKey = key;
@@ -164,6 +216,7 @@ export async function startQueue(options, { resolve = resolvePaper, runPaper = s
 					await writeFile(temporary, nextKey, { flag: 'wx', mode: 0o600 });
 					await rename(temporary, path.join(options.outputDir, 'pairing-key.txt'));
 					key = nextKey;
+					pairing.clear();
 					for (const job of jobs) {
 						if (job.status === 'claimed') { job.status = 'paused'; job.error = 'Pairing reset. Resume explicitly after checking the task tab.'; }
 						delete job.lease;
@@ -220,21 +273,31 @@ export async function startQueue(options, { resolve = resolvePaper, runPaper = s
 	server.headersTimeout = 10000;
 	await new Promise((resolveListen, reject) => { server.once('error', reject); server.listen(options.port, '127.0.0.1', resolveListen); });
 	return { url: `http://127.0.0.1:${server.address().port}`, get key() { return key; }, reportPath,
-		close: async () => { stopping = true; await new Promise(resolveClose => server.close(resolveClose)); await writes; } };
+		confirmPairing: (code, approve) => !stopping && !rotating && pairing.confirm(code, approve),
+		close: async () => { stopping = true; pairing.clear(); await new Promise(resolveClose => server.close(resolveClose)); await writes; } };
 }
 
 export function startupMessage(queue, showKey = false) {
-	return `Paper browser queue: ${queue.url}\n${showKey ? `Pairing key (private): ${queue.key}` : 'Pairing key: hidden. For first pairing, run this script with --show-pairing-key (and the same --output-dir).'}\nReport: ${queue.reportPath}\nOpen Paper queue in the extension and pair once. Ctrl+C stops the local service.`;
+	return `Paper browser queue: ${queue.url}\n${showKey ? `Pairing key (private): ${queue.key}` : 'Pairing key: hidden. Click Connect in Paper queue, then confirm its code in this terminal.'}\nReport: ${queue.reportPath}\nExisting pairing is remembered. Advanced manual pairing: --show-pairing-key. Ctrl+C stops the local service.`;
 }
 
 export async function main(args = process.argv.slice(2)) {
 	const options = parseOptions(args);
 	if (options.help) { console.log(usage); return; }
 	if (options.showKeyOnly) { console.log(`Pairing key (private): ${await readPairingKey(options.outputDir)}`); return; }
-	const queue = await startQueue(options);
-	console.log(startupMessage(queue, options.showPairingKey));
-	await new Promise(resolve => { const stop = () => { process.off('SIGINT', stop); process.off('SIGTERM', stop); resolve(); }; process.once('SIGINT', stop); process.once('SIGTERM', stop); });
-	await queue.close();
+	const terminal = process.stdin.isTTY ? createInterface({ input: process.stdin, output: process.stdout }) : undefined;
+	let queue;
+	try {
+		queue = await startQueue(options, { onPairingRequest: terminal ? ({ extensionId, code }) => {
+			console.log(`\nPairing request from extension ${extensionId}\nCompare code ${code} with Paper queue. Only if they match, enter ${code} and press Enter.\nTo deny: deny ${code}. Expires in 2 minutes. No key is displayed.`);
+		} : undefined });
+		terminal?.on('line', line => { console.log(confirmPairingLine(line, queue.confirmPairing) ? 'Pairing decision recorded.' : 'No matching pending request. Enter its 6-digit code, or deny CODE.'); });
+		console.log(startupMessage(queue, options.showPairingKey));
+		await new Promise(resolve => {
+			const stop = () => { process.off('SIGINT', stop); process.off('SIGTERM', stop); terminal?.off('SIGINT', stop); resolve(); };
+			process.once('SIGINT', stop); process.once('SIGTERM', stop); terminal?.once('SIGINT', stop);
+		});
+	} finally { terminal?.close(); await queue?.close(); }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {

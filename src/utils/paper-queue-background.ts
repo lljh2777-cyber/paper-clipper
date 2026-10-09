@@ -1,21 +1,23 @@
 import browser from './browser-polyfill';
-import { OwnedPaperTab, PaperTaskTab, queueApi, queueEndpoint, QueueJob } from './paper-queue-client';
+import { OwnedPaperTab, PaperTaskTab, pairingRequest, queueApi, queueEndpoint, QueueJob } from './paper-queue-client';
 
 const alarmName = 'paper-queue-poll';
 type Pairing = { endpoint: string; key: string; enabled?: boolean };
 type Pending = { jobId: string; lease: string; phase: 'capturing' | 'submitting' | 'pausing'; reason?: string };
-type View = { status: string; jobs: QueueJob[]; busy: boolean; error?: string; endpoint?: string };
+type PairingDraft = { endpoint: string; nonce: string; code: string; expiresAt: number };
+type View = { status: string; jobs: QueueJob[]; busy: boolean; error?: string; endpoint?: string; pairingCode?: string };
 const terminal = new Set(['saved', 'duplicate', 'failed', 'cancelled', 'existing-unverified']);
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 const code = (error: unknown) => error && typeof error === 'object' && 'status' in error ? error.status : undefined;
 
 export class PaperQueueController {
 	private busy = false;
+	private pairingAttempt = 0;
 	private view: View = { status: 'Disconnected', jobs: [], busy: false };
 	constructor(private tabs = new PaperTaskTab(undefined, {
 		load: async () => (await browser.storage.session.get('paperQueueTab')).paperQueueTab as OwnedPaperTab | undefined,
 		save: async value => { if (value) await browser.storage.session.set({ paperQueueTab: value }); else await browser.storage.session.remove('paperQueueTab'); },
-	}), private makeApi = queueApi) {}
+	}), private makeApi = queueApi, private pair = pairingRequest) {}
 	private async pairing(): Promise<Pairing | undefined> { return (await browser.storage.local.get('paperQueuePairing')).paperQueuePairing as Pairing | undefined; }
 	private async pending(): Promise<Pending | undefined> { return (await browser.storage.local.get('paperQueuePending')).paperQueuePending as Pending | undefined; }
 	private async remember(value?: Pending) {
@@ -25,7 +27,39 @@ export class PaperQueueController {
 		this.view = { ...this.view, ...change, busy: this.busy };
 		await browser.storage.session.set({ paperQueueView: this.view });
 	}
-	async status(): Promise<View> { return { ...this.view, busy: this.busy }; }
+	async status(): Promise<View> {
+		const draft = (await browser.storage.session.get('paperQueuePairingDraft')).paperQueuePairingDraft as PairingDraft | undefined;
+		return { ...this.view, busy: this.busy, ...(draft ? { status: 'Awaiting local confirmation', pairingCode: draft.code, endpoint: draft.endpoint } : { pairingCode: undefined }) };
+	}
+	private async requestPairing(endpoint: string) {
+		const attempt = ++this.pairingAttempt;
+		const nonce = Array.from(crypto.getRandomValues(new Uint8Array(32)), byte => byte.toString(16).padStart(2, '0')).join('');
+		const result = await this.pair(endpoint, 'request', nonce);
+		if (attempt !== this.pairingAttempt) return;
+		if (result.status !== 'pending' || !/^\d{6}$/.test(result.code ?? '') || !Number.isFinite(result.expiresAt)) throw new Error('Invalid local pairing response.');
+		await browser.storage.session.set({ paperQueuePairingDraft: { endpoint, nonce, code: result.code, expiresAt: result.expiresAt } });
+		await this.publish({ status: 'Awaiting local confirmation', endpoint, error: undefined });
+	}
+	private async pollPairing() {
+		const attempt = this.pairingAttempt;
+		const draft = (await browser.storage.session.get('paperQueuePairingDraft')).paperQueuePairingDraft as PairingDraft | undefined;
+		if (!draft) return;
+		try {
+			if (Date.now() >= draft.expiresAt) throw new Error('Pairing request expired. Click Connect again.');
+			const result = await this.pair(draft.endpoint, 'status', draft.nonce);
+			if (attempt !== this.pairingAttempt) return;
+			if (result.status === 'pending') return;
+			if (result.status !== 'approved' || !/^[a-f0-9]{64}$/.test(result.key ?? '')) throw new Error('Pairing was denied.');
+			await browser.storage.local.set({ paperQueuePairing: { endpoint: draft.endpoint, key: result.key, enabled: true } });
+			await browser.storage.session.remove('paperQueuePairingDraft');
+			await this.publish({ status: 'Connected', endpoint: draft.endpoint, error: undefined });
+			await this.ensureAlarm();
+		} catch (error) {
+			await browser.storage.session.remove('paperQueuePairingDraft');
+			await this.publish({ status: 'Disconnected', error: message(error) });
+			throw error;
+		}
+	}
 	private async failed(error: unknown) {
 		if (code(error) === 401) {
 			await browser.storage.local.remove('paperQueuePairing'); await browser.alarms.clear(alarmName);
@@ -91,6 +125,8 @@ export class PaperQueueController {
 		if (request.op === 'status') return this.status();
 		if (request.op === 'open' && request.jobId) { await this.tabs.focus(request.jobId); return this.status(); }
 		if (request.op === 'disconnect') {
+			this.pairingAttempt++;
+			await browser.storage.session.remove('paperQueuePairingDraft');
 			const pairing = await this.pairing();
 			if (pairing) await browser.storage.local.set({ paperQueuePairing: { ...pairing, enabled: false } });
 			await browser.alarms.clear(alarmName);
@@ -100,13 +136,25 @@ export class PaperQueueController {
 		this.busy = true;
 		try {
 			const pairing = await this.pairing();
-			if (request.op === 'connect') {
-				const endpoint = queueEndpoint(request.endpoint ?? ''), key = request.key ?? '';
+			if (request.op === 'pair-status') {
+				await this.pollPairing();
+			} else if (request.op === 'connect') {
+				const endpoint = queueEndpoint(request.endpoint ?? 'http://127.0.0.1:43127');
+				const key = request.key || (pairing?.endpoint === endpoint ? pairing.key : '');
+				if (!key) {
+					if (pairing) await browser.storage.local.set({ paperQueuePairing: { ...pairing, enabled: false } });
+					await browser.alarms.clear(alarmName);
+					await this.publish({ status: 'Disconnected', endpoint, jobs: [], error: undefined });
+					await this.requestPairing(endpoint); return this.status();
+				}
 				const result = await this.makeApi(endpoint, key)('/v1/jobs');
+				await browser.storage.session.remove('paperQueuePairingDraft');
 				await browser.storage.local.set({ paperQueuePairing: { endpoint, key, enabled: true } });
 				await this.publish({ status: 'Connected', endpoint, jobs: result.jobs, error: undefined });
 				await this.ensureAlarm();
 			} else if (request.op === 'forget') {
+				this.pairingAttempt++;
+				await browser.storage.session.remove('paperQueuePairingDraft');
 				await browser.storage.local.remove('paperQueuePairing'); await browser.alarms.clear(alarmName);
 				await this.publish({ status: 'Disconnected', jobs: [], error: undefined });
 			} else {
@@ -128,7 +176,8 @@ export class PaperQueueController {
 				} else throw new Error('Unknown queue command.');
 			}
 			return this.status();
-		} finally { this.busy = false; await this.publish({}); }
+		} catch (error) { await this.publish({ error: message(error) }); throw error; }
+		finally { this.busy = false; await this.publish({}); }
 	}
 	async ensureAlarm() {
 		const pairing = await this.pairing();
@@ -158,7 +207,7 @@ export function installPaperQueueBackground() {
 		if (!isQueueSender(sender)) return Promise.resolve({ error: 'Queue controls require the extension queue page.' });
 		if (!('op' in request) || typeof request.op !== 'string') return Promise.resolve({ error: 'Invalid queue command.' });
 		return controller.command(request as { op: string }).then(state => {
-			if (['connect', 'resume', 'skip', 'reset'].includes(request.op as string)) wake();
+			if (!state.pairingCode && ['connect', 'pair-status', 'resume', 'skip', 'reset'].includes(request.op as string)) wake();
 			return { state };
 		}).catch(error => ({ error: message(error) }));
 	});

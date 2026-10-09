@@ -27,8 +27,29 @@ node scripts/browser-queue.mjs "10.1038/s41592-025-02899-6" --download-assets
 ```
 
 Open **Paper queue** (clipboard-list icon) in the extension popup or sidebar.
-The terminal hides the key by default. For first pairing, explicitly view it in
-another terminal (add the same `--output-dir` if customized):
+Click **Connect**. The default address is already filled. Compare the 6-digit
+confirmation code in the extension with the request printed in the local terminal,
+then enter that code in the terminal and press Enter. The extension receives and
+remembers the private key automatically; no second terminal or key copying is
+needed. To refuse a request, enter `deny CODE`. Do not approve an unexpected request.
+
+Requests expire after two minutes and grants can be collected only once by the
+requesting client. Approval has no HTTP endpoint. Other requests cannot replace
+an outstanding request. The code verifies the request; it is not the pairing key.
+Keep the queue page open until the initial confirmation finishes. Existing pairing
+is reused on subsequent connections without another code.
+
+Automatic pairing requires interactive terminal input (TTY). An Agent may start
+the queue in a PTY, but must obtain explicit human confirmation of the displayed
+request before entering its code. It must not automatically approve requests.
+Noninteractive services reject new automatic pairings; already-paired acquisition
+works normally. No additional browser permission is needed for this change.
+
+### Advanced Manual Pairing
+
+For custom ports, expand **Advanced** and edit Local endpoint. Manual keys remain
+an explicit fallback for older/noninteractive services. To view an existing key
+(add the same `--output-dir` if customized):
 
 ```sh
 node scripts/browser-queue.mjs --show-pairing-key
@@ -36,8 +57,8 @@ node scripts/browser-queue.mjs --show-pairing-key
 
 This reads an existing key without starting a queue or creating one. Alternatively,
 add `--show-pairing-key` when starting a queue to opt into printing it.
-Enter the loopback endpoint and private pairing key in the extension,
-then Connect. The key is kept in extension **local**, not sync, storage and in
+Enter it under **Advanced > Manual pairing key**, then Connect.
+The key is kept in extension **local**, not sync, storage and in
 `<output-dir>/pairing-key.txt`. Do not share it, screenshot it, or commit it.
 On Windows this file inherits the output directory's ACL: keep that directory
 private to your OS user. Forget pairing clears the extension copy only.
@@ -53,7 +74,7 @@ unchanged. Use only one service per output directory, even on different ports.
 
 Updating code alone does not rotate an exposed key. Old terminal output or shared
 screenshots remain visible, so explicitly reset it. If the reset response is lost,
-view the current key explicitly and reconnect; do not retry blindly. Pairing files
+request a new locally confirmed pairing or use Advanced; do not retry blindly. Pairing files
 and any temporary key files are private local data. **Forget pairing** is not a
 server-key reset.
 
@@ -136,6 +157,11 @@ operations, checks Host and extension Origin, and exposes no browser-accessible
 enqueue or filesystem-path API. Jobs and output options come from the explicit
 local command, never page DOM/messages. Background control messages are accepted
 only from this extension's exact queue page, never publisher content scripts.
+Initial pairing endpoints accept only bounded JSON with a 256-bit requester nonce,
+check browser origins and extension identity when Origin is present, and require
+local human approval before releasing a key. They never expose jobs or approval
+over HTTP. Local OS processes can construct headers and are not isolated by CORS;
+keep the key directory private and approve only a matching request you initiated.
 Pairing grants the extension access to this queue; keep that build trusted.
 
 Tests use synthetic captures and local fixture pages only. They do not prove

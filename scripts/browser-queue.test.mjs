@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { request as httpRequest } from 'node:http';
-import { startQueue, parseOptions, readPairingKey, startupMessage } from './browser-queue.mjs';
+import { startQueue, parseOptions, readPairingKey, startupMessage, pairingHandshake, confirmPairingLine } from './browser-queue.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const paragraph = 'This research compares tissue expression and spatial organization across biological samples. '.repeat(100);
@@ -27,6 +27,73 @@ test('queue rejects unsafe arguments and preserves default quality thresholds', 
 	for (const args of [[], ['10.1234/test', '--port', '0'], ['10.1234/test', '--overwrite'], ['10.1234/test', '--fetch', 'browser'], ['file:///private']]) assert.throws(() => parseOptions(args));
 	assert.deepEqual(parseOptions(['--help']), { help: true });
 	assert.ok(parseOptions(['10.1234/test']).forward.includes('1000'));
+});
+
+const pairData = { extensionId: 'a'.repeat(32), nonce: 'b'.repeat(64) };
+const pairHeaders = { Authorization: '', Origin: `chrome-extension://${pairData.extensionId}` };
+test('automatic pairing requires local approval and delivers the key once to the exact requester', async () => {
+	const prompts = [], s = await setup(undefined, [], { onPairingRequest: info => prompts.push(info) });
+	try {
+		const pending = await s.request('/v1/pairing/request', pairData, pairHeaders);
+		assert.equal(pending.data.status, 'pending'); assert.equal(pending.data.key, undefined);
+		assert.equal(prompts.length, 1); assert.equal(prompts[0].nonce, undefined);
+		assert.equal((await s.request('/v1/pairing/status', pairData, pairHeaders)).data.key, undefined);
+		assert.equal((await s.request('/v1/pairing/approve', { code: pending.data.code }, pairHeaders)).status, 401);
+		assert.equal((await s.request('/v1/jobs', undefined, pairHeaders)).status, 401);
+		assert.equal((await s.request('/v1/pairing/request', { ...pairData, nonce: 'c'.repeat(64) }, pairHeaders)).status, 409);
+		assert.equal((await s.request('/v1/pairing/status', { ...pairData, nonce: 'c'.repeat(64) }, pairHeaders)).status, 410);
+		assert.equal(confirmPairingLine('yes', s.confirmPairing), false);
+		assert.equal(confirmPairingLine(pending.data.code, s.confirmPairing), true);
+		const approved = await s.request('/v1/pairing/status', pairData, pairHeaders);
+		assert.equal(approved.data.status, 'approved'); assert.equal(approved.data.key, s.key);
+		assert.equal((await s.request('/v1/pairing/status', pairData, pairHeaders)).status, 410);
+		assert.equal((await s.request('/v1/pairing/request', pairData, pairHeaders)).status, 429);
+		for (const value of [s.key, pairData.nonce]) {
+			assert.ok(!JSON.stringify(prompts).includes(value)); assert.ok(!(await readFile(s.reportPath, 'utf8')).includes(value));
+		}
+	} finally { await s.close(); }
+});
+
+test('pairing rejects web/null/mismatched origins, malformed bodies and oversized input', async () => {
+	const s = await setup(undefined, [], { onPairingRequest: () => {} });
+	try {
+		for (const Origin of ['https://example.org', 'null', `chrome-extension://${'c'.repeat(32)}`]) {
+			assert.equal((await s.request('/v1/pairing/request', pairData, { ...pairHeaders, Origin })).status, 403);
+		}
+		for (const body of [null, {}, { ...pairData, extensionId: ['a'.repeat(32)] }, { ...pairData, nonce: 'x' }, { ...pairData, extra: 'x'.repeat(3000) }]) {
+			assert.equal((await s.request('/v1/pairing/request', body, pairHeaders)).status, 400);
+		}
+	} finally { await s.close(); }
+});
+
+test('noninteractive services never silently grant automatic pairing', async () => {
+	const s = await setup();
+	try { assert.equal((await s.request('/v1/pairing/request', pairData, pairHeaders)).status, 503); }
+	finally { await s.close(); }
+});
+
+test('pairing expiration cannot be extended by polling or repeated requests; denial grants no key', () => {
+	let now = 1000; const h = pairingHandshake({ now: () => now, onRequest: () => {} });
+	const request = h.request(pairData);
+	now += 110000;
+	assert.equal(h.request(pairData).expiresAt, request.expiresAt);
+	assert.equal(h.poll(pairData, undefined, 'private').status, 'pending');
+	now += 10000;
+	assert.equal(h.confirm(request.code), false);
+	assert.throws(() => h.poll(pairData, undefined, 'private'), { status: 410 });
+	const next = h.request(pairData);
+	assert.equal(confirmPairingLine(`deny ${next.code}`, h.confirm), true);
+	const denied = h.poll(pairData, undefined, 'private'); assert.equal(denied.status, 'denied'); assert.equal(denied.key, undefined);
+});
+
+test('key reset invalidates a pending or approved pairing grant', async () => {
+	const s = await setup(undefined, [], { onPairingRequest: () => {} });
+	try {
+		const pending = await s.request('/v1/pairing/request', pairData, pairHeaders);
+		assert.equal(s.confirmPairing(pending.data.code), true);
+		assert.equal((await s.request('/v1/pairing/reset', {})).status, 200);
+		assert.equal((await s.request('/v1/pairing/status', pairData, pairHeaders)).status, 410);
+	} finally { await s.close(); }
 });
 
 test('loopback service requires pairing, rejects web origins and offers no remote enqueue', async () => {

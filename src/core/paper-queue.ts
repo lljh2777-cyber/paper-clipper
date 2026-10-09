@@ -11,7 +11,7 @@ const showError = (error: unknown) => { errorBox.hidden = false; errorBox.textCo
 let busy = false;
 
 async function command(op: string, data: Record<string, string> = {}) {
-	const result = await browser.runtime.sendMessage({ action: 'paperQueue', op, ...data }) as { error?: string; state: { status: string; jobs: QueueJob[]; busy: boolean; error?: string } } | undefined;
+	const result = await browser.runtime.sendMessage({ action: 'paperQueue', op, ...data }) as { error?: string; state: { status: string; jobs: QueueJob[]; busy: boolean; error?: string; pairingCode?: string } } | undefined;
 	if (!result || result.error) throw new Error(result?.error ?? 'Background queue unavailable. Reload the updated extension.');
 	return result.state;
 }
@@ -51,8 +51,12 @@ function render(jobs: QueueJob[]) {
 }
 
 async function refresh() {
-	const state = await command('status');
+	let state = await command('status');
+	if (state.pairingCode && !state.busy) state = await command('pair-status');
 	busy = state.busy; status.textContent = state.status; render(state.jobs);
+	const confirmation = document.getElementById('pair-code')!;
+	confirmation.hidden = !state.pairingCode; confirmation.textContent = state.pairingCode ? `Confirmation code: ${state.pairingCode}` : '';
+	(document.querySelector('button[type="submit"]') as HTMLButtonElement).disabled = busy || !!state.pairingCode;
 	(document.getElementById('reset-pairing') as HTMLButtonElement).disabled = busy;
 	(document.getElementById('forget') as HTMLButtonElement).disabled = busy;
 	if (state.error) showError(new Error(state.error)); else errorBox.hidden = true;
@@ -86,7 +90,7 @@ icons();
 async function loadPairing() {
 	const saved = (await browser.storage.local.get('paperQueuePairing')).paperQueuePairing as { endpoint?: unknown; key?: unknown } | undefined;
 	if (saved && typeof saved.endpoint === 'string' && typeof saved.key === 'string') {
-		endpoint.value = saved.endpoint; key.value = saved.key;
+		endpoint.value = saved.endpoint; key.value = '';
 	} else key.value = '';
 }
 // Views never claim or capture. Closing every view leaves the background controller running.

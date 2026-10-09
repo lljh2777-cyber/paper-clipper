@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import browser from './browser-polyfill';
 import { PaperQueueController, isQueueSender } from './paper-queue-background';
-import { PaperTaskTab, QueueJob } from './paper-queue-client';
+import { PaperTaskTab, pairingRequest, QueueJob } from './paper-queue-client';
 
 vi.mock('./browser-polyfill', () => ({ default: {
 	storage: { local: { get: vi.fn(), set: vi.fn(), remove: vi.fn() }, session: { get: vi.fn(), set: vi.fn(), remove: vi.fn() } },
@@ -13,8 +13,10 @@ let local: Record<string, any>, session: Record<string, any>, jobs: QueueJob[], 
 const endpoint = 'http://127.0.0.1:43127', key = 'a'.repeat(64);
 const tab = () => ({ snapshot: vi.fn().mockResolvedValue({ html: 'synthetic' }), owns: vi.fn().mockResolvedValue(true), reconcile: vi.fn(), finish: vi.fn(), focus: vi.fn() });
 let api: ReturnType<typeof vi.fn<(route: string, data?: any) => Promise<any>>>;
+let pair: ReturnType<typeof vi.fn<typeof pairingRequest>>;
 beforeEach(() => {
 	vi.resetAllMocks(); local = { paperQueuePairing: { endpoint, key } }; session = {}; captures = 0;
+	pair = vi.fn().mockResolvedValue({ status: 'pending', code: '123456', expiresAt: Date.now() + 120000 });
 	jobs = [{ id: 'abcd', query: '10.1234/test', url: 'https://example.org/paper', status: 'queued' }];
 	for (const [area, values] of [[browser.storage.local, local], [browser.storage.session, session]] as const) {
 		vi.mocked(area.get).mockImplementation(async name => ({ [name as string]: structuredClone(values[name as string]) }));
@@ -32,7 +34,50 @@ beforeEach(() => {
 		return {};
 	});
 });
-const controller = (tabs = tab()) => new PaperQueueController(tabs as unknown as PaperTaskTab, () => api);
+const controller = (tabs = tab()) => new PaperQueueController(tabs as unknown as PaperTaskTab, () => api, pair);
+
+it('first Connect requests approval without a key and saves it only after confirmation', async () => {
+	delete local.paperQueuePairing;
+	const c = controller(); await c.command({ op: 'connect' });
+	expect(pair).toHaveBeenCalledWith(endpoint, 'request', expect.stringMatching(/^[a-f0-9]{64}$/));
+	expect(local.paperQueuePairing).toBeUndefined();
+	expect((await c.status()).pairingCode).toBe('123456');
+	expect(JSON.stringify(await c.status())).not.toContain(session.paperQueuePairingDraft.nonce);
+	await c.command({ op: 'pair-status' }); expect(local.paperQueuePairing).toBeUndefined();
+	pair.mockResolvedValue({ status: 'approved', key });
+	await controller().command({ op: 'pair-status' });
+	expect(local.paperQueuePairing).toEqual({ endpoint, key, enabled: true });
+	expect(session.paperQueuePairingDraft).toBeUndefined();
+	await controller().wake(); expect(captures).toBe(1);
+});
+
+it('subsequent Connect reuses stored credentials without asking for another approval', async () => {
+	await controller().command({ op: 'connect', endpoint });
+	expect(pair).not.toHaveBeenCalled(); expect(local.paperQueuePairing.enabled).toBe(true);
+});
+
+it('denied, expired or malformed approvals never save a key', async () => {
+	delete local.paperQueuePairing;
+	for (const result of [{ status: 'denied' }, { status: 'approved', key: 'invalid' }]) {
+		pair.mockResolvedValue({ status: 'pending', code: '123456', expiresAt: Date.now() + 120000 });
+		const c = controller(); await c.command({ op: 'connect' }); pair.mockResolvedValue(result);
+		await expect(c.command({ op: 'pair-status' })).rejects.toThrow(); expect(local.paperQueuePairing).toBeUndefined();
+	}
+	session.paperQueuePairingDraft = { endpoint, nonce: 'a'.repeat(64), code: '123456', expiresAt: 0 };
+	await expect(controller().command({ op: 'pair-status' })).rejects.toThrow(/expired/);
+	expect(session.paperQueuePairingDraft).toBeUndefined();
+});
+
+it('disconnect while approval is in flight cannot silently reconnect', async () => {
+	delete local.paperQueuePairing;
+	const c = controller(); await c.command({ op: 'connect' });
+	let finish!: (value: { status: string; key: string }) => void;
+	pair.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+	const polling = c.command({ op: 'pair-status' });
+	await vi.waitFor(() => expect(finish).toBeDefined());
+	await c.command({ op: 'disconnect' }); finish({ status: 'approved', key }); await polling;
+	expect(local.paperQueuePairing).toBeUndefined(); expect(session.paperQueuePairingDraft).toBeUndefined();
+});
 
 it('runs without any view and serializes concurrent wakeups', async () => {
 	const c = controller(); await Promise.all([c.wake(), c.wake(), c.wake()]);

@@ -30,8 +30,12 @@ or run the entry point with `--help`. Do not load the whole repository routinely
 - Prefer the usual-browser extension queue for interactive acquisition when the
   user wants to reuse their normal browser login. Read `docs/browser-queue.md` in
   the runtime repository and invoke `scripts/browser-queue.mjs` there with the
-  configured Node executable. The user must pair and keep the extension queue
-  page open. Do not silently use HTTP or the dedicated browser if it is absent.
+  configured Node executable. Keep the browser open; after pairing, the extension
+  queue page can close. First pairing uses Connect plus a matching 6-digit code
+  confirmed in the local terminal. Start with an interactive PTY when first
+  pairing is needed. Never enter an approval code automatically: obtain explicit
+  human confirmation of that request first. Do not expose the long-lived key.
+  Do not silently use HTTP or the dedicated browser if the extension is absent.
   This is a long-running interactive command, not the single-JSON entry point
   below; report its queue result, stop owned local services when finished, and
   leave human login/verification to the user. Preserve the standalone entry

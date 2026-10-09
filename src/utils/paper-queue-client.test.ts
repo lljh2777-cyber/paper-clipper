@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { beforeEach, expect, it, vi } from 'vitest';
 import browser from './browser-polyfill';
-import { OwnedPaperTab, PaperTaskTab, probePaperPage, queueApi, queueEndpoint } from './paper-queue-client';
+import { OwnedPaperTab, PaperTaskTab, pairingRequest, probePaperPage, queueApi, queueEndpoint } from './paper-queue-client';
 
 vi.mock('./browser-polyfill', () => ({ default: {
 	tabs: { create: vi.fn(), get: vi.fn(), remove: vi.fn(), update: vi.fn() },
 	windows: { update: vi.fn() }, scripting: { executeScript: vi.fn() },
+	runtime: { id: 'a'.repeat(32) },
 } }));
 vi.mock('./file-utils', () => ({ saveFile: vi.fn() }));
 const url = 'https://example.org/paper';
@@ -22,6 +23,15 @@ beforeEach(() => {
 it('accepts only fixed loopback endpoints without URL credentials, paths or fragments', () => {
 	for (const value of ['https://127.0.0.1:43127', 'http://localhost:43127', 'http://127.0.0.1:43127/private', 'http://127.0.0.1:43127#key', 'http://u:p@127.0.0.1:43127', 'https://example.org']) expect(() => queueEndpoint(value)).toThrow();
 	expect(queueEndpoint('http://127.0.0.1:43127/')).toBe('http://127.0.0.1:43127');
+});
+
+it('pairing exchanges a one-time nonce only with loopback and never sends existing keys or cookies', async () => {
+	const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ status: 'pending', code: '123456' }) }); vi.stubGlobal('fetch', fetchMock);
+	await pairingRequest('http://127.0.0.1:43127', 'request', 'b'.repeat(64));
+	expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:43127/v1/pairing/request', expect.objectContaining({ credentials: 'omit', redirect: 'error',
+		headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ extensionId: 'a'.repeat(32), nonce: 'b'.repeat(64) }) }));
+	await expect(pairingRequest('https://example.org', 'request', 'b'.repeat(64))).rejects.toThrow();
+	expect(fetchMock).toHaveBeenCalledTimes(1);
 });
 
 it('sends a bearer token only to the loopback service, never browser cookies or redirect credentials', async () => {

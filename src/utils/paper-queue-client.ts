@@ -25,6 +25,16 @@ export function queueApi(endpoint: string, key: string) {
 	};
 }
 
+export async function pairingRequest(endpoint: string, action: 'request' | 'status', nonce: string) {
+	const response = await fetch(`${queueEndpoint(endpoint)}/v1/pairing/${action}`, {
+		method: 'POST', signal: AbortSignal.timeout(10000), credentials: 'omit', redirect: 'error', cache: 'no-store',
+		headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ extensionId: browser.runtime.id, nonce }),
+	});
+	const result = await response.json();
+	if (!response.ok) throw new Error(result.error || `Pairing HTTP ${response.status}`);
+	return result as { status: string; code?: string; expiresAt?: number; key?: string };
+}
+
 // Serialized into the task tab only. Readiness is not a content acceptance check.
 export function probePaperPage() {
 	const title = document.title.trim();

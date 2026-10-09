@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-import { startQueue, parseOptions } from './browser-queue.mjs';
+import { startQueue, parseOptions, confirmPairingLine } from './browser-queue.mjs';
 import { savePaper } from './save-paper.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -23,15 +23,16 @@ const fixture = createServer((request, response) => {
 await new Promise(resolve => fixture.listen(0, '127.0.0.1', resolve));
 const base = `http://127.0.0.1:${fixture.address().port}`;
 const options = parseOptions([`${base}/paper`, `${base}/restricted`, '-o', path.join(directory, 'output')]); options.port = 0;
-let queue, context;
+let queue, context, pairingPrompt;
 async function until(check, timeout = 90000) {
 	const deadline = Date.now() + timeout;
 	while (Date.now() < deadline) { if (await check()) return; await new Promise(resolve => setTimeout(resolve, 250)); }
 	throw new Error('Timed out waiting for background queue state.');
 }
-const reportNow = async () => JSON.parse(await readFile(queue.reportPath, 'utf8'));
+// Poll the structured API; the retained report may be mid-write during conversion.
+const reportNow = async () => (await fetch(`${queue.url}/v1/jobs`, { headers: { Authorization: `Bearer ${queue.key}` } })).json();
 try {
-	queue = await startQueue(options, { log: () => {} });
+	queue = await startQueue(options, { log: () => {}, onPairingRequest: info => { pairingPrompt = info; } });
 	const extension = path.join(root, 'dev');
 	await mkdir(path.join(directory, 'profile'));
 	context = await chromium.launchPersistentContext(path.join(directory, 'profile'), { channel: 'chromium', headless: true,
@@ -49,8 +50,22 @@ try {
 	page.on('console', message => { if (['error', 'warning'].includes(message.type())) errors.push(message.text()); });
 	await page.goto(`chrome-extension://${id}/paper-queue.html`);
 	assert.equal(await page.title(), 'Paper Clipper | Browser Queue');
-	await page.locator('#endpoint').fill(queue.url); await page.locator('#key').fill(queue.key);
+	assert.equal(await page.locator('#advanced-pairing').getAttribute('open'), null);
+	await page.locator('#advanced-pairing summary').click();
+	await page.locator('#endpoint').fill(queue.url);
+	await page.locator('#advanced-pairing summary').click();
 	await page.getByRole('button', { name: 'Connect', exact: true }).click();
+	await page.locator('#pair-code').waitFor();
+	assert.match(await page.locator('#pair-code').innerText(), new RegExp(pairingPrompt.code));
+	assert.equal(await page.evaluate(async () => (await chrome.storage.local.get('paperQueuePairing')).paperQueuePairing), undefined);
+	assert.equal((await reportNow()).jobs[0].status, 'queued');
+	await page.setViewportSize({ width: 1280, height: 800 });
+	await page.screenshot({ path: path.join(directory, 'pairing-desktop.png'), fullPage: true });
+	await page.setViewportSize({ width: 390, height: 844 });
+	assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+	await page.screenshot({ path: path.join(directory, 'pairing-mobile.png'), fullPage: true });
+	assert.equal(confirmPairingLine('000000', queue.confirmPairing), false);
+	assert.equal(confirmPairingLine(pairingPrompt.code, queue.confirmPairing), true);
 	await until(async () => (await reportNow()).jobs[0].status === 'claimed' && !!releasePaper);
 	await page.close();
 	assert.equal(context.pages().some(tab => tab.url().endsWith('/paper-queue.html')), false);
@@ -97,6 +112,7 @@ try {
 	const oldKey = queue.key;
 	const originals = await Promise.all(report.jobs.map(job => readFile(job.result.output, 'utf8')));
 	// Editing the form must not redirect a reset of the connected service.
+	await page.locator('#advanced-pairing summary').click();
 	await page.locator('#endpoint').fill('http://127.0.0.1:1024');
 	page.once('dialog', dialog => dialog.accept());
 	await page.getByRole('button', { name: 'Reset pairing', exact: true }).click();
@@ -109,6 +125,7 @@ try {
 	assert.ok(!(await page.locator('body').innerText()).includes(queue.key));
 	assert.deepEqual(await Promise.all(report.jobs.map(job => readFile(job.result.output, 'utf8'))), originals);
 	await page.locator('#key').fill('');
+	await page.locator('#advanced-pairing summary').click();
 	await page.setViewportSize({ width: 1280, height: 800 });
 	await page.screenshot({ path: path.join(directory, 'desktop.png'), fullPage: true });
 	await page.setViewportSize({ width: 390, height: 844 });
@@ -117,6 +134,7 @@ try {
 	const second = await context.newPage(); await second.goto(`chrome-extension://${id}/paper-queue.html`);
 	await second.getByText('Disconnected', { exact: true }).waitFor();
 	await page.close(); await second.reload();
+	assert.equal(await second.locator('#key').inputValue(), '');
 	await second.getByRole('button', { name: 'Connect', exact: true }).click();
 	await second.getByText('Connected', { exact: true }).waitFor({ timeout: 10000 });
 	assert.deepEqual(errors, []);
@@ -151,7 +169,7 @@ try {
 	await reopened.getByText('Re-pair required', { exact: true }).waitFor({ timeout: 90000 });
 	assert.equal(await reopened.locator('#key').inputValue(), '');
 	assert.equal(await reopened.evaluate(async () => (await chrome.storage.local.get('paperQueuePairing')).paperQueuePairing), undefined);
-	console.log(JSON.stringify({ status: 'passed', directory, checks: ['all queue views closed during acquisition', 'forced worker termination and alarm recovery', 'browser restart without queue view', 'slow conversion reconciled without replay', 'content-script controls rejected', 'real extension capture', 'human fixture access pause/resume', 'automatic conversion', 'task-tab cleanup', 'unrelated tab retained', 'pairing reset/reload', 'old key revoked', 'saved notes unchanged', 'multiple views, single background controller', 'desktop/mobile layout', 'no page errors'] }, null, 2));
+	console.log(JSON.stringify({ status: 'passed', directory, checks: ['first Connect without a key', 'matching local confirmation required', 'stored pairing reused with empty key input', 'all queue views closed during acquisition', 'forced worker termination and alarm recovery', 'browser restart without queue view', 'slow conversion reconciled without replay', 'content-script controls rejected', 'real extension capture', 'human fixture access pause/resume', 'automatic conversion', 'task-tab cleanup', 'unrelated tab retained', 'pairing reset/reload', 'old key revoked', 'saved notes unchanged', 'multiple views, single background controller', 'desktop/mobile layout', 'no page errors'] }, null, 2));
 } finally {
 	await context?.close(); await queue?.close();
 	await new Promise(resolve => fixture.close(resolve));

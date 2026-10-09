@@ -11,10 +11,13 @@
 	<header><h1>Paper Clipper</h1><span>Browser queue</span><span id="connection" role="status">Disconnected</span></header>
 	<main>
 		<form id="pairing">
-			<label>Local endpoint<input id="endpoint" type="url" value="http://127.0.0.1:43127" required></label>
-			<label>Pairing key<input id="key" type="password" autocomplete="off" required></label>
 			<button type="submit"><i data-lucide="link"></i>Connect</button>
 			<button id="disconnect" type="button" title="Disconnect" aria-label="Disconnect"><i data-lucide="unplug"></i></button>
+			<span id="pair-code" role="status" hidden></span>
+			<details id="advanced-pairing"><summary>Advanced</summary><div class="pairing-fields">
+				<label>Local endpoint<input id="endpoint" type="url" value="http://127.0.0.1:43127" required></label>
+				<label>Manual pairing key<input id="key" type="password" autocomplete="off"></label>
+			</div></details>
 		</form>
 		<div class="toolbar"><h2>Tasks <span id="count">0</span></h2><div class="actions"><button id="reset-pairing" type="button"><i data-lucide="rotate-cw"></i>Reset pairing</button><button id="forget" type="button">Forget pairing</button></div></div>
 		<p id="pairing-notice" role="status" hidden></p>
