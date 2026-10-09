@@ -220,6 +220,27 @@ test('subscription preview and HTTP 403 need access, while HTTP 404 remains fail
 	}
 });
 
+test('legacy cached access failures remain needs-access through the Agent archive route without another fetch', async () => {
+	for (const kind of ['preview', 'challenge']) {
+		const s = setup(`cached-access-${kind}`);
+		const first = await savePaper(s.options, { resolve: s.resolve });
+		const report = JSON.parse(await readFile(`${first.output}.report.json`, 'utf8'));
+		const attempt = report.attempts.findLast(item => item.status === 'passed-checks');
+		const changed = kind === 'preview' ? full.replace('</body>', '<p>This is a preview of subscription content</p></body>')
+			: full.replace(`<title>${title}</title>`, '<title>Client Challenge</title>');
+		await writeFile(attempt.html, changed);
+		const before = requests;
+		const result = await savePaper(parseOptions([title, '-o', s.output, '--vault', s.vault, '--fetch', 'http']), { resolve: s.resolve });
+		assert.equal(result.status, 'needs-access');
+		assert.equal(result.exitCode, 2);
+		assert.equal(result.saved, false);
+		assert.equal(result.conversion.nextStep.code, 'export-authorized-tab');
+		assert.equal(result.conversion.archive.quality.completeness.status, 'failed');
+		assert.equal(requests, before);
+		await assert.rejects(stat(path.join(s.vault, 'Papers')), { code: 'ENOENT' });
+	}
+});
+
 test('CLI prints one parseable JSON result on stdout and uses matching exit codes', async () => {
 	const { stdout } = await exec(process.execPath, ['scripts/save-paper.mjs', doi, '--resolve-only'], { cwd: root });
 	assert.equal(JSON.parse(stdout).status, 'resolved');

@@ -224,6 +224,10 @@ test('custom templates and required sections are forwarded without bypassing bod
 	assert.equal(rejected.exitCode, 2);
 	assert.ok(rejected.report.items[0].quality.reasons.includes('missing-section:Discussion'));
 	await assert.rejects(stat(rejected.report.items[0].output), { code: 'ENOENT' });
+	const lossy = await importPapers(setup.options(['-t', template, '--require-section', 'Methods']));
+	assert.equal(lossy.exitCode, 2);
+	assert.ok(lossy.report.items[0].quality.reasons.includes('output-missing-section:Methods'));
+	await writeFile(template, JSON.stringify({ noteNameFormat: '{{title}}', noteContentFormat: 'Custom: {{title}}\n\n{{content}}', properties: [] }));
 	const accepted = await importPapers(setup.options(['-t', template, '--require-section', 'Methods']));
 	assert.equal(accepted.exitCode, 0);
 	assert.match(await readFile(accepted.report.items[0].output, 'utf8'), /Custom: Imported research fixture/);

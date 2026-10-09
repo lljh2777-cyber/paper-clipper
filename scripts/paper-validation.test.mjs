@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { assessMarkdown, bodyCheckVersion } from './paper-validation.mjs';
+import { archiveRequirements, assessMarkdown, assessPaper, bodyCheckVersion, qualitySummary, withOutputQuality } from './paper-validation.mjs';
 
 const paragraph = 'Cells were measured across independent biological samples. '.repeat(80);
 const valid = `## Results\n\n${paragraph}\n\n## Methods\n\n${paragraph}`;
@@ -134,4 +134,54 @@ test('existing access, identity, equation and caption gates remain independent',
 
 test('invalid thresholds fail closed instead of silently disabling the length gate', () => {
 	for (const minWords of [undefined, NaN, 0, -1, 1.5, '1000']) assert.throws(() => check(valid, { minWords }), /positive integer/);
+});
+
+test('unknown publishers pass body heuristics without claiming source preservation or completeness', () => {
+	const html = '<html><head><title>Public synthetic fixture</title></head><body><article>Source</article></body></html>';
+	for (const url of ['https://publisher.example/paper', 'https://www.nature.com/articles/unknown-layout']) {
+		const result = assessPaper(html, valid, url, { minWords: 1000 });
+		assert.equal(result.passed, true);
+		assert.equal(result.completeness.status, 'passed-heuristics');
+		assert.equal(result.preservation.status, 'unverified');
+		assert.equal(result.coverage.status, 'heuristic-only');
+		assert.equal(result.coverage.comparisons.sourceSections, 'not-applicable');
+		assert.match(qualitySummary(result), /Not proof of full text/);
+	}
+	assert.match(qualitySummary(), /unchecked.*unverified.*not-run/);
+});
+
+test('source preservation failures and skipped math do not become completeness or coverage claims', () => {
+	const section = (title, prose) => `<section data-title="${title}"><div><h2 class="c-article-section__title">${title}</h2><div class="c-article-section__content"><p>${prose}</p></div></div></section>`;
+	const html = `<html><body><article class="c-article-body"><div class="main-content">${section('Results', paragraph)}${section('Methods', paragraph + '</p><p><math><mi>x</mi></math>')}</div></article></body></html>`;
+	const assess = markdown => assessPaper(html, markdown, 'https://www.nature.com/articles/synthetic', { minWords: 1000 });
+	const passed = assess(valid);
+	assert.equal(passed.passed, true);
+	assert.equal(passed.preservation.status, 'passed-within-scope');
+	assert.equal(passed.coverage.status, 'partial-source');
+	assert.equal(passed.coverage.skippedParagraphs, 1);
+	const changed = assess(valid.replace('Cells were', 'Cells are'));
+	assert.equal(changed.completeness.status, 'passed-heuristics');
+	assert.equal(changed.preservation.status, 'failed');
+	assert.equal(changed.passed, false);
+	const output = assess('# Title only');
+	const combined = withOutputQuality(passed, output);
+	assert.equal(combined.completeness.status, 'failed');
+	assert.equal(combined.preservation.status, 'failed');
+	assert.ok(combined.reasons.includes('output-too-short'));
+	assert.equal(combined.outputQuality, output);
+	assert.doesNotThrow(() => JSON.stringify(withOutputQuality(passed, passed)));
+});
+
+test('archive requirements keep the stronger saved/current threshold, required sections and DOI', () => {
+	assert.equal(archiveRequirements().minWords, 1000);
+	assert.equal(archiveRequirements({}, { minWords: 10 }).minWords, 1000);
+	assert.equal(archiveRequirements({ minWords: 2000 }, { minWords: 1000 }).minWords, 2000);
+	assert.equal(archiveRequirements({ minWords: 1000 }, { minWords: 2000 }).minWords, 2000);
+	assert.deepEqual(archiveRequirements({ requiredSections: ['Methods'], expectedDoi: '10.1234/ABC' }, { requiredSections: ['Discussion'] }),
+		{ minWords: 1000, requiredSections: ['Methods', 'Discussion'], expectedDoi: '10.1234/abc' });
+	assert.throws(() => archiveRequirements({ expectedDoi: '10.1234/a' }, { expectedDoi: '10.1234/b' }), /DOI conflict/);
+	for (const invalid of [{ minWords: 0 }, { minWords: '100' }, { requiredSections: 'Methods' }, { requiredSections: [''] }]) {
+		assert.throws(() => archiveRequirements(invalid));
+		assert.throws(() => archiveRequirements({}, invalid));
+	}
 });

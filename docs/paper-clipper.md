@@ -102,10 +102,36 @@ npm run clip:paper -- "https://www.nature.com/articles/s41592-025-02899-6" --req
 Use `-t path/to/template.json` (or a template directory) for custom output. Checks
 always run on body extraction using the minimal template first, so a custom
 template cannot hide missing source content or cause an abstract-only page to pass.
-For Nature papers with supported legends, a title-only or summary template is
-rejected with `output-figure-captions`; use a full-content template instead. The
-failed rendered output is retained as `*.rendered.md` for diagnosis. Changing
-templates cannot disable the source-caption check.
+The final template output must then pass the same access, body, required-section,
+DOI and applicable source-preservation checks. This includes unknown publishers:
+a title-only template fails `output-too-short` / `output-missing-main-sections`,
+not a speculative publisher check. Use a full-content template. Failed rendered
+output is retained as `*.rendered.md`; nothing is published or downloaded.
+
+### Independent quality states
+
+`quality.version = paper-quality-v1` separates three dimensions:
+
+| Field | States | Meaning |
+| --- | --- | --- |
+| `completeness.status` | `passed-heuristics`, `failed`, `unchecked` | Access/body heuristics only. Passing is never proof of complete full text. |
+| `preservation.status` | `passed-within-scope`, `failed`, `unverified` | Result of applicable source comparisons, not the size of the body. |
+| `coverage.status` | `partial-source`, `heuristic-only`, `not-run` | Whether any supported source comparison ran. No state claims universal coverage. |
+
+`quality.passed` remains the combined publication gate, including DOI identity.
+For example, an unknown publisher can pass the unchanged body heuristics while
+preservation remains `unverified` and coverage is `heuristic-only`. A Nature
+paragraph loss can fail preservation even with `passed-heuristics` completeness.
+`not-applicable` stays visible in `coverage.comparisons` and the detailed checks;
+it never becomes a positive preservation result. `coverage.skippedParagraphs`
+and `coverage.limitations` disclose exclusions; there is no whole-paper percentage.
+
+`quality.outputQuality` records the final template assessment separately from
+the extraction diagnostics. Top-level completeness/preservation summarize both
+stages; output failures use `output-` reason prefixes. CLI summaries, unified
+reports and Agent results expose the same states. A conversion-only cache skip
+is not revalidated; absent quality is displayed as unchecked/not-run. Archive
+quality refers to the candidate, not an existing duplicate Vault note.
 
 ### Figure legend checks
 

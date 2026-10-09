@@ -5,10 +5,8 @@ import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { parseDocument, stringify } from 'yaml';
 import { collectImages, imageExtension } from './paper-assets.mjs';
-import { assessPaperIdentity, canonicalUrl, normalizeDoi, paperMetadata } from './paper-metadata.mjs';
-import { assessMarkdown } from './paper-validation.mjs';
-import { checkSourceSections } from './paper-sections.mjs';
-import { checkFigureCaptions } from './paper-captions.mjs';
+import { canonicalUrl, normalizeDoi, paperMetadata } from './paper-metadata.mjs';
+import { archiveRequirements, assessPaper, inspectHtml, qualitySummary, withOutputQuality } from './paper-validation.mjs';
 
 const maxDocument = 30 * 1024 * 1024;
 const usage = `Usage: npm run clip:vault -- <paper.md | directory> [...] --vault <directory> [options]
@@ -172,25 +170,24 @@ async function prepare(input, options) {
 	}
 	const html = new TextDecoder('utf-8', { fatal: true }).decode(await regularBytes(attempt.html));
 	const sourceUrl = attempt.contentUrl || report.contentUrl || report.url;
-	const expectedDoi = options.checks?.expectedDoi ?? report.checks?.expectedDoi;
-	const paperIdentity = expectedDoi ? assessPaperIdentity(html, expectedDoi) : undefined;
-	if (paperIdentity?.status === 'failed') throw archiveError('paper-identity', 'Captured publisher DOI does not verify the requested paper.',
-		{ quality: { passed: false, reasons: ['paper-identity'], paperIdentity } });
-	// Recompute for old caches and standalone archive calls; never trust a prior
-	// passing report to certify that the final template retained the source legends.
-	const figureCaptions = checkFigureCaptions(html, markdown, sourceUrl);
-	if (figureCaptions.status === 'failed') throw archiveError('figure-captions', 'Saved Markdown does not preserve the source figure legends. Reconvert and inspect the named figures before archiving.',
-		{ quality: { passed: false, reasons: ['figure-captions'], figureCaptions } });
-	const sourceSections = checkSourceSections(html, markdown, sourceUrl);
-	if (sourceSections.status === 'failed') throw archiveError('source-sections', 'Saved Markdown does not preserve the supported source sections and prose. Inspect the section diagnostics before reconverting.',
-		{ quality: { passed: false, reasons: ['source-sections'], sourceSections } });
-	if (options.checks) {
-		if (!attempt.markdown || !within(artifacts, path.resolve(attempt.markdown))) throw new Error('No bounded extracted Markdown for current content checks.');
-		const extracted = new TextDecoder('utf-8', { fatal: true }).decode(await regularBytes(attempt.markdown));
-		const quality = assessMarkdown(extracted, options.checks, { figureCaptions: checkFigureCaptions(html, extracted, sourceUrl),
-			sourceSections: checkSourceSections(html, extracted, sourceUrl) });
-		if (!quality.passed) throw archiveError('content-check', 'Saved extraction does not pass the current content requirements.', { quality });
-	}
+	const requirements = archiveRequirements(report.checks, options.checks);
+	const page = inspectHtml(html, sourceUrl);
+	page.preview ||= attempt.capture?.status === 'subscription-preview';
+	const requirePassing = (quality, stage) => {
+		if (quality.passed) return;
+		const code = ['paper-identity', 'figure-captions', 'source-sections'].find(reason => quality.reasons.includes(reason)) ?? 'content-check';
+		throw archiveError(code, `Saved ${stage} does not pass current checks. Inspect the retained source and quality diagnostics before reconverting.`, { quality, stage });
+	};
+	// Recheck both artifacts even for legacy reports and standalone/dry-run calls.
+	// A prior passing flag never certifies the source, extraction or final template.
+	const outputQuality = assessPaper(html, markdown, sourceUrl, requirements, page);
+	requirePassing(outputQuality, 'output');
+	if (!attempt.markdown || !within(artifacts, path.resolve(attempt.markdown))) throw new Error('No bounded extracted Markdown for current content checks.');
+	const extracted = new TextDecoder('utf-8', { fatal: true }).decode(await regularBytes(attempt.markdown));
+	const extractionQuality = assessPaper(html, extracted, sourceUrl, requirements, page);
+	requirePassing(extractionQuality, 'extraction');
+	const quality = withOutputQuality(extractionQuality, outputQuality);
+	const { figureCaptions, sourceSections, paperIdentity } = outputQuality;
 	const metadata = paperMetadata(html, { url: sourceUrl,
 		capturedAt: report.capturedAt || attempt.capture?.capturedAt, convertedAt: report.finishedAt });
 	const { properties, body } = splitFrontmatter(markdown);
@@ -220,7 +217,7 @@ async function prepare(input, options) {
 	// Hashing here names the DOI/URL identity, not the paper or its attachments.
 	const id = createHash('sha256').update(metadata.identity).digest('hex').slice(0, 16);
 	const merged = { ...properties, ...metadata, paper_clipper_id: id, archive_status: 'clipped-source' };
-	return { input, reportPath, metadata, figureCaptions, sourceSections, paperIdentity, id, name: filename(metadata), attachments, originalBytes: bytes,
+	return { input, reportPath, metadata, figureCaptions, sourceSections, paperIdentity, quality, requirements, id, name: filename(metadata), attachments, originalBytes: bytes,
 		markdown: `---\n${stringify(merged, { lineWidth: 0 })}---\n${body}` };
 }
 
@@ -255,6 +252,8 @@ export async function archivePapers(options) {
 				item.metadata = paper.metadata;
 				item.figureCaptions = paper.figureCaptions;
 				item.sourceSections = paper.sourceSections;
+				item.quality = paper.quality;
+				item.checks = paper.requirements;
 				if (paper.paperIdentity) item.paperIdentity = paper.paperIdentity;
 				item.attachments = paper.attachments.length;
 				const found = duplicate(paper.metadata, notes);
@@ -279,6 +278,7 @@ export async function archivePapers(options) {
 						}
 						await writeFile(path.join(staging, paper.name), paper.markdown, { flag: 'wx' });
 						await writeFile(path.join(staging, 'paper.json'), JSON.stringify({ schemaVersion: 1, metadata: paper.metadata,
+							quality: paper.quality, checks: paper.requirements,
 							originalInput: input, originalReport: paper.reportPath, archivedAt: new Date().toISOString(),
 							note: paper.name, attachments: paper.attachments.map(asset => ({ relativePath: asset.relative, bytes: asset.content.length })) }, null, 2) + '\n', { flag: 'wx' });
 						if (await info(destination)) throw new Error('Destination appeared during archiving; refusing to replace it.');
@@ -292,6 +292,7 @@ export async function archivePapers(options) {
 				item.error = error.message;
 				if (error.code) item.code = error.code;
 				if (error.quality) item.quality = error.quality;
+				if (error.stage) item.stage = error.stage;
 			}
 			report.items.push(item);
 			report.counts[item.status]++;
@@ -321,6 +322,7 @@ export async function main(args = process.argv.slice(2)) {
 			console.log(`[${item.status}] ${item.metadata?.title || item.input}`);
 			if (item.output) console.log(`  ${item.output}`);
 			if (item.error) console.log(`  ${item.error}`);
+			console.log(`  ${qualitySummary(item.quality)}`);
 			if (item.metadata?.metadata_gaps.length) console.log(`  Metadata gaps: ${item.metadata.metadata_gaps.join(', ')}`);
 		}
 		console.log(`Summary: ${Object.entries(result.report.counts).map(([key, value]) => `${key}=${value}`).join(', ')}`);

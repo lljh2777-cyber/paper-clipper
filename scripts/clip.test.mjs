@@ -313,6 +313,10 @@ test('local required sections and custom templates are not lost at the unified b
 	assert.equal(rejected.exitCode, 2);
 	assert.equal(rejected.report.items[0].nextStep.code, 'inspect-content');
 	assert.ok(rejected.report.items[0].quality.reasons.includes('missing-section:Discussion'));
+	const lossy = await clip(setup.options(['-t', template, '--require-section', 'Methods']));
+	assert.equal(lossy.exitCode, 2);
+	assert.ok(lossy.report.items[0].quality.reasons.includes('output-missing-section:Methods'));
+	await writeFile(template, JSON.stringify({ noteNameFormat: '{{title}}', noteContentFormat: 'Custom: {{title}}\n\n{{content}}', properties: [] }));
 	const accepted = await clip(setup.options(['-t', template, '--require-section', 'Methods']));
 	assert.equal(accepted.exitCode, 0);
 	assert.match(await readFile(accepted.report.items[0].output, 'utf8'), /Custom: Unified research fixture/);

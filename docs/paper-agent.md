@@ -229,6 +229,11 @@ must be fully localized before archiving. The `saved` status without that flag
 does not promise offline image availability. Existing Vault notes are never
 overwritten or revalidated by duplicate detection. Publisher-specific caption
 coverage can be `not-applicable`; that is not proof that all captions were kept.
+Read `conversion.quality.completeness`, `.preservation` and `.coverage` separately,
+or the current `conversion.archive.quality` when archiving a cached conversion.
+`passed-heuristics` does not mean verified full text; `unverified` preservation
+does not itself reject an unknown publisher. Source-access failures discovered
+during archive revalidation also return `needs-access`, not a generic save failure.
 Math, tables and actual Obsidian rendering may still need visual review.
 
 ## Verification

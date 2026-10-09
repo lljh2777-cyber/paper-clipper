@@ -84,7 +84,7 @@ function outcome(result) {
 	const common = { clipReport: result.reportPath, conversion: item, output: null, saved: false };
 	if (item?.archive?.status === 'archived') return { ...common, status: 'saved', exitCode: 0, saved: true, output: item.archive.output };
 	if (item?.archive?.status === 'duplicate') return { ...common, status: 'duplicate', exitCode: 0, output: item.archive.output };
-	if (item?.accessLimited || item?.quality?.reasons.some(reason => ['subscription-preview', 'access-challenge'].includes(reason))) return { ...common, status: 'needs-access', exitCode: 2 };
+	if (item?.accessLimited || [item?.quality, item?.archive?.quality].some(quality => quality?.reasons.some(reason => ['subscription-preview', 'access-challenge', 'output-subscription-preview', 'output-access-challenge'].includes(reason)))) return { ...common, status: 'needs-access', exitCode: 2 };
 	if (item?.status === 'incomplete' || item?.archive?.quality?.reasons.length || item?.assets?.failed || item?.archive?.code === 'incomplete-assets' || item?.archive?.reason === 'incomplete-assets') return { ...common, status: 'incomplete', exitCode: 2 };
 	if (result.exitCode !== 0) return { ...common, status: 'failed', exitCode: 1, error: item?.archive?.error || item?.error || result.report.error || 'Capture or archive failed.' };
 	if (item?.status === 'skipped') return { ...common, status: 'existing-unverified', exitCode: 3, existingOutput: item.output };

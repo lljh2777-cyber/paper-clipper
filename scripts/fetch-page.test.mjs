@@ -14,6 +14,7 @@ const paragraph = 'Persistent browser access renders the complete scientific art
 let server;
 let baseUrl;
 let directory;
+let coldSessionRevoked = false;
 
 before(async () => {
 	const output = path.join(root, 'output/browser-fetch/tests');
@@ -21,6 +22,19 @@ before(async () => {
 	directory = await mkdtemp(path.join(output, 'run-'));
 	server = createServer((request, response) => {
 		response.setHeader('Content-Type', 'text/html; charset=utf-8');
+		if (request.url === '/cold-login') {
+			response.setHeader('Set-Cookie', 'coldAccess=yes; Max-Age=3600; Path=/; HttpOnly; SameSite=Lax');
+			response.end('<html><body><main>Synthetic login saved</main><script>localStorage.setItem("coldAccess", "yes"); sessionStorage.setItem("loginWindow", "yes");</script></body></html>');
+			return;
+		}
+		if (request.url === '/cold-article' && !coldSessionRevoked && request.headers.cookie?.includes('coldAccess=yes')) {
+			response.end(`<html><head><title>Cold start fixture</title></head><body><article><p>This is a preview of subscription content</p></article><script>
+				if (localStorage.getItem('coldAccess') === 'yes' && !sessionStorage.getItem('loginWindow')) {
+					document.querySelector('article').innerHTML = '<h2>Results</h2><p>${paragraph}</p><h2>Methods</h2><p>${paragraph}</p>';
+				}
+			</script></body></html>`);
+			return;
+		}
 		if (request.url === '/failure') {
 			response.writeHead(403).end('Forbidden');
 			return;
@@ -92,6 +106,31 @@ test('preview CLI writes diagnostic HTML and report with exit code 2', { timeout
 	assert.equal(code, 2);
 	assert.match(await readFile(output, 'utf8'), /preview of subscription content/);
 	assert.equal(JSON.parse(await readFile(`${output}.json`, 'utf8')).status, 'subscription-preview');
+});
+
+test('persistent cookie and localStorage survive independent CLI processes, not a fresh profile or server revocation', { timeout: 60000 }, async () => {
+	const capture = async (name, route, profile = 'cold-profile', expectedExit = 0) => {
+		const output = path.join(directory, `${name}.html`);
+		const args = [path.join(root, 'scripts/fetch-page.mjs'), baseUrl + route,
+			'--profile', path.join(directory, profile), '-o', output, '--timeout', '10000', '--settle', '300'];
+		if (expectedExit) await assert.rejects(run(process.execPath, args, { windowsHide: true }), error => error.code === expectedExit);
+		else await run(process.execPath, args, { windowsHide: true });
+		return { html: await readFile(output, 'utf8'), report: JSON.parse(await readFile(`${output}.json`, 'utf8')) };
+	};
+	await capture('cold-login', '/cold-login');
+	for (const name of ['cold-first', 'cold-second']) {
+		const result = await capture(name, '/cold-article');
+		assert.equal(result.report.status, 'unchecked');
+		assert.ok(result.report.headings.includes('Results'));
+		assert.ok(result.report.headings.includes('Methods'));
+		assert.ok(result.html.includes(`<p>${paragraph}</p>`));
+	}
+	const fresh = await capture('cold-fresh', '/cold-article', 'fresh-profile', 2);
+	assert.equal(fresh.report.status, 'subscription-preview');
+	coldSessionRevoked = true;
+	const revoked = await capture('cold-revoked', '/cold-article', 'cold-profile', 2);
+	assert.equal(revoked.report.status, 'subscription-preview');
+	assert.ok(!revoked.report.headings.includes('Results'));
 });
 
 test('HTTP failures and readiness timeouts release the profile and preserve existing output', { timeout: 40000 }, async () => {

@@ -1,8 +1,12 @@
 import { Marked } from 'marked';
 import { parseHTML } from 'linkedom';
+import { checkFigureCaptions } from './paper-captions.mjs';
+import { checkSourceSections } from './paper-sections.mjs';
+import { assessPaperIdentity, normalizeDoi } from './paper-metadata.mjs';
 
 const marked = new Marked({ gfm: true });
 export const bodyCheckVersion = 'markdown-sections-v1';
+export const qualityVersion = 'paper-quality-v1';
 export const previewPattern = /this is a preview of subscription content|sign in to access (?:the )?full (?:text|article)|purchase access to (?:the|this) article/i;
 const mainPattern = /^(?:introduction|background|main|results|discussion|methods|materials and methods|methodology|conclusions?)(?:$|[\s:])/i;
 const excludedPattern = /^(?:abstract|references?|bibliography|acknowledg(?:e)?ments?|funding|author(?:s|['\u2019]s)?[\s\u2019']+(?:contributions?|information|details)|declarations|ethics declarations|competing interests|conflicts? of interest|data availability|availability of data|code availability|supplementary|supporting information|additional information|peer review information|publisher['\u2019]s note|copyright|rights and permissions|about this article|article information)(?:$|[\s:])/i;
@@ -10,6 +14,83 @@ const referencePattern = /^(?:references?|bibliography)(?:$|[\s:])/i;
 const words = value => value.trim().split(/\s+/).filter(Boolean).length;
 const unnumbered = value => value.replace(/^\d+(?:\.\d+)*[.)]?\s*/, '');
 const canonical = value => value.replace(/\s+/g, ' ').trim().toLowerCase();
+
+export function inspectHtml(html, finalUrl) {
+	const { document } = parseHTML(html);
+	let contentUrl = finalUrl;
+	const canonical = document.querySelector('link[rel="canonical"]')?.getAttribute('href');
+	if (canonical) {
+		try {
+			const url = new URL(canonical, finalUrl);
+			const actual = new URL(finalUrl);
+			if (url.origin === actual.origin && url.pathname === actual.pathname) contentUrl = url.href;
+		} catch { /* Ignore malformed publisher metadata. */ }
+	}
+	for (const element of document.querySelectorAll('script, style, noscript, template, [hidden], [aria-hidden="true"]')) element.remove();
+	const title = document.title;
+	const unrenderedEquations = /(^|\.)frontiersin\.org$/.test(new URL(finalUrl).hostname) &&
+		[...document.querySelectorAll('a.ArticleReference[href^="#e"]')].some(link => {
+			const id = link.getAttribute('href').slice(1);
+			return /^e\d+$/.test(id) && !document.getElementById(id);
+		});
+	return { contentUrl, title, unrenderedEquations,
+		preview: previewPattern.test((document.body?.textContent ?? '').replace(/\s+/g, ' ')),
+		challenge: /^(?:just a moment|access denied|attention required|client challenge|verify (?:you are|you're) human|security (?:check|verification))/i.test(title.trim()) };
+}
+
+// A fresh archive request may strengthen, but must not silently weaken, the
+// requirements under which the retained extraction was accepted.
+export function archiveRequirements(saved = {}, current = {}) {
+	const validate = checks => {
+		if (checks.minWords !== undefined && (!Number.isSafeInteger(checks.minWords) || checks.minWords < 1)) throw new Error('Invalid saved/current minWords.');
+		if (checks.requiredSections !== undefined && (!Array.isArray(checks.requiredSections) || checks.requiredSections.some(value => typeof value !== 'string' || !value.trim()))) throw new Error('Invalid saved/current requiredSections.');
+	};
+	validate(saved);
+	validate(current);
+	const savedDoi = saved.expectedDoi ? normalizeDoi(saved.expectedDoi) : undefined;
+	const currentDoi = current.expectedDoi ? normalizeDoi(current.expectedDoi) : undefined;
+	if (savedDoi && currentDoi && savedDoi !== currentDoi) throw Object.assign(new Error('Saved and current expected DOI conflict.'), {
+		code: 'paper-identity', quality: { version: qualityVersion, passed: false, reasons: ['paper-identity'],
+			paperIdentity: { status: 'failed', expected: currentDoi, savedExpected: savedDoi, reason: 'conflicting-requested-dois' },
+			completeness: { status: 'unchecked', reasons: [] }, preservation: { status: 'unverified' }, coverage: { status: 'not-run' } },
+	});
+	return { minWords: Math.max(saved.minWords ?? 1000, current.minWords ?? 0),
+		requiredSections: [...new Set([...(saved.requiredSections ?? []), ...(current.requiredSections ?? [])])],
+		...((currentDoi ?? savedDoi) ? { expectedDoi: currentDoi ?? savedDoi } : {}) };
+}
+
+export function assessPaper(html, markdown, url, checks, page = inspectHtml(html, url)) {
+	const figureCaptions = checkFigureCaptions(html, markdown, url);
+	const sourceSections = checkSourceSections(html, markdown, url);
+	const paperIdentity = checks.expectedDoi ? assessPaperIdentity(html, checks.expectedDoi) : undefined;
+	const quality = assessMarkdown(markdown, checks, { ...page, figureCaptions, sourceSections, paperIdentity });
+	const comparisons = { figureCaptions: figureCaptions.status, sourceSections: sourceSections.status };
+	const applicable = Object.values(comparisons).some(status => status !== 'not-applicable');
+	const contentReasons = quality.reasons.filter(reason => !['figure-captions', 'source-sections', 'paper-identity'].includes(reason));
+	return { ...quality, version: qualityVersion,
+		completeness: { status: contentReasons.length ? 'failed' : 'passed-heuristics', reasons: contentReasons },
+		preservation: { status: Object.values(comparisons).includes('failed') ? 'failed' : applicable ? 'passed-within-scope' : 'unverified' },
+		coverage: { status: applicable ? 'partial-source' : 'heuristic-only', comparisons,
+			skippedParagraphs: sourceSections.skippedParagraphs,
+			limitations: ['Heuristic checks do not prove full-text completeness.',
+				'Only applicable figure-legend and plain-prose source comparisons are verified.',
+				'Math, tables, lists, references, unloaded content and unsupported layouts are not fully compared.'] } };
+}
+
+export function withOutputQuality(extraction, output) {
+	return { ...extraction, passed: extraction.passed && output.passed,
+		reasons: [...extraction.reasons, ...output.reasons.map(reason => `output-${reason}`)],
+		outputQuality: output, outputFigureCaptions: output.figureCaptions, outputSourceSections: output.sourceSections,
+		completeness: { status: [extraction, output].some(check => check.completeness.status === 'failed') ? 'failed' : 'passed-heuristics',
+			reasons: [...extraction.completeness.reasons, ...output.completeness.reasons.map(reason => `output-${reason}`)] },
+		preservation: { status: [extraction, output].some(check => check.preservation.status === 'failed') ? 'failed' : output.preservation.status },
+		coverage: output.coverage };
+}
+
+export function qualitySummary(quality) {
+	if (!quality?.completeness) return 'Completeness: unchecked; preservation: unverified; coverage: not-run.';
+	return `Completeness: ${quality.completeness.status}; preservation: ${quality.preservation.status}; coverage: ${quality.coverage.status}. Not proof of full text.`;
+}
 
 function visibleText(inline) {
 	const document = parseHTML(`<html><body>${marked.parseInline(inline)}</body></html>`).document;

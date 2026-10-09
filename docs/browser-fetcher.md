@@ -10,7 +10,7 @@ the Markdown pipeline, and the extension unchanged.
 
 ## Setup
 
-From the repository root, with Node.js 20 or newer:
+From the repository root, with Node.js 22.12 or newer:
 
 ```powershell
 npm ci
@@ -105,6 +105,12 @@ npm run test:browser-fetch
 The tests use a local HTTP fixture and real Chromium. They verify persistent
 cookies across separate browser launches, delayed JavaScript rendering, redirects,
 preview diagnostics, error cleanup, and conversion through `dist/cli.cjs --html`.
+An additional synthetic test launches and awaits separate Node CLI processes:
+fixture login, two cold captures, an empty-profile negative control, and server
+revocation. Both a persistent HttpOnly cookie and localStorage are required for
+that fixture's body; sessionStorage from the login window must not carry over.
+No real accounts, publisher HTML, regular-browser cookies or network publishers
+are involved. This establishes persistence mechanics, not any SSO entitlement.
 Test profiles and captures remain in the ignored `output/browser-fetch/tests/`
 directory. They are not recursively deleted.
 
@@ -150,3 +156,47 @@ Both routes are now implemented. See [Paper Clipper](paper-clipper.md) and
 passed that comparison: after math normalization, its Markdown body matches the
 12,619-word manual reference exactly. The dedicated browser profile's earlier
 capture remains a preview and has not gained that authorization.
+
+## Explicit local cold-start acceptance: 2026-10-09
+
+The initial fresh-process capture with the dedicated profile still returned a
+subscription preview. The user then manually logged in through the visible
+Chromium window and confirmed the Novae body was readable. The existing
+`--login` command revisited the article, captured it and closed the context and
+Node process. A separate headless CLI invocation reused the same profile without
+`--login`. It retained access to DOI `10.1038/s41592-025-02899-6`.
+
+Both captures were explicitly converted locally through the unchanged
+Clipper/Defuddle path with expected DOI verification and required Main, Results,
+Discussion and Methods sections. Results:
+
+- Publisher DOI matched; main-section prose: 11,174 words.
+- Six supported legends and 33 ordinary source paragraphs matched.
+- Sixteen math-containing paragraphs were skipped by the plain-prose comparator.
+- Warm/cold Markdown bodies were byte-identical after removing YAML frontmatter.
+- Existing reference comparison passed with its already-declared six legend
+  additions; no reference or tolerance was changed. Output has 13,695 body words,
+  69 math expressions, seven display equations, six images and 59 footnote definitions.
+
+This verifies immediate process/browser restart on this Windows machine only.
+It does not establish overnight expiry, machine reboot, SSO/MFA renewal, another
+network or another computer, nor visual/semantic correctness of every formula.
+No images were downloaded during this acceptance and no Vault was modified.
+Private captures remain under ignored `output/session-audit/`; the profile and
+HTML are not distributed as fixtures or CI artifacts.
+
+For a repeat, run these in separate interactive terminal invocations, choosing a
+fresh output folder to preserve earlier evidence:
+
+```powershell
+node scripts/fetch-page.mjs "https://www.nature.com/articles/s41592-025-02899-6" --profile .browser-profile --login -o output/session-audit/recheck/manual.html
+# Wait until the first command exits and its browser closes.
+node scripts/fetch-page.mjs "https://www.nature.com/articles/s41592-025-02899-6" --profile .browser-profile -o output/session-audit/recheck/cold.html
+```
+
+`unchecked` only means capture succeeded. Inspect access state and run conversion
+checks before accepting the result; the local `clipPaper` API accepts
+`expectedDoi` in addition to the usual required sections. Stop on a preview or
+CAPTCHA and request human login or an authorized HTML export, never copy the
+regular browser's cookies or automate challenge solving. Re-authentication is
+expected when the publisher expires or revokes a session.

@@ -7,6 +7,7 @@ import { clipPaper, parseOptions as parsePaperOptions } from './clip-paper.mjs';
 import { browserFlags } from './fetch-page.mjs';
 import { importPapers, parseOptions as parseImportOptions } from './import-papers.mjs';
 import { archivePapers, parseOptions as parseArchiveOptions, validateVaultDestination } from './archive-papers.mjs';
+import { qualitySummary } from './paper-validation.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const commonFlags = ['template', 'min-words', 'require-section', 'timeout', 'overwrite', 'download-assets'];
@@ -132,6 +133,10 @@ export function parseOptions(args) {
 }
 
 export function nextStep(item, route) {
+	if (item.accessLimited || [item.quality, item.archive?.quality].some(quality => quality?.reasons.some(reason => ['subscription-preview', 'access-challenge', 'output-subscription-preview', 'output-access-challenge'].includes(reason)))) return {
+		code: 'export-authorized-tab',
+		message: 'Open the paper in a browser where you are authorized to read the full text. Confirm Results/Methods are loaded, use Clipper Export page HTML, keep the HTML/JSON pair together, then run npm run clip -- "<export-folder>". Export cannot grant access or recover unloaded content.',
+	};
 	if ((item.archive?.quality?.reasons.includes('paper-identity') || item.quality?.reasons.includes('paper-identity')) &&
 		!item.accessLimited && !item.quality?.reasons.some(reason => ['subscription-preview', 'access-challenge'].includes(reason))) return {
 		code: 'verify-paper-identity', message: 'Publisher DOI metadata did not verify the requested paper. Inspect quality.paperIdentity (or archive.quality.paperIdentity), confirm the DOI and source page, then use a fresh matching export or capture. Do not bypass this check or overwrite an existing Vault note.',
@@ -164,10 +169,6 @@ export function nextStep(item, route) {
 	};
 	if (item.status === 'skipped') return {
 		code: 'review-existing', message: 'Existing Markdown was not revalidated or changed. Use --overwrite only to intentionally reprocess it.',
-	};
-	if (item.accessLimited || item.quality?.reasons.some(reason => ['subscription-preview', 'access-challenge'].includes(reason))) return {
-		code: 'export-authorized-tab',
-		message: 'Open the paper in a browser where you are authorized to read the full text. Confirm Results/Methods are loaded, use Clipper Export page HTML, keep the HTML/JSON pair together, then run npm run clip -- "<export-folder>". Export cannot grant access or recover unloaded content.',
 	};
 	if (item.status === 'incomplete') return {
 		code: item.quality?.reasons.includes('unrendered-equations') ? 'render-equations' : 'inspect-content',
@@ -307,6 +308,7 @@ export function printResult({ report, reportPath }, log = console.log) {
 		if (item.output) log(`  ${item.outputWritten ? 'Markdown' : 'Destination (not written)'}: ${item.output}`);
 		if (item.error) log(`  Error: ${item.error}`);
 		if (item.quality?.reasons.length) log(`  Checks: ${item.quality.reasons.join(', ')}`);
+		log(`  ${qualitySummary(item.archive?.quality ?? item.quality)}`);
 		const captionChecks = [item.quality?.figureCaptions, item.quality?.outputFigureCaptions,
 			item.archive?.figureCaptions, item.archive?.quality?.figureCaptions].filter(Boolean);
 		for (const check of [...new Set(captionChecks)]) {

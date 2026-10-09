@@ -26,14 +26,15 @@ async function fixture(name, { doi = '10.1234/example', url = 'https://publisher
 	const input = path.join(inputDir, 'paper.md');
 	const artifacts = path.join(`${input}.runs`, 'run-fixture');
 	await mkdir(artifacts, { recursive: true });
-	const body = `## Results\n\nKeep prose, $x_i + \\alpha$, and [citations](https://example.com/reference).\n\n## Methods\n\nOriginal methods.\n${images ? '\n![Figure](<images/image.png> "caption")\n' : ''}`;
+	const body = `## Results\n\nKeep prose, $x_i + \\alpha$, and [citations](https://example.com/reference).\n\n${'Synthetic observations remain reproducible across independent samples. '.repeat(150)}\n\n## Methods\n\nOriginal methods.\n${images ? '\n![Figure](<images/image.png> "caption")\n' : ''}`;
 	const markdown = `---\ntitle: "Original template title"\nsource: "${url}"\ntags: [reading, paper]\ncustom:\n  rating: 3\n---\n${body}`;
 	await writeFile(input, markdown);
 	await writeFile(path.join(artifacts, 'accepted.md'), markdown);
 	await writeFile(path.join(artifacts, 'file.html'), html(doi, title));
+	await writeFile(path.join(artifacts, 'file.md'), markdown);
 	const report = { output: input, artifactDirectory: artifacts, status: 'passed-checks', outputWritten: true,
 		finishedAt: '2026-10-08T00:00:00.000Z', attempts: [{ status: 'passed-checks', quality: { passed: true },
-			contentUrl: url, html: path.join(artifacts, 'file.html'), capture: { capturedAt: '2026-10-07T12:44:00.000Z' } }] };
+			contentUrl: url, html: path.join(artifacts, 'file.html'), markdown: path.join(artifacts, 'file.md'), capture: { capturedAt: '2026-10-07T12:44:00.000Z' } }] };
 	if (images) {
 		await mkdir(path.join(inputDir, 'images'));
 		const file = path.join(inputDir, 'images/image.png');
@@ -117,6 +118,7 @@ test('standalone archive rechecks Nature legends in old accepted snapshots befor
 		await writeFile(path.join(f.artifacts, 'file.html'), source);
 		await writeFile(f.input, markdown);
 		await writeFile(path.join(f.artifacts, 'accepted.md'), markdown);
+		await writeFile(path.join(f.artifacts, 'file.md'), markdown);
 		const dry = await archivePapers(f.options(['--dry-run']));
 		assert.equal(dry.exitCode, name === 'complete' ? 0 : 1);
 		await assert.rejects(stat(f.vault), { code: 'ENOENT' });
@@ -145,6 +147,9 @@ test('archive preserves custom metadata, exact body and image bytes; repeat pres
 	const result = await archivePapers(f.options());
 	assert.equal(result.exitCode, 0);
 	assert.equal(result.report.counts.archived, 1);
+	assert.equal(result.report.items[0].quality.completeness.status, 'passed-heuristics');
+	assert.equal(result.report.items[0].quality.preservation.status, 'unverified');
+	assert.equal(result.report.items[0].quality.coverage.status, 'heuristic-only');
 	const output = result.report.items[0].output;
 	const archived = await readFile(output, 'utf8');
 	const note = splitFrontmatter(archived);
@@ -164,6 +169,53 @@ test('archive preserves custom metadata, exact body and image bytes; repeat pres
 	assert.equal((await stat(output)).mtimeMs, timestamp);
 	assert.equal((await readdir(path.join(f.vault, 'Papers'))).length, 1);
 	await assert.rejects(stat(path.join(f.vault, '.paper-clipper/archive.lock')), { code: 'ENOENT' });
+});
+
+test('standalone legacy archives recheck source access and equations in both real and dry runs', async () => {
+	for (const [kind, change, reason] of [
+		['preview', text => text.replace('</body>', '<p>This is a preview of subscription content</p></body>'), 'subscription-preview'],
+		['challenge', text => text.replace('<head>', '<head><title>Client Challenge</title>'), 'access-challenge'],
+		['equations', text => text.replace('</body>', '<a class="ArticleReference" href="#e8">Eq. 8</a></body>'), 'unrendered-equations'],
+	]) {
+		const f = await fixture(`source-gate-${kind}`, { images: false, url: 'https://www.frontiersin.org/articles/synthetic/full' });
+		await writeFile(path.join(f.artifacts, 'file.html'), change(html()));
+		for (const flags of [['--dry-run'], []]) {
+			const result = await archivePapers(f.options(flags));
+			assert.equal(result.exitCode, 1);
+			assert.equal(result.report.items[0].stage, 'output');
+			assert.ok(result.report.items[0].quality.reasons.includes(reason));
+			assert.equal(result.report.items[0].quality.completeness.status, 'failed');
+			await assert.rejects(stat(path.join(f.vault, 'Papers')), { code: 'ENOENT' });
+			assert.equal(await readFile(f.input, 'utf8'), f.markdown);
+		}
+	}
+});
+
+test('standalone archive rejects lossy legacy templates and bad extraction independently', async () => {
+	for (const stage of ['output', 'extraction']) {
+		const f = await fixture(`body-gate-${stage}`, { images: false });
+		if (stage === 'output') {
+			await writeFile(f.input, '# Summary only');
+			await writeFile(path.join(f.artifacts, 'accepted.md'), '# Summary only');
+		} else await writeFile(path.join(f.artifacts, 'file.md'), '## Results\n\n## Methods\n\n## Funding\n\n' + 'Grant '.repeat(1200));
+		const result = await archivePapers(f.options(['--dry-run']));
+		assert.equal(result.exitCode, 1);
+		assert.equal(result.report.items[0].stage, stage);
+		assert.ok(result.report.items[0].quality.reasons.includes('too-short'));
+		assert.equal(result.report.items[0].quality.mainBodyWords, 0);
+		await assert.rejects(stat(f.vault), { code: 'ENOENT' });
+	}
+});
+
+test('archive retains saved stronger checks and expected DOI even when current requests are weaker', async () => {
+	const f = await fixture('saved-requirements', { images: false });
+	f.report.checks = { minWords: 2000, requiredSections: ['Discussion'], expectedDoi: '10.1234/other' };
+	await writeFile(`${f.input}.report.json`, JSON.stringify(f.report));
+	const result = await archivePapers({ ...f.options(['--dry-run']), checks: { minWords: 100, requiredSections: [] } });
+	assert.equal(result.exitCode, 1);
+	assert.equal(result.report.items[0].quality.paperIdentity.status, 'failed');
+	for (const reason of ['paper-identity', 'too-short', 'missing-section:Discussion']) assert.ok(result.report.items[0].quality.reasons.includes(reason));
+	await assert.rejects(stat(f.vault), { code: 'ENOENT' });
 });
 
 test('DOI deduplication finds manually written notes elsewhere in the Vault even with a different source URL', async () => {

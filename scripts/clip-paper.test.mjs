@@ -169,7 +169,7 @@ test('Nature section preservation checks extraction and final templates before p
 	assert.equal(rejected.exitCode, 2);
 	assert.equal(rejected.report.outputWritten, false);
 	assert.equal(rejected.report.attempts[0].quality.sourceSections.status, 'passed');
-	assert.deepEqual(rejected.report.attempts[0].quality.reasons, ['output-source-sections']);
+	assert.deepEqual(rejected.report.attempts[0].quality.reasons, ['output-source-sections', 'output-too-short', 'output-missing-main-sections']);
 	assert.equal(rejected.report.assets, undefined);
 	assert.equal(await readFile(config.output, 'utf8'), previous);
 	assert.equal((await stat(config.output)).mtimeMs, mtime);
@@ -246,7 +246,7 @@ test('a custom template cannot publish a title-only Nature note despite complete
 	const attempt = result.report.attempts[0];
 	assert.equal(attempt.quality.figureCaptions.status, 'passed');
 	assert.equal(attempt.quality.outputFigureCaptions.status, 'failed');
-	assert.deepEqual(attempt.quality.reasons, ['output-figure-captions']);
+	assert.deepEqual(attempt.quality.reasons, ['output-figure-captions', 'output-too-short', 'output-missing-main-sections']);
 	assert.match(await readFile(attempt.renderedMarkdown, 'utf8'), /Summary:/);
 	assert.equal(result.report.assets, undefined);
 	await assert.rejects(stat(config.output), { code: 'ENOENT' });
@@ -443,11 +443,20 @@ test('HTTP errors, non-HTML responses, and timeouts produce error reports withou
 	}
 });
 
-test('custom templates render only after quality checks of the extracted source content', { timeout: 20000 }, async () => {
+test('unknown-publisher custom templates must retain a body; full-content templates remain supported', { timeout: 20000 }, async () => {
 	const template = path.join(directory, 'template.json');
 	await writeFile(template, JSON.stringify({ noteNameFormat: '{{title}}', noteContentFormat: 'Custom note: {{title}}', properties: [] }), 'utf8');
 	const complete = options('custom', '/article', ['--fetch', 'http', '-t', template]);
-	assert.equal((await clipPaper(complete)).exitCode, 0);
+	const rejected = await clipPaper(complete);
+	assert.equal(rejected.exitCode, 2);
+	assert.equal(rejected.report.attempts[0].quality.outputQuality.preservation.status, 'unverified');
+	assert.deepEqual(rejected.report.attempts[0].quality.reasons, ['output-too-short', 'output-missing-main-sections']);
+	await assert.rejects(stat(complete.output), { code: 'ENOENT' });
+	await writeFile(template, JSON.stringify({ noteNameFormat: '{{title}}', noteContentFormat: 'Custom note: {{title}}\n\n{{content}}', properties: [] }));
+	const accepted = await clipPaper(complete);
+	assert.equal(accepted.exitCode, 0);
+	assert.equal(accepted.report.attempts[0].quality.preservation.status, 'unverified');
+	assert.equal(accepted.report.attempts[0].quality.coverage.status, 'heuristic-only');
 	assert.match(await readFile(complete.output, 'utf8'), /Custom note: Spatial research fixture/);
 	const preview = options('custom-preview', '/preview', ['--fetch', 'http', '-t', template]);
 	assert.equal((await clipPaper(preview)).exitCode, 2);

@@ -101,6 +101,26 @@ its own report. Interrupted staging directories are retained for inspection.
 Only `passed-checks` outputs are accepted. The input Markdown must exactly match
 its retained `accepted.md` snapshot, and the raw HTML must stay inside that paper's
 conversion artifacts. Unverified edited Markdown is not silently published.
+Every archive path rechecks the raw source access state (including preview,
+challenge and known unrendered-equation signals), the extracted Markdown, and the
+accepted final output. Standalone calls and dry runs no longer depend on the
+unified command supplying body requirements. Missing extraction artifacts fail
+closed; intentionally reconvert with a full-content template instead of editing
+the report or an existing Vault note.
+
+The effective word threshold is the greater of the saved requirement (1000 when
+absent) and any current requirement; required sections are combined. The fixed
+two-nonempty-main-section minimum remains unchanged. Saved/current expected DOIs
+cannot conflict or be silently discarded. Body/access failures use `content-check`
+and identify `stage` (`output` or `extraction`); identity/source comparison codes
+remain available. Unified Agent access failures remain `needs-access`.
+
+Current `quality` and effective `checks` are recorded on accepted archive items
+and in new `paper.json` records. The separate completeness, preservation and
+coverage states have the [same meaning as conversion](paper-clipper.md#independent-quality-states).
+Unknown publishers are not rejected merely because a source comparison is
+`not-applicable`. They must still pass the required access, identity and body checks.
+
 Every archive call now rechecks supported Nature legends against the retained
 HTML, including legacy caches, standalone invocations, dry runs and duplicate
 identities. A historical `passed-checks` report cannot bypass the current check.

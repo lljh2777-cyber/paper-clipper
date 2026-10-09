@@ -8,10 +8,8 @@ import { parseHTML } from 'linkedom';
 import { MathMLToLaTeX } from 'mathml-to-latex';
 import { browserFlags, fetchPage, resolveBrowserOptions } from './fetch-page.mjs';
 import { localizeImages } from './paper-assets.mjs';
-import { checkFigureCaptions } from './paper-captions.mjs';
-import { assessPaperIdentity } from './paper-metadata.mjs';
-import { assessMarkdown, bodyCheckVersion, previewPattern } from './paper-validation.mjs';
-import { checkSourceSections, sourceSectionsVersion } from './paper-sections.mjs';
+import { assessPaper, bodyCheckVersion, inspectHtml, qualitySummary, qualityVersion, withOutputQuality } from './paper-validation.mjs';
+import { sourceSectionsVersion } from './paper-sections.mjs';
 
 export { assessMarkdown } from './paper-validation.mjs';
 
@@ -173,33 +171,6 @@ export function normalizePublisherFigures(html, url) {
 	return { html: count ? document.toString() : html, count };
 }
 
-function inspectHtml(html, finalUrl) {
-	const { document } = parseHTML(html);
-	let contentUrl = finalUrl;
-	const canonical = document.querySelector('link[rel="canonical"]')?.getAttribute('href');
-	if (canonical) {
-		try {
-			const url = new URL(canonical, finalUrl);
-			const actual = new URL(finalUrl);
-			if (url.origin === actual.origin && url.pathname === actual.pathname) contentUrl = url.href;
-		} catch { /* Ignore malformed publisher metadata. */ }
-	}
-	for (const element of document.querySelectorAll('script, style, noscript, template, [hidden], [aria-hidden="true"]')) element.remove();
-	const title = document.title;
-	const unrenderedEquations = /(^|\.)frontiersin\.org$/.test(new URL(finalUrl).hostname) &&
-		[...document.querySelectorAll('a.ArticleReference[href^="#e"]')].some(link => {
-			const id = link.getAttribute('href').slice(1);
-			return /^e\d+$/.test(id) && !document.getElementById(id);
-		});
-	return {
-		contentUrl,
-		title,
-		unrenderedEquations,
-		preview: previewPattern.test((document.body?.textContent ?? '').replace(/\s+/g, ' ')),
-		challenge: /^(?:just a moment|access denied|attention required|client challenge|verify (?:you are|you're) human|security (?:check|verification))/i.test(title.trim()),
-	};
-}
-
 async function fetchHttp(url, timeout) {
 	const response = await fetch(url, {
 		signal: AbortSignal.timeout(timeout),
@@ -247,7 +218,7 @@ export async function clipPaper(options) {
 	const report = {
 		requestedUrl: options.url, mode: options.mode, startedAt: new Date().toISOString(),
 		status: 'error', output: options.output, outputWritten: false, artifactDirectory: directory,
-		checks: { bodyCheck: bodyCheckVersion, sourceSections: sourceSectionsVersion, minWords: options.minWords, requiredSections: options.requiredSections, minMainSections: 2, figureCaptions: 'nature-v1', expectedDoi: options.expectedDoi },
+		checks: { quality: qualityVersion, bodyCheck: bodyCheckVersion, sourceSections: sourceSectionsVersion, minWords: options.minWords, requiredSections: options.requiredSections, minMainSections: 2, figureCaptions: 'nature-v1', expectedDoi: options.expectedDoi },
 		attempts: [],
 	};
 	let exitCode = 1;
@@ -297,30 +268,21 @@ export async function clipPaper(options) {
 			await writeFile(attempt.markdown, extracted, 'utf8');
 			page.preview ||= captured.report.status === 'subscription-preview';
 			attempt.title = page.title;
-			page.figureCaptions = checkFigureCaptions(captured.html, extracted, attempt.contentUrl);
-			page.sourceSections = checkSourceSections(captured.html, extracted, attempt.contentUrl);
-			if (options.expectedDoi) page.paperIdentity = assessPaperIdentity(captured.html, options.expectedDoi);
-			attempt.quality = assessMarkdown(extracted, options, page);
+			attempt.quality = assessPaper(captured.html, extracted, attempt.contentUrl, options, page);
 			if (!attempt.quality.passed) {
 				attempt.status = 'incomplete';
 				console.error(`Content check failed: ${attempt.quality.reasons.join(', ')}`);
 				continue;
 			}
 			let markdown = options.template === defaultTemplate ? extracted : await convert(conversionHtml, attempt.contentUrl, options.template, options.timeout);
-			attempt.quality.outputFigureCaptions = options.template === defaultTemplate ? page.figureCaptions
-				: checkFigureCaptions(captured.html, markdown, attempt.contentUrl);
-			attempt.quality.outputSourceSections = options.template === defaultTemplate ? page.sourceSections
-				: checkSourceSections(captured.html, markdown, attempt.contentUrl);
-			const outputFailures = [
-				...(attempt.quality.outputFigureCaptions.status === 'failed' ? ['output-figure-captions'] : []),
-				...(attempt.quality.outputSourceSections.status === 'failed' ? ['output-source-sections'] : []),
-			];
+			const outputQuality = options.template === defaultTemplate ? attempt.quality
+				: assessPaper(captured.html, markdown, attempt.contentUrl, options, page);
+			attempt.quality = withOutputQuality(attempt.quality, outputQuality);
+			const outputFailures = attempt.quality.reasons;
 			if (outputFailures.length) {
 				attempt.renderedMarkdown = path.join(directory, `${mode}.rendered.md`);
 				await writeFile(attempt.renderedMarkdown, markdown, 'utf8');
 				attempt.status = 'incomplete';
-				attempt.quality.passed = false;
-				attempt.quality.reasons.push(...outputFailures);
 				console.error(`Content check failed: ${outputFailures.join(', ')} (custom template output).`);
 				break;
 			}
@@ -367,6 +329,7 @@ export async function main(args = process.argv.slice(2)) {
 	if (options.help) { console.log(usage); return 0; }
 	const { exitCode, report } = await clipPaper(options);
 	console.error(`Status: ${report.status}\nReport: ${options.output}.report.json`);
+	console.error(qualitySummary(report.attempts.findLast(attempt => attempt.quality)?.quality));
 	if (report.outputWritten) console.error(`Markdown: ${options.output}\nBasic checks passed; this is not a guarantee of full-text completeness.`);
 	else console.error(report.error ?? 'No new Markdown published. Inspect the retained diagnostics.');
 	if (report.assets?.failed) console.error('Warning: some images remain remote/unresolved. This paper is not fully offline; see report.assets.items.');
