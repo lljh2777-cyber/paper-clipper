@@ -55,8 +55,8 @@ async function download(url: string): Promise<{ bytes: Uint8Array; extension: st
 	return { bytes, extension: imageType(bytes, response.headers.get('content-type') ?? '') };
 }
 
-export async function createImageArchive(markdown: string, title: string, source: string,
-	onProgress: (done: number, total: number) => void = () => {}): Promise<{ bytes: Uint8Array; fileName: string; imageCount: number }> {
+export async function prepareImageFiles(markdown: string, source: string,
+	onProgress: (done: number, total: number) => void = () => {}): Promise<{ files: Record<string, Uint8Array>; imageCount: number }> {
 	if (markdown.length > 5 * 1024 * 1024) throw new ImageArchiveError('limit');
 	const frontmatter = markdown.match(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/)?.[0] ?? '';
 	const tree = fromMarkdown(markdown.slice(frontmatter.length));
@@ -81,9 +81,6 @@ export async function createImageArchive(markdown: string, title: string, source
 	}
 	const urls = [...new Set(images.map(image => image.url))];
 	if (urls.length > 200) throw new ImageArchiveError('limit');
-	const safeTitle = title.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/g, '').slice(0, 90) || 'paper';
-	// A unique enclosing directory prevents attachment collisions between extracted papers.
-	const root = `paper-${crypto.randomUUID()}`;
 	const files: Record<string, Uint8Array> = Object.create(null);
 	const destinations = new Map<string, string>();
 	let total = 0;
@@ -94,7 +91,7 @@ export async function createImageArchive(markdown: string, title: string, source
 			total += bytes.length;
 			if (total > MAX_TOTAL) throw new ImageArchiveError('limit');
 			const destination = `images/image-${index + 1}.${extension}`;
-			files[`${root}/${destination}`] = bytes;
+			files[destination] = bytes;
 			destinations.set(url, destination);
 			onProgress(index + 1, urls.length);
 		} catch (error) { throw new ImageArchiveError(error instanceof ImageArchiveError ? error.reason : 'download', index + 1); }
@@ -104,9 +101,18 @@ export async function createImageArchive(markdown: string, title: string, source
 		const replacement = `![${escape(image.alt)}](<${destinations.get(image.url)}>${image.title ? ` "${escape(image.title)}"` : ''})`;
 		markdown = markdown.slice(0, image.start) + replacement + markdown.slice(image.end);
 	}
-	files[`${root}/paper.md`] = strToU8(markdown);
+	files['paper.md'] = strToU8(markdown);
+	return { files, imageCount: urls.length };
+}
+
+export async function createImageArchive(markdown: string, title: string, source: string,
+	onProgress: (done: number, total: number) => void = () => {}): Promise<{ bytes: Uint8Array; fileName: string; imageCount: number }> {
+	const prepared = await prepareImageFiles(markdown, source, onProgress);
+	const safeTitle = title.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/g, '').slice(0, 90) || 'paper';
+	const root = `paper-${crypto.randomUUID()}`;
+	const files = Object.fromEntries(Object.entries(prepared.files).map(([name, bytes]) => [`${root}/${name}`, bytes]));
 	const bytes = await new Promise<Uint8Array>((resolve, reject) => zip(files, { level: 0 }, (error, result) => error ? reject(error) : resolve(result)));
-	return { bytes, fileName: `paper-${safeTitle}.zip`, imageCount: urls.length };
+	return { bytes, fileName: `paper-${safeTitle}.zip`, imageCount: prepared.imageCount };
 }
 
 export function downloadImageArchive(bytes: Uint8Array, fileName: string): void {

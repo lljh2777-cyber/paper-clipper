@@ -95,7 +95,7 @@ export interface Settings {
 	};
 	history: HistoryEntry[];
 	ratings: Rating[];
-	saveBehavior: 'addToObsidian' | 'saveFile' | 'copyToClipboard';
+	saveBehavior: 'addToObsidian' | 'saveFile' | 'copyToClipboard' | 'savePaperDirectory';
 }
 
 export interface ModelConfig {

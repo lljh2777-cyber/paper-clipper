@@ -652,3 +652,7 @@ label {
 	margin: 0;
 	color: var(--text-normal, #222);
 }
+#paper-directory-setting {
+	.setting-item-info { min-width: 0; overflow-wrap: anywhere; }
+	.setting-item-control { flex-shrink: 0; }
+}

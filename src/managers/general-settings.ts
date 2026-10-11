@@ -17,6 +17,7 @@ import { createUsageChart, aggregateUsageData, UsageMetric } from '../utils/char
 import { getClipHistory } from '../utils/storage-utils';
 import dayjs from 'dayjs';
 import weekOfYear from 'dayjs/plugin/weekOfYear';
+import { choosePaperDirectory, forgetPaperDirectory, getPaperDirectory, supportsPaperDirectory } from '../utils/paper-directory';
 
 dayjs.extend(weekOfYear);
 
@@ -185,9 +186,37 @@ export function initializeGeneralSettings(): void {
 		initializeHighlighterSettings();
 		initializeExportHighlightsButton();
 		initializeSaveBehaviorDropdown();
+		await initializePaperDirectory();
 		await initializeUsageChart();
 
 	});
+}
+
+async function initializePaperDirectory(): Promise<void> {
+	const choose = document.getElementById('choose-paper-directory') as HTMLButtonElement;
+	const forget = document.getElementById('forget-paper-directory') as HTMLButtonElement;
+	const name = document.getElementById('paper-directory-name')!;
+	const status = document.getElementById('paper-directory-status')!;
+	choose.setAttribute('aria-label', getMessage('choosePaperDirectory'));
+	forget.setAttribute('aria-label', getMessage('forgetPaperDirectory'));
+	const refresh = async () => {
+		const directory = await getPaperDirectory();
+		name.textContent = directory?.name ?? getMessage('paperDirectoryNotSet');
+		forget.disabled = !directory;
+	};
+	choose.disabled = !supportsPaperDirectory();
+	if (choose.disabled) status.textContent = getMessage('paperDirectoryError_unsupported');
+	choose.addEventListener('click', async () => {
+		choose.disabled = true;
+		try { await choosePaperDirectory(); await refresh(); status.textContent = ''; }
+		catch (error) { if (!(error instanceof DOMException && error.name === 'AbortError')) status.textContent = getMessage('paperDirectoryError_permission'); }
+		finally { choose.disabled = false; }
+	});
+	forget.addEventListener('click', async () => {
+		try { await forgetPaperDirectory(); await refresh(); status.textContent = ''; }
+		catch { status.textContent = getMessage('paperDirectoryError_permission'); }
+	});
+	try { await refresh(); } catch { status.textContent = getMessage('paperDirectoryError_permission'); }
 }
 
 function initializeAutoSave(): void {
@@ -319,7 +348,7 @@ function initializeSaveBehaviorDropdown(): void {
 
     dropdown.value = generalSettings.saveBehavior;
     dropdown.addEventListener('change', () => {
-        const newValue = dropdown.value as 'addToObsidian' | 'copyToClipboard' | 'saveFile';
+        const newValue = dropdown.value as Settings['saveBehavior'];
         saveSettings({ saveBehavior: newValue });
     });
 }

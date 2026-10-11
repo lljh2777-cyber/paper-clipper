@@ -1,5 +1,9 @@
 # Manual Markdown And Image ZIP
 
+To save the same local images directly into a translation-ready directory,
+configure [Default Paper Directory](default-paper-directory.md). ZIP remains
+an independent option without directory authorization.
+
 Reload the updated extension, open a paper, and open Paper Clipper. Review or
 edit the note, then use the arrow next to **Add to Obsidian** and choose
 **Download Markdown + images ZIP**. Keep the popup or sidebar open until the

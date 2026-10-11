@@ -15,6 +15,11 @@ to keep supported Markdown images beside the note. See
 [manual image archives](docs/manual-image-archive.md) for limits and failure handling.
 The existing Add to Obsidian and plain Markdown actions do not download images.
 
+For direct translation-ready folders, choose a [default paper directory](docs/default-paper-directory.md)
+in extension Settings, then use **Save to default directory**. This creates
+`paper.md`, `images/` and `translation.json` without ZIP extraction and refuses
+existing same-name destinations. Directory authorization is local to the browser.
+
 The primary interactive route is now the [usual-browser queue](docs/browser-queue.md):
 pair the modified extension once, keep the browser open (the queue page may close), then run
 `npm run paper:browser -- "DOI" --download-assets`. Paper tabs are captured and

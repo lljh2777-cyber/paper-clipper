@@ -22,6 +22,7 @@ import { debounce } from '../utils/debounce';
 import { sanitizeFileName } from '../utils/string-utils';
 import { saveFile } from '../utils/file-utils';
 import { createImageArchive, downloadImageArchive, ImageArchiveError } from '../utils/image-archive';
+import { authorizePaperDirectory, getPaperDirectory, paperIdentity, PaperDirectoryError, savePaperDirectory } from '../utils/paper-directory';
 import { translatePage, getMessage, setupLanguageAndDirection } from '../utils/i18n';
 import { formatPropertyValue } from '../utils/shared';
 import { exportPageHtml } from '../utils/page-html-export';
@@ -1316,6 +1317,38 @@ async function handleSaveToDownloads() {
 }
 
 let imageArchiveBusy = false;
+async function handleSavePaperDirectory() {
+	if (imageArchiveBusy) return;
+	imageArchiveBusy = true;
+	let status = document.getElementById('image-archive-status');
+	if (!status) {
+		status = document.createElement('div');
+		status.id = 'image-archive-status';
+		status.setAttribute('role', 'status');
+		status.style.cssText = 'padding:8px;overflow-wrap:anywhere;white-space:normal';
+		document.getElementById('clip-btn')?.parentElement?.before(status);
+	}
+	document.getElementById('more-dropdown')?.classList.remove('show');
+	status.textContent = getMessage('paperDirectorySaving');
+	try {
+		// Request permission during the click, before extraction or image network work.
+		const directory = await authorizePaperDirectory(await getPaperDirectory());
+		const markdown = (document.getElementById('note-content-field') as HTMLTextAreaElement).value;
+		const title = (document.getElementById('note-name-field') as HTMLInputElement).value;
+		const properties = getPropertiesFromDOM();
+		const frontmatter = await generateFrontmatter(properties);
+		const tab = await getCurrentTabInfo();
+		const data = currentTabId ? await memoizedExtractPageContent(currentTabId) : null;
+		const identity = paperIdentity(data?.metaTags ?? [], properties, tab.url, data?.published);
+		const folder = await savePaperDirectory(directory, { markdown: frontmatter + markdown, title, source: tab.url, identity },
+			(done, total) => { status!.textContent = getMessage('imageArchiveProgress', [String(done), String(total)]); });
+		status.textContent = getMessage('paperDirectorySaved', `${directory.name}/${folder}`);
+	} catch (error) {
+		status.textContent = error instanceof ImageArchiveError ? getMessage('paperDirectoryError_images', String(error.imageNumber)) :
+			error instanceof PaperDirectoryError ? getMessage(`paperDirectoryError_${error.reason}`, error.folder) : getMessage('paperDirectoryError_permission');
+	} finally { imageArchiveBusy = false; }
+}
+
 async function handleSaveImageArchive() {
 	if (imageArchiveBusy) return;
 	imageArchiveBusy = true;
@@ -1361,6 +1394,13 @@ function determineMainAction() {
 
 	// Set up actions based on saved behavior
 	switch (loadedSettings.saveBehavior) {
+		case 'savePaperDirectory':
+			mainButton.textContent = getMessage('savePaperDirectory');
+			mainButton.onclick = handleSavePaperDirectory;
+			addSecondaryAction(secondaryActions, 'addToObsidian', () => handleClipObsidian());
+			addSecondaryAction(secondaryActions, 'copyToClipboard', copyContent);
+			addSecondaryAction(secondaryActions, 'saveFile', handleSaveToDownloads);
+			break;
 		case 'copyToClipboard':
 			mainButton.textContent = getMessage('copyToClipboard');
 			mainButton.onclick = () => copyContent();
@@ -1383,6 +1423,7 @@ function determineMainAction() {
 			addSecondaryAction(secondaryActions, 'saveFile', handleSaveToDownloads);
 	}
 	addSecondaryAction(secondaryActions, 'saveImageArchive', handleSaveImageArchive);
+	if (loadedSettings.saveBehavior !== 'savePaperDirectory') addSecondaryAction(secondaryActions, 'savePaperDirectory', handleSavePaperDirectory);
 }
 
 async function handleClipObsidian(): Promise<void> {
@@ -1442,8 +1483,8 @@ async function handleClipObsidian(): Promise<void> {
 function addSecondaryAction(container: Element, actionType: string, handler: () => void) {
 	const menuItem = document.createElement('div');
 	menuItem.className = 'menu-item';
-	if (actionType === 'saveImageArchive') {
-		menuItem.id = 'save-image-archive';
+	if (actionType === 'saveImageArchive' || actionType === 'savePaperDirectory') {
+		menuItem.id = actionType === 'saveImageArchive' ? 'save-image-archive' : 'save-paper-directory';
 		menuItem.setAttribute('role', 'button');
 		menuItem.tabIndex = 0;
 		menuItem.addEventListener('keydown', event => {
@@ -1479,6 +1520,7 @@ function getActionIcon(actionType: string): string {
 		case 'copyToClipboard': return 'copy';
 		case 'saveFile': return 'file-down';
 		case 'saveImageArchive': return 'archive';
+		case 'savePaperDirectory': return 'folder-open';
 		case 'addToObsidian': return 'pen-line';
 		default: return 'plus';
 	}
