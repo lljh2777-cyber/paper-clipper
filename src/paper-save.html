@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Paper Clipper | Save</title>
+	<link rel="icon" href="icons/icon48.png">
+	<link rel="stylesheet" href="paper-save.css">
+	<script src="paper-save.js" defer></script>
+</head>
+<body>
+	<header><img src="icons/paper-clipper.svg" width="32" height="32" alt=""><h1>Paper Clipper</h1><button id="close-save" type="button"><i data-lucide="x"></i></button></header>
+	<main>
+		<h2 data-i18n="savePaperDirectory"></h2>
+		<p id="paper-title"></p>
+		<p id="save-directory"></p>
+		<p id="save-status" role="status" aria-live="polite"></p>
+		<button id="authorize-save" type="button" hidden><i data-lucide="folder-open"></i><span></span></button>
+	</main>
+</body>
+</html>

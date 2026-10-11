@@ -34,13 +34,14 @@ test('Chrome permissions and identity mechanism stay unchanged', async () => {
 	assert.equal(manifest.key, undefined);
 	assert.equal(manifest.update_url, undefined);
 	assert.equal(manifest.background.service_worker, 'background.js');
+	assert.ok(!manifest.web_accessible_resources.some(group => group.resources.some(resource => resource === 'paper-save.html' || resource === '*')));
 });
 
 test('packaged pages, icons and notices use the intended branding', async () => {
 	const manifest = await json('dev/manifest.json');
 	assert.equal(manifest.name, '__MSG_extensionName__');
 	assert.equal((await json('dev/_locales/en/messages.json')).extensionName.message, 'Paper Clipper');
-	for (const file of ['settings.html', 'popup.html', 'side-panel.html', 'highlights.html', 'reader.html', 'paper-queue.html']) {
+	for (const file of ['settings.html', 'popup.html', 'side-panel.html', 'highlights.html', 'reader.html', 'paper-queue.html', 'paper-save.html']) {
 		const html = await text(`dev/${file}`);
 		const { document } = parseHTML(html);
 		assert.match(document.title, /Paper Clipper/, file);

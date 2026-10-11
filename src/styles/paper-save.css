@@ -1,0 +1,29 @@
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; color: #222629; background: #fafbfc; }
+* { box-sizing: border-box; letter-spacing: 0; }
+body { margin: 0; }
+header { display: flex; align-items: center; gap: 12px; padding: 18px 24px; border-bottom: 1px solid #dce1e5; background: #fff; }
+h1 { font-size: 20px; margin: 0; }
+h2 { font-size: 18px; margin: 0 0 20px; }
+main { max-width: 850px; padding: 32px 24px; margin: auto; }
+p { line-height: 1.6; overflow-wrap: anywhere; }
+#paper-title { font-weight: 600; }
+#save-directory { color: #5c6268; }
+#save-status { min-height: 52px; color: #246147; }
+#save-status[data-error=true] { color: #a13b28; }
+button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 8px 12px; font: inherit; font-size: 14px; background: #fff; color: inherit; border: 1px solid #9da6ad; border-radius: 4px; cursor: pointer; }
+button:hover { background: #eef2f3; }
+button:focus-visible { outline: 2px solid #1e8466; outline-offset: 2px; }
+button:disabled { opacity: .5; cursor: default; }
+button[hidden] { display: none; }
+#close-save { margin-left: auto; width: 40px; flex: none; padding: 8px; }
+svg { width: 18px; height: 18px; flex: none; }
+@media (max-width: 600px) { header { padding: 14px 16px; } main { padding: 24px 16px; } }
+@media (prefers-color-scheme: dark) {
+	:root { color: #e4e7e8; background: #191c1e; }
+	header, button { background: #25292b; }
+	header { border-color: #41484d; }
+	button:hover { background: #333a3c; }
+	#save-directory { color: #b0b8bd; }
+	#save-status { color: #80c7aa; }
+	#save-status[data-error=true] { color: #ed9c85; }
+}

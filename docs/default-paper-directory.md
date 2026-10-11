@@ -15,6 +15,34 @@ clears this preference and never deletes files. Browsers without a directory
 picker can continue to use ZIP export. This does not change the browser's global
 Downloads location. Only the directory name can be displayed, not its full path.
 
+### Embedded Clipper
+
+Saving from an embedded Clipper (including the reader's embedded Clipper) opens
+a top-level **Paper Clipper | Save** tab. It receives the current edited Markdown,
+title, frontmatter and explicit identity, without extracting the page again.
+It saves automatically when the chosen directory already has write permission.
+If permission needs renewing, click **Authorize and save** in that tab. If no
+directory is configured, select one there. Standalone popup saving is unchanged.
+This respects Chromium's cross-origin iframe restrictions on filesystem prompts;
+changing a manifest permission or repeatedly selecting the same folder in an
+iframe cannot fix that boundary.
+
+The editor reports that the snapshot was handed off, not that a save succeeded.
+The save tab shows the actual outcome. Keep it open until completion, then close
+it. Closing it while waiting for authorization cancels without writing. Reloading
+or duplicating it never automatically repeats the save: start again from the
+editor, whose contents remain unchanged. Closing it mid-write can leave partial
+output, under the same protection rules below.
+
+There is no new server, pairing or message endpoint. A single pending snapshot is
+kept in trusted extension **session** storage, never synced; only a random request
+ID appears in the tab URL. The save page is not web-accessible. It consumes and
+removes the snapshot before filesystem work, then keeps it in page memory. An
+unopened request expires after one minute and is discarded on the next request
+or when the browser session ends. Session-storage quota errors are reported as
+handoff failures, not folder-permission failures; the editor and ZIP route remain
+available. No browser credentials or personal files are read for the handoff.
+
 ## Output
 
 ```text
@@ -42,7 +70,8 @@ translation-check and human-review states. No translation is performed.
 
 ## Protection And Limits
 
-- Keep the extension popup/sidebar open until saving finishes.
+- Keep the standalone popup, or the independent save tab for embedded mode, open
+  until saving finishes.
 - All images must be prepared successfully before creating any output files.
   The [ZIP image limits](manual-image-archive.md#limits) still apply.
 - Existing same-name directories or files are refused, including partial output
@@ -70,3 +99,13 @@ narrow settings layout. It never grants access to personal folders. The native
 OS picker, real external-folder grants and permission persistence after browser
 restart require manual acceptance. Firefox/Safari direct-folder writes are not
 validated; ZIP remains available.
+
+The embedded regression uses a real cross-origin extension iframe, and forbids
+filesystem permission calls from that frame. It covers edited snapshot handoff,
+automatic saving with a granted handle, simulated prompt/denial followed by a
+real button click, reload without replay, existing-file
+protection, and narrow/desktop save-page layout. Permission simulation over OPFS
+does not prove native external-directory permission persistence. Unit tests also
+cover single-consumption/concurrent claims (including snapshots without a DOI),
+expiry, failed tab launches and session-quota failures. These tests use synthetic
+content and isolated profiles.

@@ -1,4 +1,4 @@
-import { prepareImageFiles } from './image-archive';
+import { ImageArchiveError, prepareImageFiles } from './image-archive';
 
 export interface WritableDirectory extends FileSystemDirectoryHandle {
 	queryPermission(options: { mode: 'readwrite' }): Promise<PermissionState>;
@@ -6,7 +6,16 @@ export interface WritableDirectory extends FileSystemDirectoryHandle {
 }
 type PickerWindow = Window & { showDirectoryPicker?: (options: { id: string; mode: 'readwrite' }) => Promise<WritableDirectory> };
 export class PaperDirectoryError extends Error {
-	constructor(public readonly reason: 'unsupported' | 'missing' | 'permission' | 'exists' | 'write' | 'identity', public readonly folder = '') { super(reason); }
+	constructor(public readonly reason: 'unsupported' | 'missing' | 'permission' | 'exists' | 'write' | 'identity' | 'handoff' | 'busy' | 'expired', public readonly folder = '') { super(reason); }
+}
+
+export function paperDirectoryFailure(error: unknown): { key: string; detail: string } {
+	if (error instanceof ImageArchiveError) return { key: 'paperDirectoryError_images', detail: String(error.imageNumber) };
+	if (error instanceof PaperDirectoryError) return { key: `paperDirectoryError_${error.reason}`, detail: error.folder };
+	if (error instanceof DOMException && ['NotAllowedError', 'SecurityError'].includes(error.name)) {
+		return { key: 'paperDirectoryError_permission', detail: '' };
+	}
+	return { key: 'paperDirectoryError_unexpected', detail: '' };
 }
 
 // Directory handles are structured-cloned locally, never synced or exported with settings.
@@ -47,6 +56,7 @@ export async function authorizePaperDirectory(handle?: WritableDirectory): Promi
 }
 
 export interface PaperIdentity { doi: string | null; published: string | null }
+export interface PaperDirectoryInput { markdown: string; title: string; source: string; identity: PaperIdentity }
 export function paperIdentity(meta: { name?: string | null; property?: string | null; content: string | null }[],
 	properties: { name: string; value: unknown }[], source: string, published?: string): PaperIdentity {
 	const normalizeDoi = (value: unknown): string | null => {
@@ -92,7 +102,7 @@ async function writeFile(directory: FileSystemDirectoryHandle, name: string, con
 	} catch (error) { await writer.abort().catch(() => {}); throw error; }
 }
 
-export async function savePaperDirectory(parent: WritableDirectory, input: { markdown: string; title: string; source: string; identity: PaperIdentity },
+export async function savePaperDirectory(parent: WritableDirectory, input: PaperDirectoryInput,
 	progress: (done: number, total: number) => void = () => {}): Promise<string> {
 	const id = crypto.randomUUID();
 	const folder = paperFolderName(input.title, input.identity, id);

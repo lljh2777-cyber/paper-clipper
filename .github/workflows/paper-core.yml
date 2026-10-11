@@ -33,7 +33,7 @@ jobs:
       - name: Test queue service and snapshot client
         run: npm run test:browser-queue
       - name: Test manual image archives
-        run: npx vitest run src/utils/image-archive.test.ts src/utils/paper-directory.test.ts
+        run: npx vitest run src/utils/image-archive.test.ts src/utils/paper-directory.test.ts src/utils/paper-directory-handoff.test.ts
       - name: Build development extension without cleanup
         run: npx webpack --env BROWSER=chrome --env SKIP_CLEANUP=true --mode development
       - name: Verify extension branding and packaged attribution

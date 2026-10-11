@@ -22,7 +22,8 @@ import { debounce } from '../utils/debounce';
 import { sanitizeFileName } from '../utils/string-utils';
 import { saveFile } from '../utils/file-utils';
 import { createImageArchive, downloadImageArchive, ImageArchiveError } from '../utils/image-archive';
-import { authorizePaperDirectory, getPaperDirectory, paperIdentity, PaperDirectoryError, savePaperDirectory } from '../utils/paper-directory';
+import { authorizePaperDirectory, getPaperDirectory, paperIdentity, paperDirectoryFailure, savePaperDirectory } from '../utils/paper-directory';
+import { openPaperDirectorySave } from '../utils/paper-directory-handoff';
 import { translatePage, getMessage, setupLanguageAndDirection } from '../utils/i18n';
 import { formatPropertyValue } from '../utils/shared';
 import { exportPageHtml } from '../utils/page-html-export';
@@ -1331,21 +1332,28 @@ async function handleSavePaperDirectory() {
 	document.getElementById('more-dropdown')?.classList.remove('show');
 	status.textContent = getMessage('paperDirectorySaving');
 	try {
-		// Request permission during the click, before extraction or image network work.
-		const directory = await authorizePaperDirectory(await getPaperDirectory());
+		// Embedded extension frames cannot prompt for filesystem permission. Snapshot
+		// all editor fields before opening a top-level save page (which changes tabs).
 		const markdown = (document.getElementById('note-content-field') as HTMLTextAreaElement).value;
 		const title = (document.getElementById('note-name-field') as HTMLInputElement).value;
 		const properties = getPropertiesFromDOM();
+		const directory = window.top === window ? await authorizePaperDirectory(await getPaperDirectory()) : undefined;
 		const frontmatter = await generateFrontmatter(properties);
 		const tab = await getCurrentTabInfo();
 		const data = currentTabId ? await memoizedExtractPageContent(currentTabId) : null;
 		const identity = paperIdentity(data?.metaTags ?? [], properties, tab.url, data?.published);
-		const folder = await savePaperDirectory(directory, { markdown: frontmatter + markdown, title, source: tab.url, identity },
+		const input = { markdown: frontmatter + markdown, title, source: tab.url, identity };
+		if (!directory) {
+			await openPaperDirectorySave(input);
+			status.textContent = getMessage('paperDirectoryHandedOff');
+			return;
+		}
+		const folder = await savePaperDirectory(directory, input,
 			(done, total) => { status!.textContent = getMessage('imageArchiveProgress', [String(done), String(total)]); });
 		status.textContent = getMessage('paperDirectorySaved', `${directory.name}/${folder}`);
 	} catch (error) {
-		status.textContent = error instanceof ImageArchiveError ? getMessage('paperDirectoryError_images', String(error.imageNumber)) :
-			error instanceof PaperDirectoryError ? getMessage(`paperDirectoryError_${error.reason}`, error.folder) : getMessage('paperDirectoryError_permission');
+		const failure = paperDirectoryFailure(error);
+		status.textContent = getMessage(failure.key, failure.detail);
 	} finally { imageArchiveBusy = false; }
 }
 

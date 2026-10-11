@@ -1,5 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { authorizePaperDirectory, paperFolderName, paperIdentity, savePaperDirectory, WritableDirectory } from './paper-directory';
+import { authorizePaperDirectory, PaperDirectoryError, paperDirectoryFailure, paperFolderName, paperIdentity, savePaperDirectory, WritableDirectory } from './paper-directory';
+import { ImageArchiveError } from './image-archive';
 
 class Directory {
 	files = new Map<string, string | ArrayBuffer>();
@@ -38,6 +39,12 @@ beforeEach(() => vi.stubGlobal('navigator', { locks: { request: async (_name: st
 afterEach(() => vi.unstubAllGlobals());
 
 describe('translation directory', () => {
+	it('distinguishes permission, image, write and unknown failures without leaking raw details', () => {
+		expect(paperDirectoryFailure(new DOMException('Private URL', 'SecurityError')).key).toBe('paperDirectoryError_permission');
+		expect(paperDirectoryFailure(new ImageArchiveError('download', 2))).toEqual({ key: 'paperDirectoryError_images', detail: '2' });
+		expect(paperDirectoryFailure(new PaperDirectoryError('write', 'folder'))).toEqual({ key: 'paperDirectoryError_write', detail: 'folder' });
+		expect(paperDirectoryFailure(new Error('Private URL'))).toEqual({ key: 'paperDirectoryError_unexpected', detail: '' });
+	});
 	it('normalizes names and DOI metadata without inferring an unknown DOI', () => {
 		expect(paperFolderName('Novae', identity, 'id')).toBe('2025_Novae__10.1038_s41592-025-02899-6');
 		expect(paperFolderName('../../CON:<bad>', identity, 'id')).not.toMatch(/[<>:"/\\|?*]/);
