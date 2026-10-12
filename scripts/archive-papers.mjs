@@ -175,7 +175,7 @@ async function prepare(input, options) {
 	page.preview ||= attempt.capture?.status === 'subscription-preview';
 	const requirePassing = (quality, stage) => {
 		if (quality.passed) return;
-		const code = ['paper-identity', 'figure-captions', 'source-sections'].find(reason => quality.reasons.includes(reason)) ?? 'content-check';
+		const code = ['paper-identity', 'figure-captions', 'source-sections', 'formula-preservation'].find(reason => quality.reasons.includes(reason)) ?? 'content-check';
 		throw archiveError(code, `Saved ${stage} does not pass current checks. Inspect the retained source and quality diagnostics before reconverting.`, { quality, stage });
 	};
 	// Recheck both artifacts even for legacy reports and standalone/dry-run calls.

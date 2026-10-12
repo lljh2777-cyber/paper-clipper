@@ -1,5 +1,7 @@
 import { ExtractedContent } from '../types/types';
 import { createMarkdownContent } from 'defuddle/full';
+import { prepareDocumentForExtraction } from './publisher-figures';
+import { assertMathPreserved } from './paper-math.mjs';
 import { sanitizeFileName } from './string-utils';
 import { buildVariables, addSchemaOrgDataToVariables } from './shared';
 import browser from './browser-polyfill';
@@ -69,11 +71,11 @@ async function sendExtractRequest(tabId: number): Promise<ContentResponse> {
 		action: "sendMessageToTab",
 		tabId: tabId,
 		message: { action: "getPageContent" }
-	}) as ContentResponse & { success?: boolean; error?: string };
+	}) as ContentResponse & { success?: boolean; error?: string; code?: string };
 
 	// Check for explicit error from background script
 	if (response && 'success' in response && !response.success && response.error) {
-		throw new Error(response.error);
+		throw Object.assign(new Error(response.error), { code: response.code });
 	}
 
 	if (response && response.content) {
@@ -105,6 +107,7 @@ export async function extractPageContent(tabId: number): Promise<ContentResponse
 	try {
 		return await sendExtractRequest(tabId);
 	} catch (firstError) {
+		if (firstError instanceof Error && 'code' in firstError && firstError.code === 'formula-preservation') throw firstError;
 		// First attempt failed — this commonly happens on Safari after an
 		// extension update when a zombie content script (runtime invalidated)
 		// responded to ping, preventing re-injection. Force a fresh injection
@@ -118,6 +121,7 @@ export async function extractPageContent(tabId: number): Promise<ContentResponse
 		try {
 			return await sendExtractRequest(tabId);
 		} catch (retryError) {
+			if (retryError instanceof Error && 'code' in retryError && retryError.code === 'formula-preservation') throw retryError;
 			console.error('[Paper Clipper] Extraction failed after retry:', retryError);
 			throw new Error('Paper Clipper was not able to start. Please try reloading the page.');
 		}
@@ -148,8 +152,11 @@ export async function initializePageContent(
 
 		let selectedMarkdown = '';
 		if (selectedHtml) {
+			const selection = new DOMParser().parseFromString(selectedHtml, 'text/html');
+			if (selection.querySelector('mjx-container')) selectedHtml = prepareDocumentForExtraction(selection, currentUrl).body.innerHTML;
 			content = selectedHtml;
 			selectedMarkdown = createMarkdownContent(selectedHtml, currentUrl);
+			assertMathPreserved(selection, selectedMarkdown);
 		}
 
 		// Process highlights after getting the base content

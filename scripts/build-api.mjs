@@ -9,6 +9,7 @@ await esbuild.build({
 	entryPoints: [path.join(root, 'src/api.ts')],
 	bundle: true,
 	platform: 'neutral',
+	mainFields: ['module', 'main'],
 	format: 'esm',
 	outfile: path.join(root, 'dist/api.mjs'),
 	external: [

@@ -9,6 +9,7 @@ import { promisify } from 'node:util';
 import { clip, parseOptions, printResult } from './clip.mjs';
 import { archivePapers, parseOptions as archiveOptions, splitFrontmatter } from './archive-papers.mjs';
 import { reviewHtml, reviewDoi, reviewUrl, reviewParagraphs } from './fixtures/nature-review.mjs';
+import { container, token } from './fixtures/mathjax.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const exec = promisify(execFile);
@@ -259,6 +260,37 @@ test('legacy accepted snapshots cannot bypass current section checks on either a
 		assert.equal(result.report.items[0].archive.quality.mainBodyWords, 0);
 		assert.equal(await readFile(item.output, 'utf8'), legacy);
 		assert.equal(result.report.items[0].archive.output, undefined);
+		await assert.rejects(stat(path.join(s.vault, 'Papers')), { code: 'ENOENT' });
+	}
+	assert.equal(requests, before);
+});
+
+test('both cached archive routes reject legacy formula loss without touching existing notes', async () => {
+	const s = setup('math-cache');
+	const source = full.replace('</article>', `<p>Measured ${container(token('z'))}.</p></article>`);
+	const url = baseUrl + '/article';
+	const input = await exportPair(path.join(directory, 'math-cache/input'), 'paper.html', source, url);
+	const initial = await clip(parseOptions([input, '-o', s.output]));
+	assert.equal(initial.exitCode, 0);
+	const item = initial.report.items[0];
+	const report = JSON.parse(await readFile(`${item.output}.report.json`, 'utf8'));
+	const legacy = (await readFile(item.output, 'utf8')).replace('$z$', '');
+	await writeFile(item.output, legacy);
+	await writeFile(path.join(report.artifactDirectory, 'accepted.md'), legacy);
+	report.attempts[0].quality = { passed: true };
+	await writeFile(`${item.output}.report.json`, JSON.stringify(report));
+	await mkdir(s.vault, { recursive: true });
+	const note = path.join(s.vault, 'manual.md');
+	await writeFile(note, 'Keep these annotations.');
+	const before = requests;
+	for (const args of [[input, '-o', s.output], [url, '--output', item.output]]) {
+		const result = await clip(parseOptions([...args, '--vault', s.vault]));
+		assert.equal(result.exitCode, 1);
+		assert.equal(result.report.items[0].status, 'skipped');
+		assert.equal(result.report.items[0].archive.code, 'formula-preservation');
+		assert.equal(result.report.items[0].nextStep.code, 'review-formulas');
+		assert.equal(await readFile(item.output, 'utf8'), legacy);
+		assert.equal(await readFile(note, 'utf8'), 'Keep these annotations.');
 		await assert.rejects(stat(path.join(s.vault, 'Papers')), { code: 'ENOENT' });
 	}
 	assert.equal(requests, before);

@@ -15,6 +15,7 @@ import { buildVariables, generateFrontmatter, extractContentBySelector, selector
 import { sanitizeFileName } from './utils/string-utils';
 import { Template, Property } from './types/types';
 import { prepareDocumentForExtraction } from './utils/publisher-figures';
+import { assertMathPreserved } from './utils/paper-math.mjs';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -191,6 +192,7 @@ export async function clip(options: ClipOptions): Promise<ClipResult> {
 
 	// Convert to markdown
 	const markdownContent = createMarkdownContent(defuddleResult.content, url);
+	assertMathPreserved(doc as unknown as Document, markdownContent);
 
 	// Build template variables
 	const variables = buildVariables({

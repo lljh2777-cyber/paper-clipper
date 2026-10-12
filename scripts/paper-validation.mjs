@@ -3,10 +3,11 @@ import { parseHTML } from 'linkedom';
 import { checkFigureCaptions } from './paper-captions.mjs';
 import { checkSourceSections } from './paper-sections.mjs';
 import { assessPaperIdentity, normalizeDoi } from './paper-metadata.mjs';
+import { checkMathPreservation } from '../src/utils/paper-math.mjs';
 
 const marked = new Marked({ gfm: true });
 export const bodyCheckVersion = 'markdown-sections-v2';
-export const qualityVersion = 'paper-quality-v2';
+export const qualityVersion = 'paper-quality-v3';
 export const reviewSectionRule = 'nature-review-source-v1';
 export const previewPattern = /this is a preview of subscription content|sign in to access (?:the )?full (?:text|article)|purchase access to (?:the|this) article/i;
 const mainPattern = /^(?:introduction|background|main|results|discussion|methods|materials and methods|methodology|conclusions?)(?:$|[\s:])/i;
@@ -63,20 +64,21 @@ export function archiveRequirements(saved = {}, current = {}) {
 export function assessPaper(html, markdown, url, checks, page = inspectHtml(html, url)) {
 	const figureCaptions = checkFigureCaptions(html, markdown, url);
 	const sourceSections = checkSourceSections(html, markdown, url);
+	const formulaPreservation = checkMathPreservation(parseHTML(html).document, markdown);
 	const paperIdentity = checks.expectedDoi ? assessPaperIdentity(html, checks.expectedDoi) : undefined;
 	const reviewStructure = assessReviewStructure(html, sourceSections, checks.minWords);
-	const quality = assessMarkdown(markdown, checks, { ...page, figureCaptions, sourceSections, paperIdentity, reviewStructure });
-	const comparisons = { figureCaptions: figureCaptions.status, sourceSections: sourceSections.status };
+	const quality = assessMarkdown(markdown, checks, { ...page, figureCaptions, sourceSections, formulaPreservation, paperIdentity, reviewStructure });
+	const comparisons = { figureCaptions: figureCaptions.status, sourceSections: sourceSections.status, formulas: formulaPreservation.status };
 	const applicable = Object.values(comparisons).some(status => status !== 'not-applicable');
-	const contentReasons = quality.reasons.filter(reason => !['figure-captions', 'source-sections', 'paper-identity'].includes(reason));
+	const contentReasons = quality.reasons.filter(reason => !['figure-captions', 'source-sections', 'formula-preservation', 'paper-identity'].includes(reason));
 	return { ...quality, version: qualityVersion,
 		completeness: { status: contentReasons.length ? 'failed' : 'passed-heuristics', reasons: contentReasons },
 		preservation: { status: Object.values(comparisons).includes('failed') ? 'failed' : applicable ? 'passed-within-scope' : 'unverified' },
 		coverage: { status: applicable ? 'partial-source' : 'heuristic-only', comparisons,
 			skippedParagraphs: sourceSections.skippedParagraphs,
 			limitations: ['Heuristic checks do not prove full-text completeness.',
-				'Only applicable figure-legend and plain-prose source comparisons are verified.',
-				'Math, tables, lists, references, unloaded content and unsupported layouts are not fully compared.'] } };
+				'Only applicable figure-legend, plain-prose and MathJax-source comparisons are verified.',
+				'Other math formats, tables, lists, references, unloaded content and unsupported layouts are not fully compared.'] } };
 }
 
 function assessReviewStructure(html, source, minWords) {
@@ -99,6 +101,7 @@ export function withOutputQuality(extraction, output) {
 	return { ...extraction, passed: extraction.passed && output.passed,
 		reasons: [...extraction.reasons, ...output.reasons.map(reason => `output-${reason}`)],
 		outputQuality: output, outputFigureCaptions: output.figureCaptions, outputSourceSections: output.sourceSections,
+		outputFormulaPreservation: output.formulaPreservation,
 		completeness: { status: [extraction, output].some(check => check.completeness.status === 'failed') ? 'failed' : 'passed-heuristics',
 			reasons: [...extraction.completeness.reasons, ...output.completeness.reasons.map(reason => `output-${reason}`)] },
 		preservation: { status: [extraction, output].some(check => check.preservation.status === 'failed') ? 'failed' : output.preservation.status },
@@ -167,6 +170,7 @@ export function assessMarkdown(markdown, { minWords, requiredSections = [] }, pa
 	if (page.unrenderedEquations) reasons.push('unrendered-equations');
 	if (page.figureCaptions?.status === 'failed') reasons.push('figure-captions');
 	if (page.sourceSections?.status === 'failed') reasons.push('source-sections');
+	if (page.formulaPreservation?.status === 'failed') reasons.push('formula-preservation');
 	if (page.paperIdentity?.status === 'failed') reasons.push('paper-identity');
 	if (mainBodyWords < minWords) reasons.push('too-short');
 	const sourceBackedReview = page.reviewStructure?.status === 'passed' && main.length === 1 &&
@@ -185,5 +189,6 @@ export function assessMarkdown(markdown, { minWords, requiredSections = [] }, pa
 		...(page.reviewStructure ? { reviewStructure: page.reviewStructure } : {}),
 		...(page.figureCaptions ? { figureCaptions: page.figureCaptions } : {}),
 		...(page.sourceSections ? { sourceSections: page.sourceSections } : {}),
+		...(page.formulaPreservation ? { formulaPreservation: page.formulaPreservation } : {}),
 		...(page.paperIdentity ? { paperIdentity: page.paperIdentity } : {}) };
 }

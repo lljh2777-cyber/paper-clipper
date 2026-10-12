@@ -133,6 +133,9 @@ export function parseOptions(args) {
 }
 
 export function nextStep(item, route) {
+	if ([item.quality, item.archive?.quality].some(quality => quality?.reasons.some(reason => /^(?:output-)?formula-preservation$/.test(reason)))) return {
+		code: 'review-formulas', message: 'Formula preservation failed. Inspect formulaPreservation in the report and the retained source HTML; reconvert only after the source is loaded and its formula layout is supported. Existing notes were not repaired or overwritten.',
+	};
 	if (item.accessLimited || [item.quality, item.archive?.quality].some(quality => quality?.reasons.some(reason => ['subscription-preview', 'access-challenge', 'output-subscription-preview', 'output-access-challenge'].includes(reason)))) return {
 		code: 'export-authorized-tab',
 		message: 'Open the paper in a browser where you are authorized to read the full text. Confirm Results/Methods are loaded, use Clipper Export page HTML, keep the HTML/JSON pair together, then run npm run clip -- "<export-folder>". Export cannot grant access or recover unloaded content.',

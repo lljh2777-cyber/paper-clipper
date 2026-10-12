@@ -1,3 +1,5 @@
+import { prepareMath } from './paper-math.mjs';
+
 const descriptionSelector = 'figure .c-article-section__figure-description';
 const citationSelector = '.reference-citations a.reference-citations__ctrl[data-xml-rid]';
 
@@ -25,6 +27,10 @@ function prepareCellCitations(document: Document): void {
 }
 
 export function prepareDocumentForExtraction(document: Document, url: string): Document {
+	if (document.querySelector('mjx-container')) {
+		document = document.cloneNode(true) as Document;
+		prepareMath(document);
+	}
 	let hostname: string;
 	try {
 		hostname = new URL(url).hostname;

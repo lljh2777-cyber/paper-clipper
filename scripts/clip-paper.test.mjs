@@ -10,6 +10,7 @@ import { clipPaper, normalizeMathJaxTex, normalizeMathMLForReader, normalizePubl
 import { assessMarkdown, bodyCheckVersion } from './paper-validation.mjs';
 import { parseHTML } from 'linkedom';
 import { reviewHtml, reviewDoi, reviewUrl } from './fixtures/nature-review.mjs';
+import { mathHtml, paragraph as mathParagraph } from './fixtures/mathjax.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const run = promisify(execFile);
@@ -513,4 +514,21 @@ test('unknown-publisher custom templates must retain a body; full-content templa
 	const preview = options('custom-preview', '/preview', ['--fetch', 'http', '-t', template]);
 	assert.equal((await clipPaper(preview)).exitCode, 2);
 	await assert.rejects(stat(preview.output), { code: 'ENOENT' });
+});
+
+test('custom template cannot omit formulas even when its prose passes completeness checks', async () => {
+	const file = path.join(directory, 'math-source.html');
+	const template = path.join(directory, 'math-template.json');
+	await writeFile(file, mathHtml);
+	await writeFile(template, JSON.stringify({ noteNameFormat: '{{title}}', properties: [],
+		noteContentFormat: `## Results\n\n${mathParagraph}\n\n## Methods\n\n${mathParagraph}` }));
+	const config = options('math-custom', '/not-requested', ['--html', file, '-t', template]);
+	const rejected = await clipPaper(config);
+	assert.equal(rejected.exitCode, 2);
+	assert.equal(rejected.report.attempts[0].quality.formulaPreservation.matched, 8);
+	assert.deepEqual(rejected.report.attempts[0].quality.reasons, ['output-formula-preservation']);
+	assert.equal(rejected.report.attempts[0].quality.outputFormulaPreservation.matched, 0);
+	await assert.rejects(stat(config.output), { code: 'ENOENT' });
+	await writeFile(template, JSON.stringify({ noteNameFormat: '{{title}}', properties: [], noteContentFormat: '{{content}}' }));
+	assert.equal((await clipPaper(config)).exitCode, 0);
 });

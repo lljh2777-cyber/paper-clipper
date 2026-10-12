@@ -5,6 +5,7 @@ import { before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { archivePapers, parseOptions, splitFrontmatter } from './archive-papers.mjs';
 import { canonicalUrl, normalizeDoi, paperMetadata } from './paper-metadata.mjs';
+import { container, token } from './fixtures/mathjax.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aDXsAAAAASUVORK5CYII=', 'base64');
@@ -108,6 +109,25 @@ test('standalone archive and dry run recompute source sections for old reports',
 	const accepted = await archivePapers(f.options(['--dry-run']));
 	assert.equal(accepted.exitCode, 0);
 	assert.equal(accepted.report.items[0].sourceSections.status, 'passed');
+});
+
+test('legacy cached output is rechecked for missing formulas before standalone Vault archival', async () => {
+	const f = await fixture('legacy-formulas', { images: false });
+	await writeFile(path.join(f.artifacts, 'file.html'), html().replace('</body>', `<p>Measured ${container(token('z'))}.</p></body>`));
+	for (const flags of [['--dry-run'], []]) {
+		const result = await archivePapers(f.options(flags));
+		assert.equal(result.exitCode, 1);
+		assert.equal(result.report.items[0].code, 'formula-preservation');
+		assert.equal(result.report.items[0].quality.formulaPreservation.expected, 1);
+		await assert.rejects(stat(path.join(f.vault, 'Papers')), { code: 'ENOENT' });
+		assert.equal(await readFile(f.input, 'utf8'), f.markdown);
+	}
+	const complete = f.markdown + '\nMeasured $z$.\n';
+	for (const file of [f.input, path.join(f.artifacts, 'accepted.md')]) await writeFile(file, complete);
+	const extractionMissing = await archivePapers(f.options(['--dry-run']));
+	assert.equal(extractionMissing.report.items[0].stage, 'extraction');
+	await writeFile(path.join(f.artifacts, 'file.md'), complete);
+	assert.equal((await archivePapers(f.options(['--dry-run']))).exitCode, 0);
 });
 
 test('standalone archive rechecks Nature legends in old accepted snapshots before deduplication, including dry run', async () => {

@@ -327,6 +327,28 @@ and automatic clips omitted the long Nature legends. The subsequent shared
 extraction fix restored six Novae and five DeepMet legends. Runtime checks now
 verify those additions independently; see [Nature legend verification](paper-acceptance.md#nature-full-figure-legends).
 
+## MathJax formula preservation
+
+The shared extractor now normalizes `mjx-container` formulas before hidden-content
+cleanup. Explicit TeX and assistive MathML take priority. The bounded CHTML fallback
+supports text-bearing tokens, subscripts/superscripts, the tested fraction and sum
+layouts, and real table cells or explicitly spaced matrix rows. It preserves
+display mode, mathematical fonts and source spacing; it does not infer matrix
+columns, reconstruct glyphs from CSS fonts, or use OCR. Unknown/unloaded layouts
+stop conversion with a formula error; keep the original HTML for diagnosis.
+
+`quality.formulaPreservation` compares the source-derived TeX, multiplicity and
+display mode with actual Markdown formulas, excluding code and HTML comments.
+It participates in the same checks for conversion, custom templates and legacy
+Vault archival. `not-applicable` means no in-scope MathJax container was found,
+not that all formulas or full text were verified. The comparison detects loss or
+changes, not scientific correctness; other math formats remain outside its scope.
+Existing Markdown and Vault notes are never repaired automatically.
+
+Synthetic coverage: `node --test scripts/paper-math.test.mjs` after `npm run build:cli`,
+plus `npx vitest run src/utils/paper-math.test.ts` for the extension paths.
+Private publisher HTML is used only for explicitly requested local acceptance.
+
 ## Extension HTML export
 
 The extension now has an **Export page HTML** button in its popup and side panel.

@@ -35,7 +35,7 @@ jobs:
       - name: Test manual image archives
         run: npx vitest run src/utils/image-archive.test.ts src/utils/paper-directory.test.ts src/utils/paper-directory-handoff.test.ts
       - name: Test publisher content preservation with synthetic pages
-        run: npx vitest run src/utils/publisher-figures.test.ts src/utils/publisher-citations.test.ts
+        run: npx vitest run src/utils/publisher-figures.test.ts src/utils/publisher-citations.test.ts src/utils/paper-math.test.ts
       - name: Build development extension without cleanup
         run: npx webpack --env BROWSER=chrome --env SKIP_CLEANUP=true --mode development
       - name: Verify extension branding and packaged attribution
@@ -48,6 +48,8 @@ jobs:
         run: node scripts/test-extension-brand-e2e.mjs
       - name: Exercise manual image ZIP downloads
         run: node scripts/test-image-archive-e2e.mjs
+      - name: Exercise MathJax preservation and formula rendering
+        run: node scripts/test-paper-math-e2e.mjs
       - name: Exercise default directory settings and file writes
         run: node scripts/test-paper-directory-e2e.mjs
 

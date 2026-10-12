@@ -6,6 +6,7 @@ import { getDomain } from './utils/string-utils';
 import { extractContentBySelector as extractContentBySelectorShared } from './utils/shared';
 import Defuddle from 'defuddle';
 import { prepareDocumentForExtraction } from './utils/publisher-figures';
+import { assertMathPreserved } from './utils/paper-math.mjs';
 import { createMarkdownContent } from 'defuddle/full';
 import { flattenShadowDom } from './utils/flatten-shadow-dom';
 import { serializeChildren } from './utils/dom-utils';
@@ -222,6 +223,7 @@ declare global {
 				);
 				const defuddled = await Promise.race([defuddle.parseAsync(), parseTimeout])
 					.catch(() => defuddle.parse());
+				assertMathPreserved(document, createMarkdownContent(defuddled.content, document.URL));
 				const extractedContent: { [key: string]: string } = {
 					...defuddled.variables,
 				};
@@ -295,7 +297,8 @@ declare global {
 				sendResponse(response);
 			}).catch((error: unknown) => {
 				console.error('[Paper Clipper] getPageContent error:', error);
-				sendResponse({ success: false, error: error instanceof Error ? error.message : String(error) });
+				sendResponse({ success: false, error: error instanceof Error ? error.message : String(error),
+					code: error instanceof Error && 'code' in error ? error.code : undefined });
 			});
 			return true;
 		} else if (request.action === "extractContent") {
