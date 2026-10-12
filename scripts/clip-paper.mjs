@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs, promisify } from 'node:util';
 import { parseHTML } from 'linkedom';
+import { collectImageSources } from '../src/utils/image-sources.mjs';
 import { MathMLToLaTeX } from 'mathml-to-latex';
 import { browserFlags, fetchPage, resolveBrowserOptions } from './fetch-page.mjs';
 import { localizeImages } from './paper-assets.mjs';
@@ -288,7 +289,8 @@ export async function clipPaper(options) {
 			}
 			if (options.downloadAssets) {
 				console.error('Downloading image attachments (without browser credentials)...');
-				const assets = await localizeImages(markdown, { output: options.output, url: attempt.contentUrl, timeout: options.timeout });
+				const imageSources = collectImageSources(parseHTML(captured.html).document, attempt.contentUrl);
+				const assets = await localizeImages(markdown, { output: options.output, url: attempt.contentUrl, timeout: options.timeout, imageSources });
 				markdown = assets.markdown;
 				report.assets = assets.report;
 				console.error(`Images: ${report.assets.downloaded} downloaded, ${report.assets.failed} unresolved.`);

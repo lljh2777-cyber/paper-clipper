@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { unzipSync, strFromU8 } from 'fflate';
-import { createImageArchive } from './image-archive';
+import { createImageArchive, prepareImageFiles } from './image-archive';
 
 const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1]);
 function mockFetch() {
-	const fetcher = vi.fn(async () => new Response(png, { headers: { 'Content-Type': 'image/png' } }));
+	const fetcher = vi.fn(async (_url: string, _options?: RequestInit) => new Response(png, { headers: { 'Content-Type': 'image/png' } }));
 	vi.stubGlobal('fetch', fetcher);
 	return fetcher;
 }
@@ -60,5 +60,27 @@ describe('manual image ZIP', () => {
 		const result = await createImageArchive('My note', 'Paper', 'https://example.org');
 		expect(result.imageCount).toBe(0);
 		expect(fetcher).not.toHaveBeenCalled();
+	});
+	it('prefers full-size Nature images and records the chosen source without changing the editor text', async () => {
+		const fetcher = mockFetch();
+		const small = 'https://media.springernature.com/lw685/springer-static/image/art%3A10.1234%2Ftest/MediaObjects/Fig1.png';
+		const markdown = `![Figure 1](${small})\n\nOriginal caption.`;
+		const prepared = await prepareImageFiles(markdown, 'https://www.nature.com/articles/test');
+		expect(fetcher.mock.calls[0][0]).toBe(small.replace('/lw685/', '/full/'));
+		expect(strFromU8(prepared.files['paper.md'])).toBe('![Figure 1](<images/image-1.png>)\n\nOriginal caption.');
+		expect(JSON.parse(strFromU8(prepared.files['image-report.json'])).items).toEqual([{ file: 'images/image-1.png', selection: 'preferred' }]);
+	});
+	it.each(['denied', 'invalid-image', 'oversize'])('falls back once and records %s high-resolution failures', async failure => {
+		const fetcher = mockFetch();
+		const small = 'https://www.cell.com/cms/10.1234/test/asset/small/main.assets/gr1.png';
+		const large = 'https://www.cell.com/cms/10.1234/test/asset/large/main.assets/gr1_lrg.png';
+		fetcher.mockResolvedValueOnce(failure === 'denied' ? new Response('Denied', { status: 403 }) :
+			failure === 'invalid-image' ? new Response('Login', { headers: { 'Content-Type': 'image/png' } }) :
+			new Response(png, { headers: { 'Content-Length': String(21 * 1024 * 1024) } }));
+		const prepared = await prepareImageFiles(`![A](${small})\n![B](${small})`, 'https://www.cell.com/cell/fulltext/test', undefined, { [small]: large });
+		expect(fetcher.mock.calls.map(call => call[0])).toEqual([large, small]);
+		expect(prepared.imageCount).toBe(1);
+		expect(prepared.files['images/image-1.png']).toEqual(png);
+		expect(JSON.parse(strFromU8(prepared.files['image-report.json'])).items[0].selection).toBe('original-fallback');
 	});
 });

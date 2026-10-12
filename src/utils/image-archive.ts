@@ -1,6 +1,7 @@
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import type { RootContent, Definition } from 'mdast';
 import { zip, strToU8 } from 'fflate';
+import { imageDownloadCandidates } from './image-sources.mjs';
 
 const MAX_IMAGE = 20 * 1024 * 1024;
 const MAX_TOTAL = 100 * 1024 * 1024;
@@ -30,10 +31,13 @@ function imageUrl(value: string, source: string): string {
 	return url.href;
 }
 
-async function download(url: string): Promise<{ bytes: Uint8Array; extension: string }> {
+async function download(url: string, maxBytes = MAX_IMAGE): Promise<{ bytes: Uint8Array; extension: string }> {
 	const response = await fetch(url, { credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer', signal: AbortSignal.timeout(15000) });
-	if (!response.ok || !response.body) throw new ImageArchiveError('download');
-	if (Number(response.headers.get('content-length')) > MAX_IMAGE) {
+	if (!response.ok || !response.body) {
+		await response.body?.cancel();
+		throw new ImageArchiveError('download');
+	}
+	if (Number(response.headers.get('content-length')) > maxBytes) {
 		await response.body.cancel();
 		throw new ImageArchiveError('limit');
 	}
@@ -45,7 +49,7 @@ async function download(url: string): Promise<{ bytes: Uint8Array; extension: st
 			const { done, value } = await reader.read();
 			if (done) break;
 			size += value.length;
-			if (size > MAX_IMAGE) throw new ImageArchiveError('limit');
+			if (size > maxBytes) throw new ImageArchiveError('limit');
 			chunks.push(value);
 		}
 	} finally { await reader.cancel(); }
@@ -56,7 +60,7 @@ async function download(url: string): Promise<{ bytes: Uint8Array; extension: st
 }
 
 export async function prepareImageFiles(markdown: string, source: string,
-	onProgress: (done: number, total: number) => void = () => {}): Promise<{ files: Record<string, Uint8Array>; imageCount: number }> {
+	onProgress: (done: number, total: number) => void = () => {}, imageSources: Record<string, string> = {}): Promise<{ files: Record<string, Uint8Array>; imageCount: number }> {
 	if (markdown.length > 5 * 1024 * 1024) throw new ImageArchiveError('limit');
 	const frontmatter = markdown.match(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/)?.[0] ?? '';
 	const tree = fromMarkdown(markdown.slice(frontmatter.length));
@@ -83,16 +87,26 @@ export async function prepareImageFiles(markdown: string, source: string,
 	if (urls.length > 200) throw new ImageArchiveError('limit');
 	const files: Record<string, Uint8Array> = Object.create(null);
 	const destinations = new Map<string, string>();
+	const selections: { file: string; selection: 'preferred' | 'original-fallback' | 'original' }[] = [];
 	let total = 0;
 	onProgress(0, urls.length);
 	for (const [index, url] of urls.entries()) {
 		try {
-			const { bytes, extension } = await download(url);
+			if (total >= MAX_TOTAL) throw new ImageArchiveError('limit');
+			const candidates = imageDownloadCandidates(url, source, imageSources);
+			let result: Awaited<ReturnType<typeof download>> | undefined;
+			let selected = 0;
+			for (const [candidateIndex, candidate] of candidates.entries()) {
+				try { result = await download(imageUrl(candidate, source), Math.min(MAX_IMAGE, MAX_TOTAL - total)); selected = candidateIndex; break; }
+				catch (error) { if (candidateIndex === candidates.length - 1) throw error; }
+			}
+			const { bytes, extension } = result!;
 			total += bytes.length;
 			if (total > MAX_TOTAL) throw new ImageArchiveError('limit');
 			const destination = `images/image-${index + 1}.${extension}`;
 			files[destination] = bytes;
 			destinations.set(url, destination);
+			selections.push({ file: destination, selection: candidates.length === 1 ? 'original' : selected === 0 ? 'preferred' : 'original-fallback' });
 			onProgress(index + 1, urls.length);
 		} catch (error) { throw new ImageArchiveError(error instanceof ImageArchiveError ? error.reason : 'download', index + 1); }
 	}
@@ -102,12 +116,15 @@ export async function prepareImageFiles(markdown: string, source: string,
 		markdown = markdown.slice(0, image.start) + replacement + markdown.slice(image.end);
 	}
 	files['paper.md'] = strToU8(markdown);
+	if (selections.some(item => item.selection !== 'original')) files['image-report.json'] = strToU8(JSON.stringify({
+		schemaVersion: 1, policy: 'prefer-publisher-high-resolution', items: selections,
+	}, null, 2) + '\n');
 	return { files, imageCount: urls.length };
 }
 
 export async function createImageArchive(markdown: string, title: string, source: string,
-	onProgress: (done: number, total: number) => void = () => {}): Promise<{ bytes: Uint8Array; fileName: string; imageCount: number }> {
-	const prepared = await prepareImageFiles(markdown, source, onProgress);
+	onProgress: (done: number, total: number) => void = () => {}, imageSources: Record<string, string> = {}): Promise<{ bytes: Uint8Array; fileName: string; imageCount: number }> {
+	const prepared = await prepareImageFiles(markdown, source, onProgress, imageSources);
 	const safeTitle = title.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/g, '').slice(0, 90) || 'paper';
 	const root = `paper-${crypto.randomUUID()}`;
 	const files = Object.fromEntries(Object.entries(prepared.files).map(([name, bytes]) => [`${root}/${name}`, bytes]));

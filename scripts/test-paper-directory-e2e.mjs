@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,14 +15,18 @@ const context = await chromium.launchPersistentContext(path.join(directory, 'pro
 });
 try {
 	const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
-	const png = Buffer.from(await worker.evaluate(async () => {
+	const thumbnail = Buffer.from(await worker.evaluate(async () => {
 		const canvas = new OffscreenCanvas(1, 1);
 		canvas.getContext('2d').fillRect(0, 0, 1, 1);
 		return [...new Uint8Array(await (await canvas.convertToBlob({ type: 'image/png' })).arrayBuffer())];
 	}));
+	const png = await readFile(new URL('../src/icons/icon128.png', import.meta.url));
+	const smallImage = 'https://media.springernature.com/lw685/springer-static/image/art%3A10.1234%2Ftest/MediaObjects/Fig1.png';
 	await context.route('https://raw.githubusercontent.com/**', route => route.fulfill({ contentType: 'application/json', body: '{}' }));
 	await context.route('https://paper.example.org/**', route => route.fulfill({ contentType: 'text/html', body: '<html><head><title>Synthetic paper</title><meta name="citation_doi" content="10.1234/example"><meta name="citation_publication_date" content="2025-01-02"></head><body><article><h1>Synthetic paper</h1><p>' + 'Synthetic paper body. '.repeat(100) + '</p></article></body></html>' }));
 	await context.route('https://images.example.org/**', route => route.fulfill({ contentType: 'image/png', body: png }));
+	await context.route(smallImage, route => route.fulfill({ contentType: 'image/png', body: thumbnail }));
+	await context.route(smallImage.replace('/lw685/', '/full/'), route => route.fulfill({ contentType: 'image/png', body: png }));
 	const origin = `chrome-extension://${new URL(worker.url()).hostname}`;
 	await worker.evaluate(() => chrome.storage.local.set({ language: 'zh_CN' }));
 	const settings = await context.newPage();
@@ -55,7 +59,7 @@ try {
 	const popup = await next;
 	popup.on('pageerror', error => errors.push(error.message));
 	await popup.waitForFunction(() => document.querySelector('#note-content-field')?.value.includes('Synthetic paper body.'));
-	const markdown = '# English source\n\n![Figure](https://images.example.org/a.png)\n\nCaption.';
+	const markdown = `# English source\n\n![Figure](${smallImage})\n\nCaption.`;
 	await popup.locator('#note-name-field').fill('Synthetic paper');
 	await popup.locator('#note-content-field').fill(markdown);
 	assert.equal(await popup.locator('#clip-btn').innerText(), '保存到默认目录');
@@ -67,6 +71,7 @@ try {
 		const read = async name => (await (await folder.getFileHandle(name)).getFile()).text();
 		const original = await read('paper.md');
 		const metadata = JSON.parse(await read('translation.json'));
+		const imageReport = JSON.parse(await read('image-report.json'));
 		const image = await (await (await folder.getDirectoryHandle('images')).getFileHandle('image-1.png')).getFile();
 		const bitmap = await createImageBitmap(image);
 		const dimensions = [bitmap.width, bitmap.height]; bitmap.close();
@@ -74,14 +79,15 @@ try {
 		// A pre-existing translation must survive subsequent saves and forgetting the root.
 		const writer = await (await folder.getFileHandle('paper.zh-CN.md', { create: true })).createWritable();
 		await writer.write('人工译文'); await writer.close();
-		return { original, metadata, dimensions, entries };
+		return { original, metadata, imageReport, dimensions, entries };
 	});
-	assert.deepEqual(bundle.entries.sort(), ['images', 'paper.md', 'translation.json']);
+	assert.deepEqual(bundle.entries.sort(), ['image-report.json', 'images', 'paper.md', 'translation.json']);
 	assert.match(bundle.original, /images\/image-1.png/);
 	assert.equal(bundle.metadata.status, 'not-started');
 	assert.equal(bundle.metadata.archiveStatus, 'complete');
 	assert.equal(bundle.metadata.doi, '10.1234/example');
-	assert.deepEqual(bundle.dimensions, [1, 1]);
+	assert.deepEqual(bundle.dimensions, [128, 128]);
+	assert.equal(bundle.imageReport.items[0].selection, 'preferred');
 	await popup.locator('#clip-btn').click();
 	await popup.locator('#image-archive-status').filter({ hasText: '已存在' }).waitFor();
 	assert.equal(await popup.locator('#note-content-field').inputValue(), markdown);

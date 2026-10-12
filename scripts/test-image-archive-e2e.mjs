@@ -15,15 +15,21 @@ const context = await chromium.launchPersistentContext(path.join(directory, 'pro
 	args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
 });
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jGZkAAAAASUVORK5CYII=', 'base64');
+const largePng = await readFile(new URL('../src/icons/icon128.png', import.meta.url));
+const smallPath = '/cms/10.1234/test/asset/preview/main.assets/gr1.png';
+const largePath = '/cms/10.1234/test/asset/different/main.assets/gr1_lrg.png';
+const cellPage = 'https://www.cell.com/cell/fulltext/synthetic-images';
 try {
 	await context.route('https://raw.githubusercontent.com/**', route => route.fulfill({ contentType: 'application/json', body: '{}' }));
-	await context.route('https://paper.example.org/**', route => route.fulfill({ contentType: 'text/html', body: '<html><head><title>Synthetic paper</title></head><body><article><h1>Synthetic paper</h1><p>' + 'Synthetic paper body. '.repeat(100) + '</p></article></body></html>' }));
+	await context.route(cellPage, route => route.fulfill({ contentType: 'text/html', body: '<html><head><title>Synthetic paper</title></head><body><article><h1>Synthetic paper</h1><p>' + 'Synthetic paper body. '.repeat(100) + `</p><figure><img src="https://www.cell.com${smallPath}" data-viewer-src="${largePath}"><figcaption>Synthetic figure.</figcaption></figure></article></body></html>` }));
+	await context.route(`https://www.cell.com${smallPath}`, route => route.fulfill({ contentType: 'image/png', body: png }));
+	await context.route(`https://www.cell.com${largePath}`, route => route.fulfill({ contentType: 'image/png', body: largePng }));
 	await context.route('https://images.example.org/**', route => route.fulfill({ contentType: 'image/png', body: png }));
 	const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
 	const origin = `chrome-extension://${new URL(worker.url()).hostname}`;
 	await worker.evaluate(() => chrome.storage.local.set({ language: 'en' }));
 	const article = await context.newPage();
-	await article.goto('https://paper.example.org/article');
+	await article.goto(cellPage);
 	const next = context.waitForEvent('page');
 	await worker.evaluate(url => chrome.tabs.create({ url, active: false }), `${origin}/popup.html`);
 	const popup = await next;
@@ -68,6 +74,26 @@ try {
 	await popup.setViewportSize({ width: 390, height: 844 });
 	await popup.screenshot({ path: path.join(directory, 'saved-mobile.png') });
 	assert.equal(await popup.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+	// The original page, not an invented filename, supplies Cell's different asset ID.
+	await popup.locator('#note-content-field').fill(`![Figure](https://www.cell.com${smallPath})\n\nCaption.`);
+	for (const fallback of [false, true]) {
+		if (fallback) await context.route(`https://www.cell.com${largePath}`, route => route.fulfill({ status: 403, body: 'Denied' }));
+		await popup.locator('#more-btn').click();
+		const downloading = popup.waitForEvent('download');
+		await popup.locator('#save-image-archive').click();
+		const archive = unzipSync(await readFile(await (await downloading).path()));
+		const image = archive[Object.keys(archive).find(name => name.endsWith('/images/image-1.png'))];
+		const report = JSON.parse(strFromU8(archive[Object.keys(archive).find(name => name.endsWith('/image-report.json'))]));
+		assert.equal(report.items[0].selection, fallback ? 'original-fallback' : 'preferred');
+		assert.deepEqual(Buffer.from(image), fallback ? png : largePng);
+		if (!fallback) {
+			const dimensions = await popup.evaluate(async bytes => {
+				const image = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: 'image/png' }));
+				const size = [image.width, image.height]; image.close(); return size;
+			}, [...image]);
+			assert.deepEqual(dimensions, [128, 128]);
+		}
+	}
 	// Exercise a failed retry through the same control: no partial download or editor loss.
 	await context.route('https://images.example.org/bad.png', route => route.fulfill({ status: 403, body: 'Not authorized' }));
 	const failedNote = '![x](https://images.example.org/bad.png)';
@@ -81,5 +107,5 @@ try {
 	assert.equal(await popup.locator('#note-content-field').inputValue(), failedNote);
 	await popup.screenshot({ path: path.join(directory, 'failed-mobile.png') });
 	assert.deepEqual(errors, []);
-	console.log(JSON.stringify({ passed: true, screenshots: directory, checks: ['real-menu-download', 'local-images', 'deduplication', 'editor-preserved', 'failed-retry-no-zip', 'mobile-layout'] }));
+	console.log(JSON.stringify({ passed: true, screenshots: directory, checks: ['real-menu-download', 'local-images', 'deduplication', 'editor-preserved', 'cell-high-resolution-128px', 'reported-original-fallback', 'failed-retry-no-zip', 'mobile-layout'] }));
 } finally { await context.close(); }

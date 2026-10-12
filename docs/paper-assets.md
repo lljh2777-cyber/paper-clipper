@@ -28,8 +28,13 @@ moving them, including when copying into an Obsidian Vault.
 
 The downloader runs only after the paper body passes existing content checks.
 Within a paper, repeated image URLs share one attachment; ordinary links to the
-same URL remain unchanged. It downloads the image already selected by the
-converter, not a guessed higher-resolution version. Image formulas remain images,
+same URL remain unchanged. Downloads prefer Nature CDN `/full/` images and Cell
+large-image URLs explicitly declared in the captured HTML. Cell asset IDs are
+never guessed; unrelated publishers retain the converter's existing selection.
+One failed preferred request falls back to the original URL, with the selection
+recorded in `assets.items[].selection` (`preferred`, `original-fallback`, or
+`original`). Signed URLs stay intact; unfamiliar Nature query parameters are
+not rewritten. Image formulas remain images,
 not newly inferred TeX. A Markdown parser with source positions confines edits to
 image nodes; prose, code, dollar-delimited formulas, citations and frontmatter are
 not rewritten. Reference-style image uses are made inline while shared link
@@ -53,7 +58,7 @@ npm run clip -- "E:\Paper_Clipper\exported-paper.html" --download-assets --overw
 Every conversion uses a fresh attachment directory, including overwrites. Old
 attachments, original exports and earlier reports are never deleted or overwritten.
 If publishing Markdown fails, downloaded files remain as diagnostic artifacts.
-No cross-run cache, automatic retry or cleanup is performed. Users must clean up
+No cross-run cache, repeated retries or cleanup is performed. Users must clean up
 unneeded run/attachment directories manually.
 
 ## Failure reporting
@@ -81,13 +86,19 @@ or failed decode. Source/final URLs in reports may include transient signed quer
 parameters; keep the reports private along with other captures.
 
 Limits per paper: 200 unique URLs, 20 MiB per image, 100 MiB saved image bytes,
-five redirects per request, and 15 seconds per image (lowered by a smaller
+five redirects per request, and 15 seconds per candidate request (lowered by a smaller
 `--timeout`). Downloads are sequential. Only public HTTP(S) destinations without
 embedded credentials are allowed. Private/reserved IP literals, DNS results and
 redirect destinations are rejected; validated DNS results are supplied directly
 to the connection. Publisher-provided filenames are never used for local paths.
 These checks do not authenticate a publisher or prove that a decoded image is
 scientifically correct.
+
+The same source-selection rules are used by the extension's ZIP and default
+directory downloads. Those bundles record attempted upgrades in `image-report.json`.
+Source selection is not proof that every publisher exposes a higher-resolution
+image or that every preferred request succeeds. Existing notes and attachments
+are not upgraded in place.
 
 ## Verification
 

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { parseHTML } from 'linkedom';
 import { marked } from 'marked';
 import { assetLimits, collectImages, fetchImage, imageExtension, isPublicAddress, localizeImages } from './paper-assets.mjs';
+import { collectImageSources, imageDownloadCandidates } from '../src/utils/image-sources.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aDXsAAAAASUVORK5CYII=', 'base64');
@@ -17,6 +18,46 @@ before(async () => {
 	directory = await mkdtemp(path.join(root, 'output/browser-fetch/tests/assets-'));
 });
 const options = name => ({ output: path.join(directory, `${name}.md`), url: 'https://publisher.example/article' });
+
+test('selects only supported high-resolution sources without guessing Cell asset IDs or altering signed queries', () => {
+	const page = 'https://www.cell.com/cell/fulltext/test';
+	const small = '/cms/10.1234/test/asset/small/main.assets/gr1.png';
+	const large = '/cms/10.1234/test/asset/different-id/main.assets/gr1_lrg.png?Signature=test';
+	const doc = parseHTML(`<html><body><figure><img src="${small}" data-viewer-src="${large}"></figure></body></html>`).document;
+	const before = doc.toString();
+	const sources = collectImageSources(doc, page);
+	assert.deepEqual(imageDownloadCandidates(small, page, sources), [new URL(large, page).href, new URL(small, page).href]);
+	assert.equal(doc.toString(), before);
+	assert.deepEqual(imageDownloadCandidates(small, page), [new URL(small, page).href]);
+	assert.equal(Object.keys(collectImageSources(doc, 'https://cell.com.example.org/article')).length, 0);
+	for (const bad of ['http://127.0.0.1/large.png', 'https://other.example/large.png', large.replace('gr1_lrg', 'gr2_lrg'), large.replace('10.1234/test', '10.1234/other')]) {
+		const hints = { [new URL(small, page).href]: new URL(bad, page).href };
+		assert.deepEqual(imageDownloadCandidates(small, page, hints), [new URL(small, page).href]);
+	}
+	const nature = 'https://media.springernature.com/lw685/springer-static/image/art%3A10.1234%2Ftest/MediaObjects/Fig1.png';
+	assert.deepEqual(imageDownloadCandidates(nature + '?as=webp', page), [nature.replace('/lw685/', '/full/') + '?as=webp', nature + '?as=webp']);
+	for (const untouched of [nature + '?Signature=keep', nature.replace('media.springernature.com', 'media.springernature.com.example.org'), nature.replace('/lw685/', '/full/'), 'https://images.example.org/a.png']) {
+		assert.deepEqual(imageDownloadCandidates(untouched, page), [untouched]);
+	}
+});
+
+test('downloads the preferred image or one original fallback with unchanged Markdown context', async () => {
+	const small = 'https://media.springernature.com/lw685/springer-static/image/art%3A10.1234%2Ftest/MediaObjects/Fig1.png';
+	const large = small.replace('/lw685/', '/full/');
+	for (const fallback of [false, true]) {
+		const calls = [];
+		const result = await localizeImages(`Caption. ![A](${small}) and ![B](${small})`, options(`resolution-${fallback}`), {
+			download: async url => { calls.push(url); if (fallback && url === large) throw new Error('HTTP 403'); return image; },
+		});
+		assert.deepEqual(calls, fallback ? [large, small] : [large]);
+		assert.equal(result.report.items[0].selection, fallback ? 'original-fallback' : 'preferred');
+		assert.equal(result.report.items[0].finalUrl, fallback ? small : large);
+		assert.equal(result.report.downloaded, 1);
+		assert.equal(result.report.items[0].occurrences, 2);
+		assert.match(result.markdown, /^Caption\. /);
+		assert.deepEqual(await readFile(result.report.items[0].file), png);
+	}
+});
 
 test('finds Markdown, reference and HTML images without interpreting code, frontmatter or plain links as images', () => {
 	const markdown = '---\ncover: "![metadata](https://ignore.example/meta)"\n---\n' +

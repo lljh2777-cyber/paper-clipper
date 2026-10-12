@@ -95,4 +95,18 @@ describe('translation directory', () => {
 		expect(JSON.parse(folder.files.get('translation.json') as string).archiveStatus).toBe('failed');
 		expect(folder.files.has('paper.md')).toBe(false);
 	});
+	it('passes Cell source hints to the downloader and writes the image report beside the note', async () => {
+		const small = 'https://www.cell.com/cms/10.1234/test/asset/small/main.assets/gr1.png';
+		const large = 'https://www.cell.com/cms/10.1234/test/asset/large/main.assets/gr1_lrg.png';
+		const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1]);
+		const fetcher = vi.fn(async (_url: string, _options?: RequestInit) => new Response(png, { headers: { 'Content-Type': 'image/png' } }));
+		vi.stubGlobal('fetch', fetcher);
+		const parent = new Directory();
+		const folder = await savePaperDirectory(asHandle(parent), { ...input, source: 'https://www.cell.com/cell/fulltext/test', markdown: `![A](${small})`, imageSources: { [small]: large } });
+		const bundle = parent.directories.get(folder)!;
+		expect(fetcher.mock.calls[0][0]).toBe(large);
+		expect([...bundle.directories.get('images')!.files.keys()]).toEqual(['image-1.png']);
+		const report = JSON.parse(new TextDecoder().decode(bundle.files.get('image-report.json') as ArrayBuffer));
+		expect(report.items[0].selection).toBe('preferred');
+	});
 });

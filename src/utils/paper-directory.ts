@@ -56,7 +56,7 @@ export async function authorizePaperDirectory(handle?: WritableDirectory): Promi
 }
 
 export interface PaperIdentity { doi: string | null; published: string | null }
-export interface PaperDirectoryInput { markdown: string; title: string; source: string; identity: PaperIdentity }
+export interface PaperDirectoryInput { markdown: string; title: string; source: string; identity: PaperIdentity; imageSources?: Record<string, string> }
 export function paperIdentity(meta: { name?: string | null; property?: string | null; content: string | null }[],
 	properties: { name: string; value: unknown }[], source: string, published?: string): PaperIdentity {
 	const normalizeDoi = (value: unknown): string | null => {
@@ -109,7 +109,7 @@ export async function savePaperDirectory(parent: WritableDirectory, input: Paper
 	if (await parent.queryPermission({ mode: 'readwrite' }) !== 'granted') throw new PaperDirectoryError('permission');
 	if (await exists(parent, folder)) throw new PaperDirectoryError('exists', folder);
 	// Images must all succeed before any output directory or file is created.
-	const prepared = await prepareImageFiles(input.markdown, input.source, progress);
+	const prepared = await prepareImageFiles(input.markdown, input.source, progress, input.imageSources);
 	const hash = await crypto.subtle.digest('SHA-256', new Uint8Array(prepared.files['paper.md']).buffer);
 	const sourceVersion = [...new Uint8Array(hash)].map(value => value.toString(16).padStart(2, '0')).join('');
 	return navigator.locks.request('paper-clipper-directory-write', async () => {
@@ -129,7 +129,8 @@ export async function savePaperDirectory(parent: WritableDirectory, input: Paper
 			const images = await directory.getDirectoryHandle('images', { create: true });
 			for (const [name, bytes] of Object.entries(prepared.files)) {
 				if (name === 'paper.md') continue;
-				await writeFile(images, name.slice('images/'.length), bytes);
+				if (name === 'image-report.json') await writeFile(directory, name, bytes);
+				else await writeFile(images, name.slice('images/'.length), bytes);
 			}
 			await writeFile(directory, 'paper.md', prepared.files['paper.md']);
 			metadata.archiveStatus = 'complete';

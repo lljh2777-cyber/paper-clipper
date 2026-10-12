@@ -22,6 +22,7 @@ import { debounce } from '../utils/debounce';
 import { sanitizeFileName } from '../utils/string-utils';
 import { saveFile } from '../utils/file-utils';
 import { createImageArchive, downloadImageArchive, ImageArchiveError } from '../utils/image-archive';
+import { collectImageSources } from '../utils/image-sources.mjs';
 import { authorizePaperDirectory, getPaperDirectory, paperIdentity, paperDirectoryFailure, savePaperDirectory } from '../utils/paper-directory';
 import { openPaperDirectorySave } from '../utils/paper-directory-handoff';
 import { translatePage, getMessage, setupLanguageAndDirection } from '../utils/i18n';
@@ -1342,7 +1343,8 @@ async function handleSavePaperDirectory() {
 		const tab = await getCurrentTabInfo();
 		const data = currentTabId ? await memoizedExtractPageContent(currentTabId) : null;
 		const identity = paperIdentity(data?.metaTags ?? [], properties, tab.url, data?.published);
-		const input = { markdown: frontmatter + markdown, title, source: tab.url, identity };
+		const imageSources = data?.fullHtml ? collectImageSources(new DOMParser().parseFromString(data.fullHtml, 'text/html'), tab.url) : {};
+		const input = { markdown: frontmatter + markdown, title, source: tab.url, identity, imageSources };
 		if (!directory) {
 			await openPaperDirectorySave(input);
 			status.textContent = getMessage('paperDirectoryHandedOff');
@@ -1377,8 +1379,10 @@ async function handleSaveImageArchive() {
 		const title = (document.getElementById('note-name-field') as HTMLInputElement).value;
 		const frontmatter = await generateFrontmatter(getPropertiesFromDOM());
 		const tab = await getCurrentTabInfo();
+		const data = currentTabId ? await memoizedExtractPageContent(currentTabId) : null;
+		const imageSources = data?.fullHtml ? collectImageSources(new DOMParser().parseFromString(data.fullHtml, 'text/html'), tab.url) : {};
 		const archive = await createImageArchive(frontmatter + content, title, tab.url,
-			(done, total) => { status!.textContent = getMessage('imageArchiveProgress', [String(done), String(total)]); });
+			(done, total) => { status!.textContent = getMessage('imageArchiveProgress', [String(done), String(total)]); }, imageSources);
 		downloadImageArchive(archive.bytes, archive.fileName);
 		status.textContent = getMessage('imageArchiveReady', String(archive.imageCount));
 	} catch (error) {

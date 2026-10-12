@@ -6,6 +6,7 @@ import { BlockList, isIP } from 'node:net';
 import path from 'node:path';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import { parseFragment } from 'parse5';
+import { imageDownloadCandidates } from '../src/utils/image-sources.mjs';
 
 export const assetLimits = Object.freeze({ maxImages: 200, maxBytes: 20 * 1024 * 1024, maxTotalBytes: 100 * 1024 * 1024, timeout: 15000, redirects: 5 });
 const types = new Map([['image/png', 'png'], ['image/jpeg', 'jpg'], ['image/gif', 'gif'], ['image/webp', 'webp'], ['image/avif', 'avif']]);
@@ -140,7 +141,7 @@ function markdownImage(image, destination) {
 	return `![${alt}](<${destination}>${title})`;
 }
 
-export async function localizeImages(markdown, { output, url, timeout = assetLimits.timeout }, { download = fetchImage, limits = assetLimits } = {}) {
+export async function localizeImages(markdown, { output, url, timeout = assetLimits.timeout, imageSources = {} }, { download = fetchImage, limits = assetLimits } = {}) {
 	const images = collectImages(markdown);
 	const report = { requested: true, status: 'complete', occurrences: images.length, downloaded: 0, failed: 0, bytes: 0, items: [] };
 	const replacements = [];
@@ -160,9 +161,18 @@ export async function localizeImages(markdown, { output, url, timeout = assetLim
 				if (error) throw new Error(error);
 				if (assets.size > limits.maxImages) throw new Error('Paper exceeds the unique image limit.');
 				if (report.bytes >= limits.maxTotalBytes) throw new Error('Paper exceeds the total image byte limit.');
-				const result = await download(key, { timeout: Math.min(timeout, limits.timeout), maxBytes: Math.min(limits.maxBytes, limits.maxTotalBytes - report.bytes) });
-				const extension = imageExtension(result.bytes, result.contentType);
-				if (result.bytes.length > limits.maxBytes || report.bytes + result.bytes.length > limits.maxTotalBytes) throw new Error('Image exceeds the byte limit.');
+				const candidates = imageDownloadCandidates(key, url, imageSources);
+				let result, extension, selected;
+				for (const [index, candidate] of candidates.entries()) {
+					try {
+						selected = imageUrl(candidate, url).href;
+						result = await download(selected, { timeout: Math.min(timeout, limits.timeout), maxBytes: Math.min(limits.maxBytes, limits.maxTotalBytes - report.bytes) });
+						extension = imageExtension(result.bytes, result.contentType);
+						if (result.bytes.length > limits.maxBytes || report.bytes + result.bytes.length > limits.maxTotalBytes) throw new Error('Image exceeds the byte limit.');
+						item.selection = candidates.length === 1 ? 'original' : index === 0 ? 'preferred' : 'original-fallback';
+						break;
+					} catch (cause) { if (index === candidates.length - 1) throw cause; }
+				}
 				if (!directory) {
 					// Fresh sibling directories preserve previous attachments during overwrite.
 					await mkdir(path.dirname(output), { recursive: true });
@@ -172,7 +182,7 @@ export async function localizeImages(markdown, { output, url, timeout = assetLim
 				const file = path.join(directory, `image-${String(report.downloaded + 1).padStart(3, '0')}.${extension}`);
 				await writeFile(file, result.bytes, { flag: 'wx' });
 				Object.assign(item, { status: 'downloaded', file, relativePath: path.relative(path.dirname(output), file).split(path.sep).map(encodeURIComponent).join('/'),
-					finalUrl: result.finalUrl ?? key, contentType: result.contentType, bytes: result.bytes.length });
+					finalUrl: result.finalUrl ?? selected, contentType: result.contentType, bytes: result.bytes.length });
 				report.downloaded++;
 				report.bytes += result.bytes.length;
 			} catch (cause) {

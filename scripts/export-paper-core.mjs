@@ -8,7 +8,7 @@ const converter = [
 	'cli.ts', 'api.ts', 'types/types.ts', 'utils/cli-utils.ts', 'utils/cli-stubs.ts',
 	'utils/browser-polyfill.ts', 'utils/debug.ts', 'utils/filters.ts', 'utils/filters/markdown.ts',
 	'utils/string-utils.ts', 'utils/shared.ts', 'utils/resolver.ts', 'utils/storage-utils.ts',
-	'utils/template-compiler.ts', 'utils/publisher-figures.ts', 'utils/variables/selector.ts',
+	'utils/template-compiler.ts', 'utils/publisher-figures.ts', 'utils/image-sources.mjs', 'utils/image-sources.d.mts', 'utils/variables/selector.ts',
 	'utils/variables/simple.ts', 'utils/variables/schema.ts', 'utils/variables/prompt.ts',
 	'utils/variables/model.ts', 'utils/fixtures/templates/minimal.json',
 ];
