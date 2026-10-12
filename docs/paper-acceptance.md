@@ -217,6 +217,28 @@ the two old Nature caches (six and five missing legends) and planned the other
 three. Source bytes/timestamps were unchanged and no Vault was created. This
 does not modify or revalidate the separate existing Vault notes.
 
+## Cell citation previews (2026-10-12)
+
+A user-supplied, authorized Cell HTML export exposed hidden reference preview
+cards being expanded into ordinary paragraphs. Shared extraction preparation now
+replaces only recognized, linked `reference-citations` popovers on `cell.com`
+with their original numbered bibliography links. Unrelated popovers and the
+bibliography are left unchanged. The live DOM and source file are not edited.
+
+Local offline checks of the supplied sample passed through the browser parser
+(JSDOM, not a live Chrome UI) and the real CLI: all 126 inline citation numbers
+and their order matched the source, with 112 reference definitions retained.
+The duplicate reference details no longer interrupted the introduction. No
+private HTML, Vault files or historical acceptance baselines were committed or
+rewritten. This is citation-specific verification, not a new full-text guarantee.
+
+Public synthetic regressions cover sync/async extraction, manual Markdown saves,
+the API and offline CLI, repeated references, labels differing from internal IDs,
+missing bibliographies, unchanged sources and unrelated hosts/structures. The
+Chrome extension was rebuilt; reload the unpacked extension and refresh the
+article before clipping again. Live authenticated Chrome/Obsidian rendering and
+other Cell layouts still need manual confirmation. Existing exports are unchanged.
+
 ## Remaining limits
 
 - PLOS and Frontiers have source-structure coverage, not an independently supplied

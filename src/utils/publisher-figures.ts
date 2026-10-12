@@ -1,9 +1,41 @@
 const descriptionSelector = 'figure .c-article-section__figure-description';
+const citationSelector = '.reference-citations a.reference-citations__ctrl[data-xml-rid]';
+
+function prepareCellCitations(document: Document): void {
+	for (const wrapper of Array.from(document.querySelectorAll('.reference-citations'))) {
+		const controls = Array.from(wrapper.children).filter(child => child.matches('a.reference-citations__ctrl'));
+		const holders = Array.from(wrapper.children).filter(child => child.matches('.dropBlock__holder'));
+		if (controls.length !== 1 || holders.length !== 1) continue;
+		const control = controls[0], holder = holders[0];
+		const target = control.getAttribute('data-xml-rid');
+		if (!target || !/^bib\d+$/.test(target) || !/^\d+$/.test(control.textContent?.trim() ?? '') ||
+			!holder.id || (control.getAttribute('aria-controls') !== holder.id && control.getAttribute('data-db-target-for') !== holder.id) ||
+			!holder.querySelector('.citation-content')) continue;
+
+		// Cell stores a duplicate reference preview beside each inline marker.
+		// Restore its bibliography link before Defuddle sees the hidden block content.
+		const link = document.createElement('a');
+		link.setAttribute('href', `#${target}`);
+		if (control.id) link.id = control.id;
+		link.append(...Array.from(control.childNodes));
+		control.replaceWith(link);
+		holder.remove();
+		wrapper.replaceWith(...Array.from(wrapper.childNodes));
+	}
+}
 
 export function prepareDocumentForExtraction(document: Document, url: string): Document {
+	let hostname: string;
 	try {
-		if (!/(^|\.)nature\.com$/.test(new URL(url).hostname)) return document;
+		hostname = new URL(url).hostname;
 	} catch { return document; }
+	if (/(^|\.)cell\.com$/.test(hostname)) {
+		if (!document.querySelector(citationSelector)) return document;
+		const prepared = document.cloneNode(true) as Document;
+		prepareCellCitations(prepared);
+		return prepared;
+	}
+	if (!/(^|\.)nature\.com$/.test(hostname)) return document;
 	if (!document.querySelector(descriptionSelector)) return document;
 	const prepared = document.cloneNode(true) as Document;
 	for (const description of Array.from(prepared.querySelectorAll(descriptionSelector))) {

@@ -218,6 +218,32 @@ test('Nature legends outside figcaption survive the actual CLI in order with lin
 	assert.ok(markdown.indexOf('Detailed caption') < markdown.indexOf('After figure marker.'));
 });
 
+test('Cell inline previews stay out of paragraphs through the offline CLI', async () => {
+	const citation = number => `<span class="dropBlock reference-citations"><a id="body-ref-${number}" href="#" role="button"
+		class="reference-citations__ctrl" data-xml-rid="bib${number}" aria-controls="preview-${number}"><sup>${number}</sup></a>
+		<div class="dropBlock__holder" id="preview-${number}"><div class="citation-content">Preview-only synthetic reference ${number}.</div></div></span>`;
+	const reference = number => `<div class="biblioentry"><div id="bib${number}" class="citations"><div class="citation-content">
+		<div>${number}.</div><div>Synthetic author ${number}.</div><div><strong>Synthetic reference ${number}.</strong></div></div></div></div>`;
+	const source = fullHtml.replace('<h2>Results</h2>', `<h2>Results</h2><div role="paragraph">First finding.${citation(1)}<sup>,</sup>${citation(2)} Next sentence. ${paragraph}</div>`)
+		.replace('</article>', `<section><h2>References</h2><div role="doc-bibliography"><div class="bibliolist">${reference(1)}${reference(2)}</div></div></section></article>`);
+	const input = path.join(directory, 'cell-citations.html');
+	await writeFile(input, source);
+	const config = { ...options('cell-citations', '/unused', ['--html', input]), url: 'https://www.cell.com/cell/fulltext/synthetic-citations' };
+	const before = requests;
+	const result = await clipPaper(config);
+	assert.equal(result.exitCode, 0);
+	assert.equal(requests, before);
+	assert.equal(await readFile(input, 'utf8'), source);
+	assert.equal(await readFile(result.report.attempts[0].html, 'utf8'), source);
+	const markdown = await readFile(config.output, 'utf8');
+	assert.match(markdown.split('\n').find(line => line.startsWith('First finding.')) ?? '', /First finding\.\[\^1\]\s*(?:<sup>,<\/sup>|,)\[\^2\] Next sentence\./);
+	assert.ok(!markdown.includes('Preview-only'));
+	for (const number of [1, 2]) {
+		assert.equal(markdown.split(`Synthetic reference ${number}.`).length, 2);
+		assert.ok(markdown.indexOf(`Synthetic reference ${number}.`) > markdown.indexOf('## References'));
+	}
+});
+
 test('single-section review and grouped caption citations pass the actual CLI and full-content templates', async () => {
 	const figure = '<figure><figcaption>Fig. 1: Synthetic model.</figcaption><img src="/figure.png" width="685" height="395"><div class="c-article-section__figure-description"><p>Model details cite sources <sup><a href="#ref-CR1">1</a>,<a href="#ref-CR2">2</a></sup>.</p></div></figure>';
 	const source = reviewHtml.replace('</article>', `${figure}<h2>References</h2><ol><li id="ref-CR1">First synthetic source.</li><li id="ref-CR2">Second synthetic source.</li></ol></article>`);
