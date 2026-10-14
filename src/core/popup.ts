@@ -28,6 +28,7 @@ import { openPaperDirectorySave } from '../utils/paper-directory-handoff';
 import { translatePage, getMessage, setupLanguageAndDirection } from '../utils/i18n';
 import { formatPropertyValue } from '../utils/shared';
 import { exportPageHtml } from '../utils/page-html-export';
+import { notifySidePanelState } from '../utils/side-panel-lifecycle';
 
 interface ReaderModeResponse {
 	success: boolean;
@@ -611,10 +612,10 @@ async function initializeUI() {
 	}
 
 	if (isSidePanel) {
-		browser.runtime.sendMessage({ action: "sidePanelOpened" });
+		void notifySidePanelState(true);
 		
 		window.addEventListener('unload', () => {
-			browser.runtime.sendMessage({ action: "sidePanelClosed" });
+			void notifySidePanelState(false);
 		});
 	}
 }
