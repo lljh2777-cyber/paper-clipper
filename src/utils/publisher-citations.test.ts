@@ -39,6 +39,14 @@ function expectCleanCitations(markdown: string) {
 	expect(markdown).toContain('Synthetic author 1.');
 	expect(markdown).toContain('*Synthetic journal.* 2026.');
 	expect(markdown).toContain('Figure 1. Synthetic legend.');
+	for (const number of [1, 2]) {
+		const definition = markdown.split('\n').find(line => line.startsWith(`[^${number}]: `));
+		expect(definition).toContain(`Synthetic author ${number}.`);
+		expect(definition).toContain(`**Synthetic reference ${number}.**`);
+		expect(definition).toContain('*Synthetic journal.* 2026.');
+		expect(definition).toContain(`[Source ${number}](https://example.org/source-${number})`);
+		expect(definition).not.toContain('View in article');
+	}
 }
 
 describe('Cell inline citation previews', () => {
@@ -50,7 +58,8 @@ describe('Cell inline citation previews', () => {
 		expect(prepared.querySelectorAll('.reference-citations, #intro .dropBlock__holder')).toHaveLength(0);
 		expect(prepared.querySelector('#intro')?.textContent?.replace(/\s+/g, ' ')).toBe('First finding.1,2 Second finding.1 End of paragraph.');
 		expect(Array.from(prepared.querySelectorAll('#intro a')).map(a => a.getAttribute('href'))).toEqual(['#bib1', '#bib3', '#bib1']);
-		expect(prepared.querySelector('#references')?.outerHTML).toBe(source.querySelector('#references')?.outerHTML);
+		expect(prepared.querySelector('#bib1 p')?.textContent).toContain('Synthetic author 1.');
+		expect(prepared.querySelector('#bib1 .label')).toBeNull();
 		expect(prepareDocumentForExtraction(prepared, url)).toBe(prepared);
 	});
 	test('leaves other hosts, unmatched popovers, and ordinary citation content alone', () => {

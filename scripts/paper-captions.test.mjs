@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { execFileSync } from 'node:child_process';
 import { checkFigureCaptions } from './paper-captions.mjs';
 
 const url = 'https://www.nature.com/articles/fixture';
@@ -34,4 +35,31 @@ test('production caption check fails missing, shortened, duplicated, relocated a
 		assert.ok(result.figures[0].errors.length);
 	}
 	assert.equal(checkFigureCaptions(html.replace(/<p>[\s\S]*<\/p>/, ''), markdown, url).status, 'failed');
+});
+
+test('Cell conversion and source checks retain collapsed panel text and complete citation definitions', () => {
+	const cell = 'https://www.cell.com/cell/fulltext/synthetic';
+	const prose = 'Synthetic tissue measurements were repeated across independent experimental groups. '.repeat(40);
+	const input = `<html><head><title>Synthetic Cell article</title></head><body><article><h1>Synthetic Cell article</h1>
+		<h2>Results</h2><p>${prose}<a href="#bib3"><sup>1</sup></a>, <a href="#bib4"><sup>2</sup></a></p><figure id="fig1" class="graphic"><img src="/figure.png">
+		<figcaption><div class="figure__title">Figure 1 Synthetic panels.</div><div class="accordion"><button>Show full caption</button>
+		<div style="display:none"><div class="figure__caption__text__content"><div role="paragraph">(A) Synthetic panel.</div>
+		<div role="paragraph">(B) Immune-related features across groups. <a href="/data">Data</a>.</div></div></div></div></figcaption></figure>
+		<h2>Methods</h2><p>${prose}</p><section id="references"><h2>References</h2><div role="doc-bibliography"><div class="bibliolist"><div class="biblioentry"><div class="citations" id="bib3">
+		<div class="citation-content"><div class="label"><a href="#body-ref">1.</a></div><div>Author A.</div><div><b>Synthetic reference.</b></div>
+		<div><i>Journal.</i> 2026; 1:2-3.</div></div><div class="external-links"><a href="https://example.org/ref">Source</a></div></div></div>
+		<div class="biblioentry"><div class="citations" id="bib4"><div class="citation-content"><div class="label">2.</div>
+		<div>Author B.</div><div><b>Another synthetic reference.</b></div><div>Journal. 2025.</div></div></div></div></div></div></section>
+		</article></body></html>`;
+	const output = execFileSync(process.execPath, ['dist/cli.cjs', cell, '--html', '-', '-t', 'src/utils/fixtures/templates/minimal.json'], { input, encoding: 'utf8' });
+	const checked = checkFigureCaptions(input, output, cell);
+	assert.equal(checked.status, 'passed');
+	assert.equal(checked.publisher, 'cell');
+	assert.equal(checked.figures[0].paragraphs, 2);
+	assert.equal(checkFigureCaptions(input, output.replace('(A) Synthetic panel.', ''), cell).status, 'failed');
+	assert.equal(checkFigureCaptions(input, output.replace('[Data](https://www.cell.com/data)', 'Data'), cell).status, 'failed');
+	assert.equal(checkFigureCaptions(input, output + '\n\n(A) Synthetic panel.', cell).status, 'failed');
+	const footnote = output.split('\n').find(line => line.startsWith('[^1]:'));
+	assert.match(footnote, /Author A\..*\*\*Synthetic reference\.\*\*.*\*Journal\.\* 2026; 1:2-3\..*\[Source\]\(https:\/\/example\.org\/ref\)/);
+	assert.doesNotMatch(footnote, /#body-ref/);
 });

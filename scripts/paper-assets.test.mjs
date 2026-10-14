@@ -36,6 +36,8 @@ test('selects only supported high-resolution sources without guessing Cell asset
 	}
 	const nature = 'https://media.springernature.com/lw685/springer-static/image/art%3A10.1234%2Ftest/MediaObjects/Fig1.png';
 	assert.deepEqual(imageDownloadCandidates(nature + '?as=webp', page), [nature.replace('/lw685/', '/full/') + '?as=webp', nature + '?as=webp']);
+	const extended = nature.replace('/image/', '/esm/');
+	assert.deepEqual(imageDownloadCandidates(extended, page), [extended.replace('/lw685/', '/full/'), extended]);
 	for (const untouched of [nature + '?Signature=keep', nature.replace('media.springernature.com', 'media.springernature.com.example.org'), nature.replace('/lw685/', '/full/'), 'https://images.example.org/a.png']) {
 		assert.deepEqual(imageDownloadCandidates(untouched, page), [untouched]);
 	}

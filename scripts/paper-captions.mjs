@@ -10,13 +10,15 @@ const rendered = value => parseHTML(`<html><body>${marked.parse(value)}</body></
 
 export function checkFigureCaptions(html, markdown, url) {
 	const result = { version: 1, status: 'not-applicable', publisher: null, expected: 0, matched: 0, failed: 0, figures: [] };
-	if (!/(^|\.)nature\.com$/.test(new URL(url).hostname)) return { ...result, reason: 'unsupported-publisher' };
-	result.publisher = 'nature';
-	result.expected = parseHTML(html).document.querySelectorAll('figure .c-article-section__figure-description').length;
+	const host = new URL(url).hostname;
+	const publisher = /(^|\.)nature\.com$/.test(host) ? 'nature' : /(^|\.)cell\.com$/.test(host) ? 'cell' : null;
+	if (!publisher) return { ...result, reason: 'unsupported-publisher' };
+	result.publisher = publisher;
+	result.expected = parseHTML(html).document.querySelectorAll(legendSelector(publisher)).length;
 	if (!result.expected) return { ...result, reason: 'no-supported-legends' };
 	try {
 		// Marked normalizes line endings; this public check does not expose offsets.
-		const audit = auditNatureLegends(html, markdown.replace(/\r\n?/g, '\n'), url);
+		const audit = auditSourceLegends(html, markdown.replace(/\r\n?/g, '\n'), url, publisher);
 		return { ...result, status: audit.passed ? 'passed' : 'failed', matched: audit.expected - audit.missing,
 			failed: audit.missing, figures: audit.figures };
 	} catch (error) {
@@ -25,6 +27,14 @@ export function checkFigureCaptions(html, markdown, url) {
 }
 
 export function auditNatureLegends(html, markdown, url) {
+	return auditSourceLegends(html, markdown, url, 'nature');
+}
+
+const legendSelector = publisher => publisher === 'cell'
+	? 'figure.graphic figcaption .figure__caption__text__content'
+	: 'figure .c-article-section__figure-description';
+
+function auditSourceLegends(html, markdown, url, publisher) {
 	const source = parseHTML(html).document;
 	const body = bodyOnly(markdown);
 	const article = new URL(url);
@@ -39,12 +49,13 @@ export function auditNatureLegends(html, markdown, url) {
 	});
 	const figures = [];
 	const blocks = [];
-	const descriptions = [...source.querySelectorAll('figure .c-article-section__figure-description')];
+	const descriptions = [...source.querySelectorAll(legendSelector(publisher))];
 	for (const description of descriptions) {
-		const title = description.closest('figure').querySelector('figcaption')?.textContent?.trim();
+		const title = description.closest('figure').querySelector(publisher === 'cell' ? '.figure__title' : 'figcaption')?.textContent?.trim();
 		const titles = tokens.map((token, index) => token.type === 'paragraph' && token.text === canonicalText(title ?? '') ? index : -1).filter(index => index >= 0);
-		const paragraphs = [...description.querySelectorAll('p')];
-		const item = { id: description.id, title, paragraphs: paragraphs.length, passed: false, errors: [] };
+		const paragraphs = [...description.querySelectorAll(publisher === 'cell' ? 'p, [role="paragraph"]' : 'p')];
+		const id = description.id || description.closest('figure').id;
+		const item = { id, title, paragraphs: paragraphs.length, passed: false, errors: [] };
 		if (!title || titles.length !== 1 || !paragraphs.length) item.errors.push('Expected one figure title and nonempty source paragraphs.');
 		else for (const [index, paragraph] of paragraphs.entries()) {
 			const expected = canonicalText(paragraph.textContent);

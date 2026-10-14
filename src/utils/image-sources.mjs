@@ -35,7 +35,7 @@ export function imageDownloadCandidates(original, source, sources = {}) {
 		cellLargeImage(url.href, sources[url.href], page)) return [imageUrl(sources[url.href], page).href, url.href];
 	// This CDN's /full/ route preserves the asset identity while removing lwNNN
 	// resizing. Do not transform signed or otherwise unfamiliar query parameters.
-	if (url.hostname === 'media.springernature.com' && /^\/lw\d+\/springer-static\/image\/.+\/MediaObjects\/.+\.(png|jpe?g|webp)$/i.test(url.pathname) &&
+	if (url.hostname === 'media.springernature.com' && /^\/lw\d+\/springer-static\/(?:image|esm)\/.+\/MediaObjects\/.+\.(png|jpe?g|webp)$/i.test(url.pathname) &&
 		[...url.searchParams].every(([key, value]) => key === 'as' && value === 'webp')) {
 		const full = new URL(url.href);
 		full.pathname = full.pathname.replace(/^\/lw\d+\//, '/full/');

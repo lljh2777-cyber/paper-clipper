@@ -152,11 +152,22 @@ quality refers to the candidate, not an existing duplicate Vault note.
 
 These are deterministic code checks, with no AI calls or extra network requests.
 `nature.com` and its subdomains are supported when the saved HTML contains
-`figure .c-article-section__figure-description`. Every paragraph must match the
-source text, directly follow the matching figure title, occur once, and retain
+`figure .c-article-section__figure-description`. Cell's known
+`figure.graphic figcaption .figure__caption__text__content` structure is also
+checked, including captions captured while collapsed. Every paragraph must match
+the source text, directly follow the matching figure title, occur once, and retain
 its links/citations. Layout whitespace and numeric footnote notation are normalized.
 This is a conservative text/position check, not semantic formula equivalence or
 proof that the publisher finished loading all content.
+
+Cell preprocessing moves the identified caption out of its hidden accordion on
+a document copy and protects it from navigation scoring. It also flattens known
+multi-block bibliography entries into rich paragraphs so the full entry stays
+inside its Markdown footnote, without restoring inline reference popovers.
+Nature Extended Data links with a supported, publisher-declared image URL become
+embedded images; the existing image archiver handles their full-size candidates.
+This does not fetch figure-viewer pages. Extended Data image presence is covered
+by synthetic conversion tests, not by the main-figure caption check below.
 
 Each attempt reports `quality.figureCaptions` for the minimal extraction and,
 after extraction passes, `quality.outputFigureCaptions` for the selected template.

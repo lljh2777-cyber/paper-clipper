@@ -96,3 +96,69 @@ describe('Nature full figure legends', () => {
 		}
 	});
 });
+
+describe('Publisher collapsed and linked figures', () => {
+	const cell = 'https://www.cell.com/cell/fulltext/synthetic';
+	const caption = `<figure id="fig1" class="graphic"><img src="/large.jpg"><figcaption class="figure__caption__body">
+		<div class="figure__title">Figure 1 Synthetic panels</div><div class="accordion"><button aria-expanded="false">Show full caption</button>
+		<div class="accordion__content" style="display: none" aria-hidden="true"><div class="figure__caption__text__content">
+		<div role="paragraph">(A) Synthetic workflow with <i>x</i>.</div><div role="paragraph">(B) Independent observation. See <a href="https://example.org/data">source data</a>.</div>
+		<div role="paragraph">(J) Immune-related features across synthetic groups.</div>
+		</div></div></div></figcaption></figure>`;
+	const extended = `<div class="c-article-supplementary__item" id="Fig6"><h3><a href="/articles/figure-fixture/figures/6"
+		data-supp-info-image="//media.springernature.com/lw685/springer-static/esm/art%3Asynthetic/MediaObjects/figure6.jpg">Extended Data Fig. 1 Synthetic extension.</a></h3>
+		<div class="c-article-supplementary__description"><p><b>a</b>, Extended observation.</p></div></div>`;
+	const sourceWith = (content: string) => html.replace(figure, content);
+	test('preserves collapsed or expanded Cell legends without clicking or mutating the source', async () => {
+		for (const content of [caption, caption.replace('display: none', 'display: block').replace('aria-hidden="true"', 'aria-hidden="false"')]) {
+			const input = sourceWith(content);
+			const source = new DOMParser().parseFromString(input, 'text/html');
+			const before = source.documentElement.outerHTML;
+			const prepared = prepareDocumentForExtraction(source, cell);
+			expect(source.documentElement.outerHTML).toBe(before);
+			expect(prepareDocumentForExtraction(prepared, cell)).toBe(prepared);
+			for (const asyncMode of [false, true]) {
+				const parser = new Defuddle(prepareDocumentForExtraction(source, cell), { url: cell });
+				const parsed = asyncMode ? await parser.parseAsync() : parser.parse();
+				const result = createMarkdownContent(parsed.content, cell);
+				expect(result.match(/\(A\) Synthetic workflow/g)).toHaveLength(1);
+				expect(result).toContain('(B) Independent observation. See [source data](https://example.org/data).');
+				expect(result).not.toContain('Show full caption');
+				expect(result).toContain('(J) Immune-related features across synthetic groups.');
+			}
+			expect((await clip({ html: input, url: cell, template, documentParser: new DOMParser() })).content).toContain('(A) Synthetic workflow');
+		}
+	});
+	test('embeds Nature linked extended figures from their declared image URLs in all conversion routes', async () => {
+		const input = sourceWith(extended);
+		const source = new DOMParser().parseFromString(input, 'text/html');
+		const before = source.documentElement.outerHTML;
+		const prepared = prepareDocumentForExtraction(source, url);
+		expect(source.documentElement.outerHTML).toBe(before);
+		expect(prepareDocumentForExtraction(prepared, url)).toBe(prepared);
+		Object.defineProperty(source, 'URL', { value: url });
+		const outputs = [createMarkdownContent(parseForClip(source).content, url),
+			(await clip({ html: input, url, template, documentParser: new DOMParser() })).content];
+		for (const asyncMode of [false, true]) {
+			const parser = new Defuddle(prepareDocumentForExtraction(source, url), { url });
+			outputs.push(createMarkdownContent((asyncMode ? await parser.parseAsync() : parser.parse()).content, url));
+		}
+		for (const result of outputs) {
+			expect(result).toContain('![Extended Data Fig. 1 Synthetic extension.](https://media.springernature.com/lw685/springer-static/esm/art%3Asynthetic/MediaObjects/figure6.jpg)');
+			expect(result.match(/\*\*a\*\*, Extended observation\./g)).toHaveLength(1);
+		}
+	});
+	test('does not duplicate already loaded images, invent URLs, or expand unrelated hidden content', () => {
+		const input = sourceWith(extended.replace('</h3>', '</h3><img src="https://media.springernature.com/loaded.jpg">'));
+		const source = new DOMParser().parseFromString(input, 'text/html');
+		expect(prepareDocumentForExtraction(source, url).querySelectorAll('img')).toHaveLength(1);
+		for (const invalid of [extended.replace('media.springernature.com', '127.0.0.1'), extended.replace('Extended Data Fig.', 'Supplementary Table'),
+			extended.replace('/articles/figure-fixture/figures/6', '/articles/other/figures/6'), extended.replace('data-supp-info-image', 'data-unrelated')]) {
+			const source = new DOMParser().parseFromString(sourceWith(invalid), 'text/html');
+			expect(prepareDocumentForExtraction(source, url).querySelector('img')).toBeNull();
+		}
+		const unrelated = new DOMParser().parseFromString('<article><div style="display:none">Unrelated hidden UI.</div></article>', 'text/html');
+		expect(prepareDocumentForExtraction(unrelated, cell)).toBe(unrelated);
+		expect(prepareDocumentForExtraction(new DOMParser().parseFromString(sourceWith(extended), 'text/html'), 'https://nature.com.example.org').querySelector('img')).toBeNull();
+	});
+});

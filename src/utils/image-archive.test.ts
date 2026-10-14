@@ -61,9 +61,9 @@ describe('manual image ZIP', () => {
 		expect(result.imageCount).toBe(0);
 		expect(fetcher).not.toHaveBeenCalled();
 	});
-	it('prefers full-size Nature images and records the chosen source without changing the editor text', async () => {
+	it.each(['image', 'esm'])('prefers full-size Nature %s images and records the chosen source', async kind => {
 		const fetcher = mockFetch();
-		const small = 'https://media.springernature.com/lw685/springer-static/image/art%3A10.1234%2Ftest/MediaObjects/Fig1.png';
+		const small = `https://media.springernature.com/lw685/springer-static/${kind}/art%3A10.1234%2Ftest/MediaObjects/Fig1.png`;
 		const markdown = `![Figure 1](${small})\n\nOriginal caption.`;
 		const prepared = await prepareImageFiles(markdown, 'https://www.nature.com/articles/test');
 		expect(fetcher.mock.calls[0][0]).toBe(small.replace('/lw685/', '/full/'));

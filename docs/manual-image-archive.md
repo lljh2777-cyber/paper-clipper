@@ -41,10 +41,29 @@ Signed URLs are kept intact; unfamiliar Nature query parameters are not rewritte
 No cookies or browser permissions are added. Existing paper/translation folders
 are not upgraded in place; reload the extension and re-export into a new folder.
 
+Nature Extended Data figure links are also embedded as images when the article
+declares their image URL in `data-supp-info-image`. This includes the known
+Springer Nature `/esm/` image route and uses the same full-size/fallback rules.
+The exporter does not crawl figure-viewer pages or invent missing image URLs.
+
 Novae Figure 1 was checked locally: the thumbnail is 685 x 395 pixels, versus
 2169 x 1251 for the full-size PNG. Cell large-image URLs were verified against
 the supplied HTML, but unauthenticated requests returned 403 in the local test
 environment; actual availability there still depends on the publisher/browser.
+
+## Captions and references
+
+On supported Cell pages, full figure captions already present inside a collapsed
+caption panel are retained without clicking **Show full caption**. Only the
+identified caption content is preserved, not unrelated hidden panels. Cell
+bibliography entries are emitted as complete rich-text footnote definitions,
+including authors, title, journal and available links; inline citation previews
+are still removed from the body. These rules are shared by manual clipping,
+HTML imports and the API/CLI conversion paths.
+
+Content absent from the captured HTML cannot be recovered by these rules. Reload
+the extension and refresh the paper before exporting again. Existing notes and
+translations are not repaired or overwritten automatically.
 
 ## Limits
 
