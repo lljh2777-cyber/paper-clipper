@@ -22,11 +22,15 @@ try {
 	}));
 	const png = await readFile(new URL('../src/icons/icon128.png', import.meta.url));
 	const smallImage = 'https://media.springernature.com/lw685/springer-static/image/art%3A10.1234%2Ftest/MediaObjects/Fig1.png';
+	let imageGate;
 	await context.route('https://raw.githubusercontent.com/**', route => route.fulfill({ contentType: 'application/json', body: '{}' }));
 	await context.route('https://paper.example.org/**', route => route.fulfill({ contentType: 'text/html', body: '<html><head><title>Synthetic paper</title><meta name="citation_doi" content="10.1234/example"><meta name="citation_publication_date" content="2025-01-02"></head><body><article><h1>Synthetic paper</h1><p>' + 'Synthetic paper body. '.repeat(100) + '</p></article></body></html>' }));
 	await context.route('https://images.example.org/**', route => route.fulfill({ contentType: 'image/png', body: png }));
 	await context.route(smallImage, route => route.fulfill({ contentType: 'image/png', body: thumbnail }));
-	await context.route(smallImage.replace('/lw685/', '/full/'), route => route.fulfill({ contentType: 'image/png', body: png }));
+	await context.route(smallImage.replace('/lw685/', '/full/'), async route => {
+		if (imageGate) await imageGate;
+		await route.fulfill({ contentType: 'image/png', body: png });
+	});
 	const origin = `chrome-extension://${new URL(worker.url()).hostname}`;
 	await worker.evaluate(() => chrome.storage.local.set({ language: 'zh_CN' }));
 	const settings = await context.newPage();
@@ -113,6 +117,7 @@ try {
 			FileSystemHandle.prototype.queryPermission = async () => state;
 			FileSystemHandle.prototype.requestPermission = async () => {
 				window.permissionClicks.push(navigator.userActivation.isActive);
+				localStorage.setItem('qa-permission-clicks', JSON.stringify(window.permissionClicks));
 				state = window.permissionClicks.length === 1 ? 'denied' : 'granted';
 				return state;
 			};
@@ -127,20 +132,31 @@ try {
 	await embedded.locator('#note-content-field').filter({ visible: true }).waitFor();
 	const frame = article.frames().find(frame => frame.url().includes('/side-panel.html'));
 	await frame.waitForFunction(() => document.querySelector('#note-content-field')?.value.includes('Synthetic paper body.'));
+	await worker.evaluate(() => {
+		self.saveActivations = [];
+		chrome.tabs.onActivated.addListener(({ tabId }) => self.saveActivations.push(tabId));
+	});
+	const activeUrl = () => worker.evaluate(async () => (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0]?.url);
+	const assertActive = async page => {
+		await page.waitForFunction(async () => (await chrome.tabs.getCurrent()).active);
+		assert.equal(await activeUrl(), page.url());
+	};
 	const openSave = async title => {
 		await article.bringToFront();
 		await article.setViewportSize({ width: 1280, height: 900 });
 		await embedded.locator('#note-name-field').fill(title);
 		await embedded.locator('#note-content-field').fill(markdown + '\n\nEdited in the embedded clipper.');
-		const next = context.waitForEvent('page');
+		await worker.evaluate(() => { self.saveActivations = []; });
+		const next = context.waitForEvent('page').then(page => {
+			page.on('pageerror', error => errors.push(error.message));
+			return { page, closed: new Promise(resolve => page.once('close', resolve)) };
+		});
 		await embedded.locator('#clip-btn').click();
 		const save = await next.catch(async error => {
 			await article.screenshot({ path: path.join(directory, 'embedded-failure.png') });
 			throw new Error(`Save tab did not open: ${await embedded.locator('#image-archive-status').textContent()}`, { cause: error });
 		});
-		save.on('pageerror', error => errors.push(error.message));
-		await save.waitForURL(`${origin}/paper-save.html#*`);
-		await embedded.locator('#image-archive-status').filter({ hasText: '交给保存页' }).waitFor();
+		await save.page.waitForURL(`${origin}/paper-save.html#*`);
 		assert.equal(await frame.evaluate(() => window.permissionCalls), 0);
 		assert.match(await embedded.locator('#note-content-field').inputValue(), /Edited in the embedded clipper/);
 		return save;
@@ -155,10 +171,23 @@ try {
 			imageSize: (await (await (await folder.getDirectoryHandle('images')).getFileHandle('image-1.png')).getFile()).size,
 		};
 	}, title);
+	let releaseImage;
+	imageGate = new Promise(resolve => { releaseImage = resolve; });
 	let save = await openSave('Embedded edited title');
-	await save.locator('#save-status').filter({ hasText: '已保存：Literature_translation/2025_Embedded_edited_title__10.1234_example' }).waitFor();
-	assert.equal(await save.title(), 'Paper Clipper | Save');
-	assert.equal(await save.locator('#authorize-save').isVisible(), false);
+	const savedUrl = save.page.url();
+	await save.page.locator('#save-status').filter({ hasText: '正在下载图片' }).waitFor();
+	assert.equal(await activeUrl(), article.url());
+	assert.deepEqual(await worker.evaluate(() => self.saveActivations), []);
+	assert.equal(await save.page.locator('#authorize-save').isVisible(), false);
+	// Success must not steal focus back if the user switches tabs mid-save.
+	await settings.bringToFront();
+	await worker.evaluate(() => { self.saveActivations = []; });
+	imageGate = undefined; releaseImage();
+	await save.closed;
+	await embedded.locator('#image-archive-status').filter({ hasText: '已保存：Literature_translation/2025_Embedded_edited_title__10.1234_example' }).waitFor();
+	assert.match(await embedded.locator('#image-archive-status').textContent(), /checks.json/);
+	assert.equal(await activeUrl(), settings.url());
+	assert.deepEqual(await worker.evaluate(() => self.saveActivations), []);
 	const embeddedBundle = await readEmbedded('Embedded_edited_title');
 	assert.equal(embeddedBundle.checks.changes.editor, 'changed');
 	assert.equal(embeddedBundle.checks.artifact.value, embeddedBundle.metadata.sourceVersion.value);
@@ -171,34 +200,41 @@ try {
 	assert.equal(embeddedBundle.metadata.doi, '10.1234/example');
 	assert.equal(embeddedBundle.metadata.archiveStatus, 'complete');
 	assert.equal(await worker.evaluate(async () => (await chrome.storage.session.get('paperDirectorySaveDraft')).paperDirectorySaveDraft), undefined);
-	await save.setViewportSize({ width: 1280, height: 900 });
-	await save.screenshot({ path: path.join(directory, 'save-desktop.png') });
-	await save.setViewportSize({ width: 390, height: 844 });
-	assert.equal(await save.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-	await save.screenshot({ path: path.join(directory, 'save-mobile.png') });
-	await save.reload();
-	await save.locator('#save-status').filter({ hasText: '未重复保存' }).waitFor();
+	const replay = await context.newPage();
+	await replay.goto(savedUrl);
+	await replay.locator('#save-status').filter({ hasText: '未重复保存' }).waitFor();
 	assert.deepEqual(await readEmbedded('Embedded_edited_title'), embeddedBundle);
-	await save.close();
+	await replay.close();
 	save = await openSave('Embedded edited title');
-	await save.locator('#save-status').filter({ hasText: '已存在' }).waitFor();
+	await save.page.locator('#save-status').filter({ hasText: '已存在' }).waitFor();
+	await assertActive(save.page);
+	await embedded.locator('#image-archive-status').filter({ hasText: '已存在' }).waitFor();
 	assert.deepEqual(await readEmbedded('Embedded_edited_title'), embeddedBundle);
-	await save.close();
+	await save.page.close();
+	await embedded.locator('#image-archive-status').filter({ hasText: '尚未确认保存结果' }).waitFor();
 	await settings.evaluate(() => localStorage.setItem('qa-permission', 'prompt'));
 	save = await openSave('Permission test');
-	await save.locator('#save-status').filter({ hasText: '等待目录访问授权' }).waitFor();
-	assert.deepEqual(await save.evaluate(() => window.permissionClicks), []);
-	await save.locator('#authorize-save').click();
-	await save.locator('#save-status').filter({ hasText: '未获得目录写入权限' }).waitFor();
-	assert.equal(await save.locator('#authorize-save').isVisible(), true);
-	await save.locator('#authorize-save').click();
-	await save.locator('#save-status').filter({ hasText: '已保存：' }).waitFor();
-	assert.deepEqual(await save.evaluate(() => window.permissionClicks), [true, true]);
+	await save.page.locator('#save-status').filter({ hasText: '等待目录访问授权' }).waitFor();
+	await assertActive(save.page);
+	assert.deepEqual(await save.page.evaluate(() => window.permissionClicks), []);
+	await save.page.setViewportSize({ width: 1280, height: 900 });
+	await save.page.screenshot({ path: path.join(directory, 'save-desktop.png') });
+	await save.page.setViewportSize({ width: 390, height: 844 });
+	assert.equal(await save.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+	await save.page.screenshot({ path: path.join(directory, 'save-mobile.png') });
+	await save.page.locator('#authorize-save').click();
+	await save.page.locator('#save-status').filter({ hasText: '未获得目录写入权限' }).waitFor();
+	assert.equal(await save.page.locator('#authorize-save').isVisible(), true);
+	await save.page.locator('#authorize-save').click();
+	await save.closed;
+	await embedded.locator('#image-archive-status').filter({ hasText: '已保存：' }).waitFor();
+	assert.deepEqual(await settings.evaluate(() => JSON.parse(localStorage.getItem('qa-permission-clicks'))), [true, true]);
 	assert.equal((await readEmbedded('Permission_test')).metadata.archiveStatus, 'complete');
-	await save.close();
 	save = await openSave('Cancelled permission test');
-	await save.locator('#save-status').filter({ hasText: '等待目录访问授权' }).waitFor();
-	await save.locator('#close-save').click();
+	await save.page.locator('#save-status').filter({ hasText: '等待目录访问授权' }).waitFor();
+	await save.page.locator('#close-save').click();
+	await save.closed;
+	await embedded.locator('#image-archive-status').filter({ hasText: '尚未确认保存结果' }).waitFor();
 	await settings.evaluate(() => localStorage.removeItem('qa-permission'));
 	assert.equal(await settings.evaluate(async () => {
 		const root = await (await navigator.storage.getDirectory()).getDirectoryHandle('Literature_translation');
@@ -215,5 +251,5 @@ try {
 		return (await (await folder.getFileHandle('paper.zh-CN.md')).getFile()).text();
 	}), '人工译文');
 	assert.deepEqual(errors, []);
-	console.log(JSON.stringify({ passed: true, screenshots: directory, checks: ['settings-picker-adapter', 'handle-persistence-after-reload', 'default-action', 'real-files-and-image', 'collision-protection', 'forget-keeps-files', 'missing-directory', 'responsive-settings', 'cross-origin-embedded-handoff', 'edited-snapshot-preserved', 'no-iframe-permission-call', 'no-reload-replay', 'simulated-permission-denial-and-user-gesture', 'cancel-before-writes', 'responsive-save-page'] }));
+	console.log(JSON.stringify({ passed: true, screenshots: directory, checks: ['settings-picker-adapter', 'handle-persistence-after-reload', 'default-action', 'real-files-and-image', 'collision-protection', 'forget-keeps-files', 'missing-directory', 'responsive-settings', 'cross-origin-embedded-handoff', 'background-save-without-focus-change', 'success-closes-and-reports-checks-to-editor', 'failure-and-permission-activate-save-page', 'edited-snapshot-preserved', 'no-iframe-permission-call', 'no-reload-replay', 'simulated-permission-denial-and-user-gesture', 'cancel-before-writes', 'responsive-save-page'] }));
 } finally { await context.close(); }

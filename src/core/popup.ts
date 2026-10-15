@@ -1348,7 +1348,7 @@ async function handleSavePaperDirectory() {
 	status.textContent = getMessage('paperDirectorySaving');
 	try {
 		// Embedded extension frames cannot prompt for filesystem permission. Snapshot
-		// all editor fields before opening a top-level save page (which changes tabs).
+		// all editor fields before handing off to a background top-level save page.
 		const markdown = (document.getElementById('note-content-field') as HTMLTextAreaElement).value;
 		const title = (document.getElementById('note-name-field') as HTMLInputElement).value;
 		const properties = getPropertiesFromDOM();
@@ -1361,8 +1361,11 @@ async function handleSavePaperDirectory() {
 		const checkContext = await prepareManualExportChecks(page?.snapshot, frontmatter + markdown);
 		const input = { markdown: frontmatter + markdown, title, source, identity, imageSources, checkContext };
 		if (!directory) {
-			await openPaperDirectorySave(input);
 			status.textContent = getMessage('paperDirectoryHandedOff');
+			const job = await openPaperDirectorySave(input, update => {
+				status!.textContent = update.state === 'closed' ? getMessage('paperDirectoryClosed') : update.message;
+			});
+			await job.finished;
 			return;
 		}
 		const folder = await savePaperDirectory(directory, input,

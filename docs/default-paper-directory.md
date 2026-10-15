@@ -18,23 +18,31 @@ Downloads location. Only the directory name can be displayed, not its full path.
 ### Embedded Clipper
 
 Saving from an embedded Clipper (including the reader's embedded Clipper) opens
-a top-level **Paper Clipper | Save** tab. It receives the current edited Markdown,
+a background **Paper Clipper | Save** tab without switching away from the article.
+It receives the current edited Markdown,
 title, frontmatter and explicit identity, without extracting the page again.
-It saves automatically when the chosen directory already has write permission.
-If permission needs renewing, click **Authorize and save** in that tab. If no
-directory is configured, select one there. Standalone popup saving is unchanged.
+It saves automatically when the chosen directory already has write permission,
+then closes itself after all files and completion metadata have been written.
+Only missing permission, a missing directory or a save error activates the tab.
+If permission needs renewing, click **Authorize and save** there. If no directory
+is configured, select one there. Standalone popup saving is unchanged.
 This respects Chromium's cross-origin iframe restrictions on filesystem prompts;
 changing a manifest permission or repeatedly selecting the same folder in an
 iframe cannot fix that boundary.
 
-The editor reports that the snapshot was handed off, not that a save succeeded.
-The save tab shows the actual outcome. Keep it open until completion, then close
-it. Closing it while waiting for authorization cancels without writing. Reloading
+The editor first reports background saving, then receives progress and the actual
+outcome, including the scoped content-check summary. A checks warning remains in
+the editor and `checks.json`; it does not interrupt reading or prove full-text
+completeness. There is no focus change on success, even if you switch tabs while
+saving. Closing the editor does not cancel the independent save. Keep the save
+tab open while it works; it closes automatically on success. Closing it while
+waiting for authorization cancels without writing. Reloading
 or duplicating it never automatically repeats the save: start again from the
 editor, whose contents remain unchanged. Closing it mid-write can leave partial
-output, under the same protection rules below.
+output, under the same protection rules below. If it closes without a completion
+message, the editor reports an unconfirmed result, never a false success.
 
-There is no new server, pairing or message endpoint. A single pending snapshot is
+There is no new server, pairing or external message endpoint. A single pending snapshot is
 kept in trusted extension **session** storage, never synced; only a random request
 ID appears in the tab URL. The save page is not web-accessible. It consumes and
 removes the snapshot before filesystem work, then keeps it in page memory. An
@@ -42,6 +50,9 @@ unopened request expires after one minute and is discarded on the next request
 or when the browser session ends. Session-storage quota errors are reported as
 handoff failures, not folder-permission failures; the editor and ZIP route remain
 available. No browser credentials or personal files are read for the handoff.
+Status-only runtime notifications are accepted only from the matching extension
+save page and request ID. They carry no article HTML or Markdown, and do not
+persist a second copy of the snapshot.
 
 ## Output
 
@@ -106,7 +117,8 @@ validated; ZIP remains available.
 
 The embedded regression uses a real cross-origin extension iframe, and forbids
 filesystem permission calls from that frame. It covers edited snapshot handoff,
-automatic saving with a granted handle, simulated prompt/denial followed by a
+background saving without activation, success auto-close and editor feedback,
+permission/error activation, simulated prompt/denial followed by a
 real button click, reload without replay, existing-file
 protection, and narrow/desktop save-page layout. Permission simulation over OPFS
 does not prove native external-directory permission persistence. Unit tests also
