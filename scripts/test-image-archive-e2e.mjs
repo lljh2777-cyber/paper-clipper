@@ -150,7 +150,11 @@ try {
 	await failed.page.locator('#retry-save').click();
 	const retried = await readCompletedZip(worker, failed, downloads);
 	const retryZip = unzipSync(retried.bytes);
-	assert.match(strFromU8(retryZip[Object.keys(retryZip).find(name => name.endsWith('/paper.md'))]), /!\[x\]\(images\/image-1.png\)/);
+	const retryImages = [];
+	marked.walkTokens(marked.lexer(strFromU8(retryZip[Object.keys(retryZip).find(name => name.endsWith('/paper.md'))])), token => {
+		if (token.type === 'image') retryImages.push({ text: token.text, href: token.href });
+	});
+	assert.deepEqual(retryImages, [{ text: 'x', href: 'images/image-1.png' }]);
 	assert.equal(await worker.evaluate(async () => (await chrome.downloads.search({})).length), beforeFailure + 1);
 	// Reopening the editor restores terminal feedback without persisting a manuscript.
 	await article.bringToFront();
