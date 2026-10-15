@@ -54,6 +54,16 @@ jobs:
         run: npm run test:browser-queue:e2e
       - name: Exercise branded settings and queue navigation
         run: node scripts/test-extension-brand-e2e.mjs
+      - name: Preserve synthetic manual-save screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: manual-save-screenshots
+          retention-days: 3
+          if-no-files-found: ignore
+          path: |
+            /tmp/paper-image-zip-qa-*/review-*.png
+            /tmp/paper-directory-qa-*/duplicate-*.png
 
   core:
     name: Core / ${{ matrix.os }} / Node ${{ matrix.node }}

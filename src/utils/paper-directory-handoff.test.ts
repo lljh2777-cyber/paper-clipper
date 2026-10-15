@@ -117,6 +117,18 @@ it('does not miss completion before tabs.create resolves', async () => {
 	expect(update).toHaveBeenCalledOnce();
 });
 
+it.each(['saved-warning', 'skipped'] as const)('retains the %s terminal result on reopening without calling it unconfirmed', async state => {
+	const update = vi.fn();
+	const job = await openPaperDirectorySave(input, update);
+	const id = session[key].id;
+	await reportPaperDirectorySave(id, { state, message: 'Terminal details' });
+	receive()(message(id, state), sender(id), vi.fn());
+	await job.finished;
+	expect(update).toHaveBeenLastCalledWith(message(id, state).status);
+	expect(await lastPaperSaveResult()).toBe('Terminal details');
+	expect(browser.tabs.onRemoved.removeListener).toHaveBeenCalledOnce();
+});
+
 it('reports an unconfirmed result when the save tab is manually closed, but ignores other tabs', async () => {
 	const update = vi.fn();
 	const job = await openPaperDirectorySave(input, update);

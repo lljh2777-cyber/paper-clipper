@@ -22,8 +22,9 @@ a background **Paper Clipper | Save** tab without switching away from the articl
 It receives the current edited Markdown,
 title, frontmatter and explicit identity, without extracting the page again.
 It saves automatically when the chosen directory already has write permission,
-then closes itself after all files and completion metadata have been written.
-Only missing permission, a missing directory or a save error activates the tab.
+then closes itself after all files and completion metadata have been written,
+unless the saved result needs review. Missing permission, a missing directory,
+duplicate-archive choices, a save error or a saved-result warning activates the tab.
 If permission needs renewing, click **Authorize and save** there. If no directory
 is configured, select one there. Closing the originating popup does not stop
 image preparation or file writes after the handoff.
@@ -32,11 +33,16 @@ changing a manifest permission or repeatedly selecting the same folder in an
 iframe cannot fix that boundary.
 
 The editor first reports background saving, then receives progress and the actual
-outcome, including the scoped content-check summary. A checks warning remains in
-the editor and `checks.json`; it does not interrupt reading or prove full-text
-completeness. There is no focus change on success, even if you switch tabs while
-saving. Closing the editor does not cancel the independent save. Keep the save
-tab open while it works; it closes automatically on success. Closing it while
+outcome, including the scoped content-check summary. A completed save with content
+differences or preferred-image fallbacks stays visible as **Saved, but review is
+needed**. It lists the affected checks by extraction/template/output stage and
+matched counts, without treating intentional edits as proven conversion errors.
+It does not offer retry after a completed save. The warning also remains in the
+editor's last result and `checks.json`. Missing coverage does not itself block or
+activate a save, and is never described as verified completeness. Ordinary
+success has no focus change, even if you switch tabs while saving. Closing the
+editor does not cancel the independent save. Keep the save tab open while it
+works; it closes automatically on ordinary success. Closing it while
 waiting for authorization cancels without writing. Reloading
 or duplicating it never automatically repeats the save: start again from the
 editor, whose contents remain unchanged. Closing it mid-write can leave partial
@@ -102,10 +108,19 @@ performed and no existing paper is rewritten to add a report.
   originating popup/sidebar can close once it reports background saving.
 - All images must be prepared successfully before creating any output files.
   The [ZIP image limits](manual-image-archive.md#limits) still apply.
-- Existing same-name directories or files are refused, including partial output
-  from an earlier failed save. Nothing is overwritten or recursively deleted.
-  This manual route does not scan other folders for DOI duplicates; differently
-  named copies can exist. Core's separate Vault deduplication remains unchanged.
+- Existing same-name directories/files and same-DOI archives require a choice:
+  **Keep existing** skips this save, without claiming the old archive is complete;
+  **Save a new version** creates a separate `__v_<UUID>` directory. Neither option
+  changes old Markdown, translations, annotations, images or metadata. A new
+  version starts untranslated and records the matching previous directory names.
+- DOI matching reads only immediate child `translation.json` files (schema 1,
+  `sourceFile: paper.md`), normalizing DOI case, URL and `doi:` prefixes. Renaming
+  the title, year or directory does not hide a matching DOI. Partial archives are
+  also protected. Missing DOI values are not inferred from titles or notes.
+  There is no recursive search or Markdown/translation read; nested archives,
+  metadata-free notes and ZIP files are outside this check. Corrupt, oversized
+  (over 128 KiB) or unreadable metadata is reported without proceeding blindly.
+  Core's separate Vault deduplication remains unchanged.
 - Writes from extension pages are serialized with Web Locks. Avoid concurrent
   external changes to the destination while saving. File System Access has no
   atomic multi-file directory commit or exclusive directory-create operation.
@@ -120,7 +135,10 @@ performed and no existing paper is rewritten to add a report.
 ## Verification
 
 Unit tests cover names, conflicting/missing DOI, permission denial, existing
-paper/translation protection, image failure before writes and disk failure.
+paper/translation protection, normalized DOI duplicates despite renamed folders,
+explicit new versions, write-lock duplicate rechecks, corrupt metadata,
+image failure before writes and disk failure. Completed-save warnings cover
+content differences and image fallback separately from missing coverage.
 Chromium E2E uses a synthetic picker returning a real isolated OPFS handle:
 settings reload and handle persistence, main-button saving, actual file/image
 bytes, metadata, collision refusal, forgetting without deletion, and desktop/

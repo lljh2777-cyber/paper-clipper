@@ -13,8 +13,8 @@ Vault permission is needed.
 
 The first ZIP save asks for optional browser **downloads** permission in the
 save page. Click **Allow ZIP downloads** to grant it. Subsequent saves run in the
-background without activating that page, and auto-close only after the browser
-reports the ZIP download complete. This permission is not required for direct
+background without activating that page, and auto-close after the browser
+reports the ZIP download complete when there are no review warnings. This permission is not required for direct
 directory saving and does not grant access to a Vault or browser Cookies.
 The extension monitors only the download ID it created, never scans download
 history, and uses `uniquify` to avoid replacing an existing ZIP.
@@ -122,7 +122,14 @@ paragraphs, tables, non-MathJax equations, or content absent from the capture.
   Response type/signature checks are not image decoding or visual-quality checks.
 
 Content differences produce a visible review warning while retaining the edited
-note and report. Unknown publishers are not rejected solely for missing coverage.
+note and report. A completed ZIP/directory save with differences or preferred-image
+fallbacks activates and keeps its save page open as **Saved, but review is needed**.
+It lists affected checks and stages, and states that selections/templates/edits
+may explain the differences. Image fallback is reported separately and is not a
+clarity assessment. No retry button is offered after confirmed completion. Close
+the page after review; the terminal warning remains in the editor's last result
+for this browser session. Ordinary success still closes silently. Unknown
+publishers are not rejected or interrupted solely for missing coverage.
 Existing formula-extraction and image-download failure gates are unchanged;
 image failure still prevents publishing a ZIP or creating a paper directory.
 Plain Markdown downloads and Add to Obsidian do not generate this report.

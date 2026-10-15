@@ -2,12 +2,13 @@ import { ImageArchiveError, prepareImageFiles } from './image-archive';
 import type { ManualExportCheckContext } from './manual-export-report';
 
 export interface WritableDirectory extends FileSystemDirectoryHandle {
+	entries(): AsyncIterableIterator<[string, FileSystemFileHandle | WritableDirectory]>;
 	queryPermission(options: { mode: 'readwrite' }): Promise<PermissionState>;
 	requestPermission(options: { mode: 'readwrite' }): Promise<PermissionState>;
 }
 type PickerWindow = Window & { showDirectoryPicker?: (options: { id: string; mode: 'readwrite' }) => Promise<WritableDirectory> };
 export class PaperDirectoryError extends Error {
-	constructor(public readonly reason: 'unsupported' | 'missing' | 'permission' | 'exists' | 'write' | 'identity' | 'handoff' | 'busy' | 'expired', public readonly folder = '') { super(reason); }
+	constructor(public readonly reason: 'unsupported' | 'missing' | 'permission' | 'exists' | 'duplicate' | 'index' | 'write' | 'identity' | 'handoff' | 'busy' | 'expired', public readonly folder = '') { super(reason); }
 }
 
 export function paperDirectoryFailure(error: unknown): { key: string; detail: string } {
@@ -58,14 +59,15 @@ export async function authorizePaperDirectory(handle?: WritableDirectory): Promi
 
 export interface PaperIdentity { doi: string | null; published: string | null }
 export interface PaperDirectoryInput { markdown: string; title: string; source: string; identity: PaperIdentity; imageSources?: Record<string, string>; checkContext?: ManualExportCheckContext }
+function normalizeDoi(value: unknown): string | null {
+	if (typeof value !== 'string') return null;
+	let doi = value.trim().replace(/^doi:\s*/i, '').replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, '');
+	try { doi = decodeURIComponent(doi); } catch { return null; }
+	return /^10\.\d{4,9}\/[^\s<>"?#]+$/i.test(doi) ? doi.toLowerCase() : null;
+}
+
 export function paperIdentity(meta: { name?: string | null; property?: string | null; content: string | null }[],
 	properties: { name: string; value: unknown }[], source: string, published?: string): PaperIdentity {
-	const normalizeDoi = (value: unknown): string | null => {
-		if (typeof value !== 'string') return null;
-		let doi = value.trim().replace(/^doi:\s*/i, '').replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, '');
-		try { doi = decodeURIComponent(doi); } catch { return null; }
-		return /^10\.\d{4,9}\/[^\s<>"?#]+$/i.test(doi) ? doi.toLowerCase() : null;
-	};
 	const candidates = meta.filter(tag => ['citation_doi', 'dc.identifier', 'dc.identifier.doi', 'prism.doi'].includes((tag.name ?? tag.property ?? '').toLowerCase())).map(tag => tag.content);
 	candidates.push(...properties.filter(property => property.name.toLowerCase() === 'doi').map(property => typeof property.value === 'string' ? property.value : null));
 	try {
@@ -103,21 +105,50 @@ async function writeFile(directory: FileSystemDirectoryHandle, name: string, con
 	} catch (error) { await writer.abort().catch(() => {}); throw error; }
 }
 
+// Only immediate archive metadata is inspected. Never read notes/translations or
+// trust an index cached before another tab or tool created an archive.
+async function matchingArchives(parent: WritableDirectory, doi: string | null): Promise<string[]> {
+	if (!doi) return [];
+	const matches: string[] = [];
+	for await (const [name, entry] of parent.entries()) {
+		if (entry.kind !== 'directory') continue;
+		let file: File;
+		try { file = await (await entry.getFileHandle('translation.json')).getFile(); }
+		catch (error) {
+			if (error instanceof DOMException && error.name === 'NotFoundError') continue;
+			throw new PaperDirectoryError('index', name);
+		}
+		try {
+			if (file.size > 128 * 1024) throw new Error('Metadata too large');
+			const metadata = JSON.parse(await file.text());
+			if (metadata?.schemaVersion === 1 && metadata.sourceFile === 'paper.md' && normalizeDoi(metadata.doi) === doi) matches.push(name);
+		} catch { throw new PaperDirectoryError('index', name); }
+	}
+	return matches.sort();
+}
+
 export async function savePaperDirectory(parent: WritableDirectory, input: PaperDirectoryInput,
-	progress: (done: number, total: number) => void = () => {}): Promise<string> {
+	progress: (done: number, total: number) => void = () => {}, options: { newVersion?: boolean } = {}) {
 	const id = crypto.randomUUID();
-	const folder = paperFolderName(input.title, input.identity, id);
+	const doi = normalizeDoi(input.identity.doi);
+	if (input.identity.doi && !doi) throw new PaperDirectoryError('identity');
+	const folder = paperFolderName(input.title, { ...input.identity, doi }, id) + (options.newVersion ? `__v_${id}` : '');
 	if (await parent.queryPermission({ mode: 'readwrite' }) !== 'granted') throw new PaperDirectoryError('permission');
+	const duplicates = await matchingArchives(parent, doi);
+	if (duplicates.length && !options.newVersion) throw new PaperDirectoryError('duplicate', duplicates.join('\n'));
 	if (await exists(parent, folder)) throw new PaperDirectoryError('exists', folder);
 	// Images must all succeed before any output directory or file is created.
 	const prepared = await prepareImageFiles(input.markdown, input.source, progress, input.imageSources, input.checkContext);
 	const hash = await crypto.subtle.digest('SHA-256', new Uint8Array(prepared.files['paper.md']).buffer);
 	const sourceVersion = [...new Uint8Array(hash)].map(value => value.toString(16).padStart(2, '0')).join('');
 	return navigator.locks.request('paper-clipper-directory-write', async () => {
+		const previousArchives = await matchingArchives(parent, doi);
+		if (previousArchives.length && !options.newVersion) throw new PaperDirectoryError('duplicate', previousArchives.join('\n'));
 		if (await exists(parent, folder)) throw new PaperDirectoryError('exists', folder);
 		let directory: FileSystemDirectoryHandle | undefined;
 		const metadata = {
-			schemaVersion: 1, id, doi: input.identity.doi, title: input.title, published: input.identity.published,
+			schemaVersion: 1, id, doi, title: input.title, published: input.identity.published,
+			...(options.newVersion ? { previousArchives } : {}),
 			sourceUrl: input.source, sourceFile: 'paper.md', translationFile: 'paper.zh-CN.md',
 			sourceVersion: { algorithm: 'sha256', value: sourceVersion }, createdAt: new Date().toISOString(),
 			status: 'not-started', model: null, completedSections: [], archiveStatus: 'writing',
@@ -137,7 +168,7 @@ export async function savePaperDirectory(parent: WritableDirectory, input: Paper
 			await writeFile(directory, 'paper.md', prepared.files['paper.md']);
 			metadata.archiveStatus = 'complete';
 			await writeFile(directory, 'translation.json', JSON.stringify(metadata, null, 2) + '\n');
-			return folder;
+			return { folder, checks: prepared.checks };
 		} catch {
 			// Leave recoverable evidence; never delete directories or report a partial write as complete.
 			metadata.archiveStatus = 'failed';

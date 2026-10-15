@@ -113,11 +113,43 @@ try {
 	assert.equal(bundle.metadata.doi, '10.1234/example');
 	assert.deepEqual(bundle.dimensions, [128, 128]);
 	assert.equal(bundle.imageReport.items[0].selection, 'preferred');
+	await popup.locator('#note-name-field').fill('Renamed paper');
 	const collision = await openSavePage(context, () => popup.locator('#clip-btn').click());
 	await popup.locator('#image-archive-status').filter({ hasText: '已存在' }).waitFor();
+	await collision.page.locator('#save-status').filter({ hasText: '相同 DOI' }).waitFor();
 	assert.equal(await popup.locator('#note-content-field').inputValue(), markdown);
 	assert.equal(await collision.page.locator('#retry-save').isVisible(), false);
-	await collision.page.close();
+	for (const [width, height] of [[1280, 900], [390, 844]]) {
+		await collision.page.setViewportSize({ width, height });
+		assert.equal(await collision.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+		await collision.page.screenshot({ path: path.join(directory, `duplicate-${width}.png`) });
+	}
+	await collision.page.locator('#keep-existing').click();
+	await collision.closed;
+	await popup.locator('#image-archive-status').filter({ hasText: '已跳过本次保存' }).waitFor();
+	const version = await openSavePage(context, () => popup.locator('#clip-btn').click());
+	await version.page.locator('#save-new-version').click();
+	await version.closed;
+	const versions = await settings.evaluate(async () => {
+		const root = await (await navigator.storage.getDirectory()).getDirectoryHandle('Literature_translation');
+		const folders = []; for await (const [name] of root.entries()) folders.push(name);
+		const original = await root.getDirectoryHandle('2025_Synthetic_paper__10.1234_example');
+		return { folders, original: await (await (await original.getFileHandle('paper.md')).getFile()).text(),
+			translation: await (await (await original.getFileHandle('paper.zh-CN.md')).getFile()).text(),
+			metadata: JSON.parse(await (await (await original.getFileHandle('translation.json')).getFile()).text()) };
+	});
+	assert.equal(versions.folders.length, 2);
+	assert.equal(versions.folders.filter(name => /^2025_Renamed_paper__10.1234_example__v_/.test(name)).length, 1);
+	assert.equal(versions.original, bundle.original);
+	assert.deepEqual(versions.metadata, bundle.metadata);
+	assert.equal(versions.translation, '人工译文');
+	// Separate synthetic roots keep the focus/permission cases independent of duplicate prompts.
+	const chooseRoot = async name => {
+		await settings.evaluate(name => { window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle(name, { create: true }); }, name);
+		await settings.locator('#choose-paper-directory').click();
+		await settings.locator('#paper-directory-name').filter({ hasText: name }).waitFor();
+	};
+	await chooseRoot('Embedded_papers');
 	// Exercise the actual cross-origin frame, not just a standalone popup. The
 	// permission adapter below simulates prompts over OPFS; no personal grants.
 	await context.addInitScript(() => {
@@ -184,8 +216,8 @@ try {
 		assert.match(await embedded.locator('#note-content-field').inputValue(), /Edited in the embedded clipper/);
 		return save;
 	};
-	const readEmbedded = async title => settings.evaluate(async title => {
-		const root = await (await navigator.storage.getDirectory()).getDirectoryHandle('Literature_translation');
+	const readEmbedded = async (title, rootName = 'Embedded_papers') => settings.evaluate(async ({ title, rootName }) => {
+		const root = await (await navigator.storage.getDirectory()).getDirectoryHandle(rootName);
 		const folder = await root.getDirectoryHandle(`2025_${title}__10.1234_example`);
 		return {
 			markdown: await (await (await folder.getFileHandle('paper.md')).getFile()).text(),
@@ -193,7 +225,7 @@ try {
 			checks: JSON.parse(await (await (await folder.getFileHandle('checks.json')).getFile()).text()),
 			imageSize: (await (await (await folder.getDirectoryHandle('images')).getFileHandle('image-1.png')).getFile()).size,
 		};
-	}, title);
+	}, { title, rootName });
 	let releaseImage;
 	imageGate = new Promise(resolve => { releaseImage = resolve; });
 	let save = await openSave('Embedded edited title');
@@ -207,7 +239,7 @@ try {
 	await worker.evaluate(() => { self.saveActivations = []; });
 	imageGate = undefined; releaseImage();
 	await save.closed;
-	await embedded.locator('#image-archive-status').filter({ hasText: '已保存：Literature_translation/2025_Embedded_edited_title__10.1234_example' }).waitFor();
+	await embedded.locator('#image-archive-status').filter({ hasText: '已保存：Embedded_papers/2025_Embedded_edited_title__10.1234_example' }).waitFor();
 	assert.match(await embedded.locator('#image-archive-status').textContent(), /checks.json/);
 	assert.equal(await activeId(), settingsId);
 	assert.deepEqual(await worker.evaluate(() => self.saveActivations), []);
@@ -235,6 +267,7 @@ try {
 	assert.deepEqual(await readEmbedded('Embedded_edited_title'), embeddedBundle);
 	await save.page.close();
 	await embedded.locator('#image-archive-status').filter({ hasText: '已存在' }).waitFor();
+	await chooseRoot('Permission_papers');
 	await settings.evaluate(() => localStorage.setItem('qa-permission', 'prompt'));
 	save = await openSave('Permission test');
 	await save.page.locator('#save-status').filter({ hasText: '等待目录访问授权' }).waitFor();
@@ -252,7 +285,7 @@ try {
 	await save.closed;
 	await embedded.locator('#image-archive-status').filter({ hasText: '已保存：' }).waitFor();
 	assert.deepEqual(await settings.evaluate(() => JSON.parse(localStorage.getItem('qa-permission-clicks'))), [true, true]);
-	assert.equal((await readEmbedded('Permission_test')).metadata.archiveStatus, 'complete');
+	assert.equal((await readEmbedded('Permission_test', 'Permission_papers')).metadata.archiveStatus, 'complete');
 	save = await openSave('Cancelled permission test');
 	await save.page.locator('#save-status').filter({ hasText: '等待目录访问授权' }).waitFor();
 	await save.page.locator('#close-save').click();
@@ -260,7 +293,7 @@ try {
 	await embedded.locator('#image-archive-status').filter({ hasText: '尚未确认保存结果' }).waitFor();
 	await settings.evaluate(() => localStorage.removeItem('qa-permission'));
 	assert.equal(await settings.evaluate(async () => {
-		const root = await (await navigator.storage.getDirectory()).getDirectoryHandle('Literature_translation');
+		const root = await (await navigator.storage.getDirectory()).getDirectoryHandle('Permission_papers');
 		for await (const name of root.keys()) if (name.includes('Cancelled_permission_test')) return true;
 		return false;
 	}), false);

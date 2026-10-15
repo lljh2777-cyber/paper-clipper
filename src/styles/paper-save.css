@@ -8,7 +8,8 @@ main { max-width: 850px; padding: 32px 24px; margin: auto; }
 p { line-height: 1.6; overflow-wrap: anywhere; }
 #paper-title { font-weight: 600; }
 #save-directory { color: #5c6268; }
-#save-status { min-height: 52px; color: #246147; }
+#save-status { min-height: 52px; color: #246147; white-space: pre-line; }
+#save-status[data-warning=true] { color: #856000; }
 #save-status[data-error=true] { color: #a13b28; }
 button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 8px 12px; font: inherit; font-size: 14px; background: #fff; color: inherit; border: 1px solid #9da6ad; border-radius: 4px; cursor: pointer; }
 button:hover { background: #eef2f3; }
@@ -25,5 +26,6 @@ svg { width: 18px; height: 18px; flex: none; }
 	button:hover { background: #333a3c; }
 	#save-directory { color: #b0b8bd; }
 	#save-status { color: #80c7aa; }
+	#save-status[data-warning=true] { color: #f0cf83; }
 	#save-status[data-error=true] { color: #ed9c85; }
 }

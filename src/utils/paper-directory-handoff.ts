@@ -9,7 +9,7 @@ type Draft = { id: string; expires: number; input: PaperSaveInput };
 const statusAction = 'paperDirectorySaveStatus';
 const resultKey = 'paperSaveLastResult';
 export type PaperDirectorySaveStatus =
-	| { state: 'saving' | 'attention' | 'failed' | 'saved'; message: string }
+	| { state: 'saving' | 'attention' | 'failed' | 'saved' | 'saved-warning' | 'skipped'; message: string }
 	| { state: 'closed' };
 
 export async function lastPaperSaveResult(): Promise<string | undefined> {
@@ -40,10 +40,10 @@ function observeSave(id: string, onStatus: (status: PaperDirectorySaveStatus) =>
 	const onMessage = (message: any, sender: browser.Runtime.MessageSender): undefined => {
 		if (settled || sender.id !== browser.runtime.id || sender.url !== `${browser.runtime.getURL('paper-save.html')}#${id}` ||
 			message?.action !== statusAction || message.id !== id ||
-			!['saving', 'attention', 'failed', 'saved'].includes(message.status?.state) || typeof message.status.message !== 'string') return;
+			!['saving', 'attention', 'failed', 'saved', 'saved-warning', 'skipped'].includes(message.status?.state) || typeof message.status.message !== 'string') return;
 		lastStatus = message.status;
 		onStatus(message.status);
-		if (message.status.state === 'saved') dispose();
+		if (['saved', 'saved-warning', 'skipped'].includes(message.status.state)) dispose();
 		return undefined;
 	};
 	const onRemoved = (removed: number) => {
@@ -62,7 +62,7 @@ export async function reportPaperDirectorySave(id: string, status: Exclude<Paper
 	// The editor may already have been closed. Notification is not part of the
 	// filesystem transaction and must never turn a committed save into a failure.
 	try { await browser.runtime.sendMessage({ action: statusAction, id, status }); } catch { /* No editor remains. */ }
-	if (status.state === 'saved' || status.state === 'failed') {
+	if (['saved', 'saved-warning', 'skipped', 'failed'].includes(status.state)) {
 		// One result, local to this browser session. Never persist article snapshots
 		// or image URLs just to restore feedback when the popup is reopened.
 		try { await browser.storage.session.set({ [resultKey]: { id, ...status } }); } catch { /* Feedback is not part of the transaction. */ }

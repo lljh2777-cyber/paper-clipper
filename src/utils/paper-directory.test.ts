@@ -3,12 +3,14 @@ import { authorizePaperDirectory, PaperDirectoryError, paperDirectoryFailure, pa
 import { ImageArchiveError } from './image-archive';
 
 class Directory {
+	kind = 'directory';
 	files = new Map<string, string | ArrayBuffer>();
 	directories = new Map<string, Directory>();
 	permission: PermissionState = 'granted';
 	failPaper = false;
 	async queryPermission() { return this.permission; }
 	async requestPermission() { return this.permission; }
+	async *entries() { yield* this.directories.entries(); }
 	async getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<Directory> {
 		if (this.files.has(name)) throw new DOMException('File exists', 'TypeMismatchError');
 		if (!this.directories.has(name)) {
@@ -18,8 +20,9 @@ class Directory {
 		}
 		return this.directories.get(name)!;
 	}
-	async getFileHandle(name: string) {
-		return { createWritable: async () => {
+	async getFileHandle(name: string, options?: { create?: boolean }) {
+		if (!options?.create && !this.files.has(name)) throw new DOMException('Missing', 'NotFoundError');
+		return { getFile: async () => new File([this.files.get(name)!], name), createWritable: async () => {
 			let pending: string | ArrayBuffer = '';
 			return {
 				write: async (value: string | ArrayBuffer) => { pending = value; },
@@ -54,7 +57,7 @@ describe('translation directory', () => {
 	});
 	it('creates an untranslated bundle with a source fingerprint and independent verification states', async () => {
 		const parent = new Directory();
-		const folder = await savePaperDirectory(asHandle(parent), input);
+		const { folder } = await savePaperDirectory(asHandle(parent), input);
 		const bundle = parent.directories.get(folder)!;
 		expect([...bundle.files.keys()]).toEqual(['translation.json', 'checks.json', 'paper.md']);
 		expect([...bundle.directories.keys()]).toEqual(['images']);
@@ -68,11 +71,11 @@ describe('translation directory', () => {
 	});
 	it('never replaces an existing paper or translation, and refuses a file occupying the folder name', async () => {
 		const parent = new Directory();
-		const folder = await savePaperDirectory(asHandle(parent), input);
+		const { folder } = await savePaperDirectory(asHandle(parent), input);
 		const bundle = parent.directories.get(folder)!;
 		bundle.files.set('paper.zh-CN.md', 'Manual translation');
 		const before = [...bundle.files];
-		await expect(savePaperDirectory(asHandle(parent), { ...input, markdown: 'Changed' })).rejects.toMatchObject({ reason: 'exists' });
+		await expect(savePaperDirectory(asHandle(parent), { ...input, markdown: 'Changed' })).rejects.toMatchObject({ reason: 'duplicate' });
 		expect([...bundle.files]).toEqual(before);
 		const other = new Directory(); other.files.set(folder, 'Protected file');
 		await expect(savePaperDirectory(asHandle(other), input)).rejects.toMatchObject({ reason: 'exists' });
@@ -105,11 +108,58 @@ describe('translation directory', () => {
 		const fetcher = vi.fn(async (_url: string, _options?: RequestInit) => new Response(png, { headers: { 'Content-Type': 'image/png' } }));
 		vi.stubGlobal('fetch', fetcher);
 		const parent = new Directory();
-		const folder = await savePaperDirectory(asHandle(parent), { ...input, source: 'https://www.cell.com/cell/fulltext/test', markdown: `![A](${small})`, imageSources: { [small]: large } });
+		const { folder } = await savePaperDirectory(asHandle(parent), { ...input, source: 'https://www.cell.com/cell/fulltext/test', markdown: `![A](${small})`, imageSources: { [small]: large } });
 		const bundle = parent.directories.get(folder)!;
 		expect(fetcher.mock.calls[0][0]).toBe(large);
 		expect([...bundle.directories.get('images')!.files.keys()]).toEqual(['image-1.png']);
 		const report = JSON.parse(new TextDecoder().decode(bundle.files.get('image-report.json') as ArrayBuffer));
 		expect(report.items[0].selection).toBe('preferred');
+	});
+	it('recognizes a DOI after renaming its directory, title or year, without downloading or touching translations', async () => {
+		const parent = new Directory();
+		const { folder } = await savePaperDirectory(asHandle(parent), input);
+		const original = parent.directories.get(folder)!;
+		original.files.set('paper.zh-CN.md', 'Translation and annotations');
+		const metadata = JSON.parse(original.files.get('translation.json') as string);
+		metadata.doi = 'https://doi.org/10.1038/S41592-025-02899-6';
+		original.files.set('translation.json', JSON.stringify(metadata));
+		parent.directories.delete(folder); parent.directories.set('Renamed archive', original);
+		const before = [...original.files];
+		const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
+		await expect(savePaperDirectory(asHandle(parent), { ...input, title: 'Changed title', identity: { ...identity, published: '2026' }, markdown: '![A](https://example.org/image.png)' })).rejects.toMatchObject({ reason: 'duplicate', folder: 'Renamed archive' });
+		expect(fetcher).not.toHaveBeenCalled();
+		expect([...original.files]).toEqual(before);
+		expect(parent.directories.size).toBe(1);
+		const saved = await savePaperDirectory(asHandle(parent), { ...input, title: 'Changed title' }, undefined, { newVersion: true });
+		expect(saved.folder).toContain('__v_');
+		expect([...original.files]).toEqual(before);
+		const version = parent.directories.get(saved.folder)!;
+		expect(version.files.has('paper.zh-CN.md')).toBe(false);
+		expect(JSON.parse(version.files.get('translation.json') as string).previousArchives).toEqual(['Renamed archive']);
+	});
+	it('rechecks DOI inside the write lock to catch a concurrent archive', async () => {
+		const parent = new Directory();
+		vi.stubGlobal('navigator', { locks: { request: async (_name: string, callback: () => unknown) => {
+			const other = new Directory();
+			other.files.set('translation.json', JSON.stringify({ schemaVersion: 1, sourceFile: 'paper.md', doi: identity.doi, archiveStatus: 'writing' }));
+			parent.directories.set('Concurrent archive', other);
+			return callback();
+		} } });
+		await expect(savePaperDirectory(asHandle(parent), input)).rejects.toMatchObject({ reason: 'duplicate', folder: 'Concurrent archive' });
+		expect([...parent.directories.keys()]).toEqual(['Concurrent archive']);
+	});
+	it('does not guess unknown DOI or recurse, and does not silently skip unreadable metadata', async () => {
+		const parent = new Directory();
+		const nested = new Directory(); parent.directories.set('Unrelated', nested);
+		const hidden = new Directory(); nested.directories.set('Nested', hidden);
+		hidden.files.set('translation.json', '{invalid');
+		await savePaperDirectory(asHandle(parent), input);
+		const unknown = { ...input, identity: { doi: null, published: null } };
+		await savePaperDirectory(asHandle(parent), unknown);
+		await savePaperDirectory(asHandle(parent), unknown);
+		expect(parent.directories.size).toBe(4);
+		nested.files.set('translation.json', '{invalid');
+		await expect(savePaperDirectory(asHandle(parent), input)).rejects.toMatchObject({ reason: 'index', folder: 'Unrelated' });
+		expect(parent.directories.size).toBe(4);
 	});
 });

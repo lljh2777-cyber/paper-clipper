@@ -1,29 +1,55 @@
-import { createIcons, FolderOpen, RotateCw, X } from 'lucide';
+import { createIcons, FolderOpen, RotateCw, CopyPlus, Check, X } from 'lucide';
 import { getMessage, setupLanguageAndDirection, translatePage } from '../utils/i18n';
 import { authorizePaperDirectory, choosePaperDirectory, getPaperDirectory, paperDirectoryFailure, savePaperDirectory, WritableDirectory } from '../utils/paper-directory';
 import { PaperSaveInput, reportPaperDirectorySave, takePaperDirectorySave } from '../utils/paper-directory-handoff';
 import { createImageArchive, ImageArchiveError } from '../utils/image-archive';
 import { authorizeZipDownload, downloadPaperZip, hasZipDownloadPermission, PaperZipDownloadError } from '../utils/paper-zip-download';
-import { manualChecksMessageKey } from '../utils/manual-export-report';
+import { manualChecksMessageKey, ManualExportChecks } from '../utils/manual-export-report';
 import browser from '../utils/browser-polyfill';
 
 const status = document.getElementById('save-status')!;
 const authorize = document.getElementById('authorize-save') as HTMLButtonElement;
 const retry = document.getElementById('retry-save') as HTMLButtonElement;
 const close = document.getElementById('close-save') as HTMLButtonElement;
+const keep = document.getElementById('keep-existing') as HTMLButtonElement;
+const version = document.getElementById('save-new-version') as HTMLButtonElement;
 let directory: WritableDirectory | undefined;
 let input: PaperSaveInput | undefined;
 let archive: Awaited<ReturnType<typeof createImageArchive>> | undefined;
 let busy = false;
+let newVersion = false;
+let existingFolder = '';
 const requestId = location.hash.slice(1);
 
-async function showAttention(state: 'attention' | 'failed' = 'attention') {
-	await reportPaperDirectorySave(requestId, { state, message: status.textContent ?? '' });
-	if (state === 'attention' && !input) return;
+async function revealSavePage() {
 	try {
 		const tab = await browser.tabs.getCurrent();
 		if (tab?.id !== undefined) await browser.tabs.update(tab.id, { active: true });
 	} catch { /* The user may have closed the tab while it was being activated. */ }
+}
+async function showAttention(state: 'attention' | 'failed' = 'attention') {
+	await reportPaperDirectorySave(requestId, { state, message: status.textContent ?? '' });
+	if (state === 'attention' && !input) return;
+	await revealSavePage();
+}
+
+function checkSummary(checks?: ManualExportChecks): { warning: boolean; message: string } {
+	const lines = [getMessage(manualChecksMessageKey(checks))];
+	let warning = checks?.preservation === 'attention-required';
+	for (const stage of ['extraction', 'template', 'output'] as const) {
+		for (const kind of ['captions', 'references', 'extendedImages', 'math'] as const) {
+			const check = checks?.stages[stage][kind];
+			if (check?.status !== 'failed') continue;
+			warning = true;
+			lines.push(getMessage('paperSaveCheckDifference', [getMessage(`paperSaveStage_${stage}`), getMessage(`paperSaveKind_${kind}`), String(check.matched), String(check.expected)]));
+		}
+	}
+	if (checks?.preservation === 'attention-required') lines.push(getMessage('paperSaveDifferenceIntent'));
+	if (checks?.images?.originalFallbacks) {
+		warning = true;
+		lines.push(getMessage('paperSaveImageFallback', String(checks.images.originalFallbacks)));
+	}
+	return { warning, message: lines.join('\n') };
 }
 
 function offerPermission() {
@@ -34,6 +60,7 @@ async function showFailure(error: unknown) {
 	const failure = paperDirectoryFailure(error);
 	authorize.hidden = true;
 	retry.hidden = true;
+	keep.hidden = version.hidden = true;
 	if (error instanceof ImageArchiveError) {
 		status.textContent = getMessage(`paperSaveImageError_${error.reason}`, String(error.imageNumber));
 		// Image preparation precedes all filesystem/download side effects.
@@ -44,6 +71,10 @@ async function showFailure(error: unknown) {
 		retry.hidden = !input || !error.retryable;
 	} else {
 		status.textContent = getMessage(failure.key, failure.detail);
+		if (input && input.format !== 'zip' && ['paperDirectoryError_duplicate', 'paperDirectoryError_exists'].includes(failure.key)) {
+			existingFolder = failure.detail;
+			keep.hidden = version.hidden = false;
+		}
 		if (input && input.format !== 'zip' && ['paperDirectoryError_permission', 'paperDirectoryError_missing'].includes(failure.key)) offerPermission();
 	}
 	status.dataset.error = 'true';
@@ -52,13 +83,16 @@ async function showFailure(error: unknown) {
 async function save() {
 	authorize.hidden = true;
 	retry.hidden = true;
+	keep.hidden = version.hidden = true;
 	status.dataset.error = 'false';
+	status.dataset.warning = 'false';
 	status.textContent = getMessage('paperDirectorySaving');
 	void reportPaperDirectorySave(requestId, { state: 'saving', message: status.textContent });
 	const progress = (done: number, total: number) => {
 		status.textContent = getMessage('imageArchiveProgress', [String(done), String(total)]);
 		void reportPaperDirectorySave(requestId, { state: 'saving', message: status.textContent });
 	};
+	let checks: ManualExportChecks | undefined;
 	if (input!.format === 'zip') {
 		archive ??= await createImageArchive(input!.markdown, input!.title, input!.source, progress, input!.imageSources, input!.checkContext);
 		status.textContent = getMessage('paperZipDownloading');
@@ -67,20 +101,26 @@ async function save() {
 			status.textContent = getMessage('paperZipReview');
 			void showAttention();
 		});
-		status.textContent = getMessage('paperZipSaved', savedName) + ' ' + getMessage(manualChecksMessageKey(archive.checks));
+		status.textContent = getMessage('paperZipSaved', savedName);
+		checks = archive.checks;
 	} else {
 		document.getElementById('save-directory')!.textContent = directory!.name;
-		const folder = await savePaperDirectory(directory!, input!, progress);
-		status.textContent = getMessage('paperDirectorySaved', `${directory!.name}/${folder}`) + ' ' + getMessage(manualChecksMessageKey(input?.checkContext?.report));
+		const saved = await savePaperDirectory(directory!, input!, progress, { newVersion });
+		status.textContent = getMessage('paperDirectorySaved', `${directory!.name}/${saved.folder}`);
+		checks = saved.checks;
 	}
+	const summary = checkSummary(checks);
+	status.textContent += '\n' + (summary.warning ? getMessage('paperSaveNeedsReview') + '\n' : '') + summary.message;
+	status.dataset.warning = String(summary.warning);
 	input = undefined;
 	archive = undefined;
-	await reportPaperDirectorySave(requestId, { state: 'saved', message: status.textContent });
-	window.close();
+	await reportPaperDirectorySave(requestId, { state: summary.warning ? 'saved-warning' : 'saved', message: status.textContent });
+	if (summary.warning) await revealSavePage();
+	else window.close();
 }
 async function runSave(withPermission: boolean) {
 	if (busy || !input) return;
-	busy = true; authorize.disabled = true; retry.disabled = true; close.disabled = true;
+	busy = true; authorize.disabled = retry.disabled = close.disabled = keep.disabled = version.disabled = true;
 	try {
 		// This click is in a top-level extension document with a real user gesture.
 		if (withPermission) {
@@ -94,16 +134,30 @@ async function runSave(withPermission: boolean) {
 			offerPermission();
 			await showAttention('failed');
 		} else await showFailure(error);
-	} finally { busy = false; authorize.disabled = false; retry.disabled = false; close.disabled = false; }
+	} finally { busy = false; authorize.disabled = retry.disabled = close.disabled = keep.disabled = version.disabled = false; }
 }
 authorize.addEventListener('click', () => { void runSave(true); });
 retry.addEventListener('click', () => { void runSave(false); });
 close.addEventListener('click', () => window.close());
+version.addEventListener('click', () => {
+	if (busy || version.hidden || !input) return;
+	newVersion = true;
+	void runSave(false);
+});
+keep.addEventListener('click', async () => {
+	if (busy || keep.hidden || !input) return;
+	busy = true;
+	keep.disabled = version.disabled = true;
+	input = undefined;
+	status.textContent = getMessage('paperDirectoryKept', existingFolder);
+	await reportPaperDirectorySave(requestId, { state: 'skipped', message: status.textContent });
+	window.close();
+});
 
 async function initialize() {
 	await translatePage();
 	await setupLanguageAndDirection();
-	createIcons({ icons: { FolderOpen, RotateCw, X } });
+	createIcons({ icons: { FolderOpen, RotateCw, CopyPlus, Check, X } });
 	close.title = close.ariaLabel = getMessage('close');
 	if (window.top !== window) throw new Error('Save page must be top-level.');
 	input = await takePaperDirectorySave(requestId);

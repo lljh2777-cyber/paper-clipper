@@ -119,15 +119,17 @@ export async function prepareImageFiles(markdown: string, source: string,
 		markdown = markdown.slice(0, image.start) + replacement + markdown.slice(image.end);
 	}
 	files['paper.md'] = strToU8(markdown);
-	files['checks.json'] = strToU8(JSON.stringify({ ...checks,
-		artifact: { file: 'paper.md', algorithm: 'sha256', value: await markdownSha256(markdown) },
+	const finalChecks: ManualExportChecks = { ...checks,
 		images: { status: 'passed', scope: 'referenced-images-http-mime-signature', downloaded: urls.length,
 			originalFallbacks: selections.filter(item => item.selection === 'original-fallback').length },
+	};
+	files['checks.json'] = strToU8(JSON.stringify({ ...finalChecks,
+		artifact: { file: 'paper.md', algorithm: 'sha256', value: await markdownSha256(markdown) },
 	}, null, 2) + '\n');
 	if (selections.some(item => item.selection !== 'original')) files['image-report.json'] = strToU8(JSON.stringify({
 		schemaVersion: 1, policy: 'prefer-publisher-high-resolution', items: selections,
 	}, null, 2) + '\n');
-	return { files, imageCount: urls.length, checks };
+	return { files, imageCount: urls.length, checks: finalChecks };
 }
 
 export async function createImageArchive(markdown: string, title: string, source: string,

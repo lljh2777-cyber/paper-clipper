@@ -36,6 +36,17 @@ try {
 	await worker.evaluate(url => chrome.tabs.create({ url, active: false }), `${origin}/popup.html`);
 	let popup = await next;
 	const errors = [];
+	const reviewSaved = async (save, fallback = false) => {
+		save.page.on('pageerror', error => errors.push(error.message));
+		await save.page.locator('#save-status[data-warning="true"]').waitFor();
+		await save.page.waitForFunction(async () => (await chrome.tabs.getCurrent()).active && (await chrome.storage.session.get('paperSaveLastResult')).paperSaveLastResult?.id === location.hash.slice(1));
+		assert.equal(await save.page.evaluate(async () => (await chrome.tabs.getCurrent()).active), true);
+		assert.match(await save.page.locator('#save-status').innerText(), /Saved, but review is needed/);
+		assert.equal(await save.page.locator('#retry-save').isVisible(), false);
+		if (fallback) assert.match(await save.page.locator('#save-status').innerText(), /fell back to the original page image/);
+		assert.equal(await worker.evaluate(async () => (await chrome.storage.session.get('paperSaveLastResult')).paperSaveLastResult.state), 'saved-warning');
+		await save.page.locator('#close-save').click();
+	};
 	popup.on('pageerror', error => errors.push(error.message));
 	await popup.locator('#note-content-field').waitFor({ state: 'visible' });
 	await popup.locator('#save-image-archive').waitFor({ state: 'attached' });
@@ -50,6 +61,15 @@ try {
 	await popup.locator('#more-btn').click();
 	await popup.screenshot({ path: path.join(directory, 'menu-desktop.png') });
 	const save = await openSavePage(context, () => popup.locator('#save-image-archive').click());
+	await save.page.locator('#save-status[data-warning="true"]').waitFor();
+	assert.match(await save.page.locator('#save-status').innerText(), /Edited output \/ Figure captions/);
+	assert.match(await save.page.locator('#save-status').innerText(), /they do not by themselves prove a conversion error/);
+	for (const [width, height] of [[1280, 900], [390, 844]]) {
+		await save.page.setViewportSize({ width, height });
+		assert.equal(await save.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+		await save.page.screenshot({ path: path.join(directory, `review-${width}.png`) });
+	}
+	await reviewSaved(save);
 	const download = await readCompletedZip(worker, save, downloads);
 	assert.equal(download.fileName, 'paper-Edited synthetic paper.zip');
 	const zip = unzipSync(download.bytes);
@@ -92,6 +112,7 @@ try {
 		if (fallback) await context.route(`https://www.cell.com${largePath}`, route => route.fulfill({ status: 403, body: 'Denied' }));
 		await popup.locator('#more-btn').click();
 		const saving = await openSavePage(context, () => popup.locator('#save-image-archive').click());
+		await reviewSaved(saving, fallback);
 		const completed = await readCompletedZip(worker, saving, downloads);
 		assert.notEqual(completed.fileName, download.fileName);
 		const archive = unzipSync(completed.bytes);
@@ -122,6 +143,7 @@ try {
 	assert.equal(await independent.page.evaluate(async () => (await chrome.tabs.getCurrent()).active), false);
 	await popup.close();
 	releaseImage();
+	await reviewSaved(independent);
 	await readCompletedZip(worker, independent, downloads);
 	assert.deepEqual(await readFile(path.join(downloads, download.fileName)), download.bytes);
 	await article.bringToFront();
@@ -148,6 +170,7 @@ try {
 	await popup.close();
 	await context.route('https://images.example.org/bad.png', route => route.fulfill({ contentType: 'image/png', body: png }));
 	await failed.page.locator('#retry-save').click();
+	await reviewSaved(failed);
 	const retried = await readCompletedZip(worker, failed, downloads);
 	const retryZip = unzipSync(retried.bytes);
 	const retryImages = [];

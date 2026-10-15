@@ -1344,7 +1344,7 @@ function manualSaveStatus(): HTMLElement {
 		status = document.createElement('div');
 		status.id = 'image-archive-status';
 		status.setAttribute('role', 'status');
-		status.style.cssText = 'padding:8px;overflow-wrap:anywhere;white-space:normal';
+		status.style.cssText = 'padding:8px;overflow-wrap:anywhere;white-space:pre-line';
 		document.getElementById('clip-btn')?.parentElement?.before(status);
 	}
 	return status;
