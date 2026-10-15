@@ -35,6 +35,7 @@ beforeEach(() => {
 	vi.mocked(choosePaperDirectory).mockResolvedValue(handle);
 	vi.mocked(savePaperDirectory).mockResolvedValue('paper-folder');
 	vi.mocked(hasZipDownloadPermission).mockResolvedValue(true);
+	vi.mocked(downloadPaperZip).mockResolvedValue('paper.zip');
 	vi.mocked(createImageArchive).mockResolvedValue({ bytes: new Uint8Array([1]), fileName: 'paper.zip', imageCount: 1 } as Awaited<ReturnType<typeof createImageArchive>>);
 	vi.mocked(takePaperDirectorySave).mockResolvedValue({ title: 'Edited title', markdown: 'Edited source', source: '', identity: { doi: null, published: null } });
 });
@@ -97,7 +98,7 @@ const zipInput = { format: 'zip' as const, title: 'Edited title', markdown: 'Edi
 it('requests ZIP authorization only on a click and waits for download completion before closing', async () => {
 	vi.mocked(takePaperDirectorySave).mockResolvedValue(zipInput);
 	vi.mocked(hasZipDownloadPermission).mockResolvedValue(false);
-	let complete!: () => void;
+	let complete!: (filename: string) => void;
 	vi.mocked(downloadPaperZip).mockImplementation(() => new Promise(resolve => { complete = resolve; }));
 	await import('./paper-save');
 	await vi.waitFor(() => expect(authorize().hidden).toBe(false));
@@ -107,9 +108,9 @@ it('requests ZIP authorization only on a click and waits for download completion
 	await vi.waitFor(() => expect(downloadPaperZip).toHaveBeenCalledOnce());
 	expect(close).not.toHaveBeenCalled();
 	expect(getPaperDirectory).not.toHaveBeenCalled();
-	complete();
+	complete('paper (1).zip');
 	await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
-	expect(reportPaperDirectorySave).toHaveBeenLastCalledWith('job', { state: 'saved', message: 'paperZipSaved: paper.zip manualChecksUnassessed' });
+	expect(reportPaperDirectorySave).toHaveBeenLastCalledWith('job', { state: 'saved', message: 'paperZipSaved: paper (1).zip manualChecksUnassessed' });
 });
 
 it('keeps a denied ZIP permission actionable without preparing images', async () => {

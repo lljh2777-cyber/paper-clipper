@@ -44,16 +44,16 @@ jobs:
         run: npm run test:extension-brand
       - name: Install Chromium
         run: node node_modules/playwright/cli.js install --with-deps chromium
-      - name: Exercise extension queue with synthetic pages only
-        run: npm run test:browser-queue:e2e
-      - name: Exercise branded settings and queue navigation
-        run: node scripts/test-extension-brand-e2e.mjs
       - name: Exercise manual image ZIP downloads
         run: node scripts/test-image-archive-e2e.mjs
       - name: Exercise MathJax preservation and formula rendering
         run: node scripts/test-paper-math-e2e.mjs
       - name: Exercise default directory settings and file writes
         run: node scripts/test-paper-directory-e2e.mjs
+      - name: Exercise extension queue with synthetic pages only
+        run: npm run test:browser-queue:e2e
+      - name: Exercise branded settings and queue navigation
+        run: node scripts/test-extension-brand-e2e.mjs
 
   core:
     name: Core / ${{ matrix.os }} / Node ${{ matrix.node }}

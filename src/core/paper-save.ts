@@ -63,11 +63,11 @@ async function save() {
 		archive ??= await createImageArchive(input!.markdown, input!.title, input!.source, progress, input!.imageSources, input!.checkContext);
 		status.textContent = getMessage('paperZipDownloading');
 		void reportPaperDirectorySave(requestId, { state: 'saving', message: status.textContent });
-		await downloadPaperZip(archive.bytes, archive.fileName, () => {
+		const savedName = await downloadPaperZip(archive.bytes, archive.fileName, () => {
 			status.textContent = getMessage('paperZipReview');
 			void showAttention();
 		});
-		status.textContent = getMessage('paperZipSaved', archive.fileName) + ' ' + getMessage(manualChecksMessageKey(archive.checks));
+		status.textContent = getMessage('paperZipSaved', savedName) + ' ' + getMessage(manualChecksMessageKey(archive.checks));
 	} else {
 		document.getElementById('save-directory')!.textContent = directory!.name;
 		const folder = await savePaperDirectory(directory!, input!, progress);

@@ -7,7 +7,7 @@ vi.mock('./browser-polyfill', () => ({ default: {
 	downloads: { download: vi.fn(), search: vi.fn(), onChanged: { addListener: vi.fn(), removeListener: vi.fn() } },
 } }));
 const bytes = new Uint8Array([1, 2]);
-let item: { id: number; state: string; danger: string; paused?: boolean; error?: string };
+let item: { id: number; state: string; danger: string; filename?: string; paused?: boolean; error?: string };
 const changed = () => vi.mocked(browser.downloads.onChanged.addListener).mock.calls[0][0];
 beforeEach(() => {
 	vi.resetAllMocks();
@@ -31,9 +31,11 @@ it('waits for the specific download, never overwrites, and keeps the blob until 
 	changed()({ id: 99, state: { current: 'complete' } });
 	expect(browser.downloads.search).toHaveBeenCalledOnce();
 	item.state = 'complete';
+	item.filename = 'C:\\Downloads\\paper (1).zip';
 	changed()({ id: 42, state: { current: 'complete' } });
 	await promise;
 	expect(done).toHaveBeenCalledOnce();
+	expect(done).toHaveBeenCalledWith('paper (1).zip');
 	expect(browser.downloads.onChanged.removeListener).toHaveBeenCalledWith(changed());
 	expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:private-zip');
 });
@@ -42,7 +44,7 @@ it('handles a download that completes before the start call returns', async () =
 	vi.mocked(browser.downloads.download).mockImplementation(async () => {
 		item.state = 'complete'; changed()({ id: 42, state: { current: 'complete' } }); return 42;
 	});
-	await expect(downloadPaperZip(bytes, 'paper.zip', vi.fn())).resolves.toBeUndefined();
+	await expect(downloadPaperZip(bytes, 'paper.zip', vi.fn())).resolves.toBe('paper.zip');
 });
 
 it.each([['NETWORK_FAILED', true], ['USER_CANCELED', true], ['FILE_VIRUS_INFECTED', false], ['SERVER_UNAUTHORIZED', false]])(

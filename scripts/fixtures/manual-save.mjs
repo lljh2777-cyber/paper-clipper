@@ -6,6 +6,12 @@ import { fileURLToPath } from 'node:url';
 // Isolated CI profile with the optional grant pre-authorized. The native browser
 // consent dialog is NOT covered by this adapter; denial/gesture logic has unit tests.
 export async function authorizedDownloadExtension(directory) {
+	const profile = path.join(directory, 'profile', 'Default');
+	await mkdir(profile, { recursive: true });
+	await mkdir(path.join(directory, 'downloads'));
+	await writeFile(path.join(profile, 'Preferences'), JSON.stringify({ download: {
+		default_directory: path.join(directory, 'downloads'), prompt_for_download: false,
+	} }));
 	const extension = path.join(directory, 'authorized-extension');
 	await cp(fileURLToPath(new URL('../../dev', import.meta.url)), extension, { recursive: true });
 	const manifestPath = path.join(extension, 'manifest.json');
@@ -19,9 +25,11 @@ export async function authorizedDownloadExtension(directory) {
 
 export async function configureZipDownloads(context, page, directory) {
 	const destination = path.join(directory, 'downloads');
-	await mkdir(destination);
 	const session = await context.newCDPSession(page);
-	await session.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: destination, eventsEnabled: true });
+	// CDP's allow/allowAndName delegate bypasses Chrome's extension filename and
+	// conflict handling. Restore the real delegate and use this fresh profile's
+	// download preference, so naming and no-overwrite assertions remain meaningful.
+	await session.send('Browser.setDownloadBehavior', { behavior: 'default', eventsEnabled: true });
 	return destination;
 }
 

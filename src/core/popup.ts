@@ -1367,10 +1367,12 @@ async function handleManualSave(format: 'directory' | 'zip') {
 		const imageSources = page ? collectImageSources(page.snapshot.document, source) : {};
 		const checkContext = await prepareManualExportChecks(page?.snapshot, frontmatter + markdown);
 		const input = { format, markdown: frontmatter + markdown, title, source, identity, imageSources, checkContext };
-		status.textContent = getMessage('paperDirectoryHandedOff');
+		let receivedStatus = false;
 		const job = await openPaperDirectorySave(input, update => {
+			receivedStatus = true;
 			status.textContent = update.state === 'closed' ? getMessage('paperDirectoryClosed') : update.message;
 		});
+		if (!receivedStatus) status.textContent = getMessage('paperDirectoryHandedOff');
 		await job.finished;
 	} catch (error) {
 		const failure = paperDirectoryFailure(error);

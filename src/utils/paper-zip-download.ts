@@ -18,21 +18,21 @@ export async function authorizeZipDownload(): Promise<void> {
 const retryableInterrupts = new Set(['USER_CANCELED', 'NETWORK_FAILED', 'NETWORK_TIMEOUT', 'NETWORK_DISCONNECTED',
 	'SERVER_FAILED', 'SERVER_UNREACHABLE', 'FILE_TRANSIENT_ERROR', 'FILE_NO_SPACE']);
 
-export async function downloadPaperZip(bytes: Uint8Array, fileName: string, needsAttention: () => void): Promise<void> {
+export async function downloadPaperZip(bytes: Uint8Array, fileName: string, needsAttention: () => void): Promise<string> {
 	if (!await hasZipDownloadPermission()) throw new PaperZipDownloadError('permission');
 	if (!browser.downloads?.download || !browser.downloads.onChanged) throw new PaperZipDownloadError('unavailable');
 	const url = URL.createObjectURL(new Blob([new Uint8Array(bytes).buffer], { type: 'application/zip' }));
 	try {
-		await new Promise<void>((resolve, reject) => {
+		return await new Promise<string>((resolve, reject) => {
 			let id: number | undefined;
 			let settled = false;
 			let attentionShown = false;
-			const finish = (error?: PaperZipDownloadError) => {
+			const finish = (error?: PaperZipDownloadError, savedName = fileName) => {
 				if (settled) return;
 				settled = true;
 				clearTimeout(timeout);
 				browser.downloads.onChanged.removeListener(changed);
-				error ? reject(error) : resolve();
+				error ? reject(error) : resolve(savedName);
 			};
 			const inspect = async () => {
 				if (settled || id === undefined) return;
@@ -40,7 +40,7 @@ export async function downloadPaperZip(bytes: Uint8Array, fileName: string, need
 					const [item] = await browser.downloads.search({ id });
 					if (settled) return;
 					if (!item) return finish(new PaperZipDownloadError('unknown'));
-					if (item.state === 'complete') return finish();
+					if (item.state === 'complete') return finish(undefined, item.filename?.split(/[\\/]/).pop() || fileName);
 					if (item.state === 'interrupted') return finish(new PaperZipDownloadError('interrupted', retryableInterrupts.has(item.error ?? '')));
 					if (!attentionShown && (item.paused || !['safe', 'accepted'].includes(item.danger))) {
 						attentionShown = true;
