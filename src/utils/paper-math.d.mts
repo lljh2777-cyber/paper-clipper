@@ -8,5 +8,6 @@ export interface FormulaReport {
 }
 export function mathInventory(document: Document): { element: Element; id: string; math?: Element; latex?: string; block?: boolean; error?: string }[];
 export function prepareMath(document: Document): void;
+export function retainMathForSnapshot(document: Document): void;
 export function checkMathPreservation(document: Document, markdown: string): FormulaReport;
 export function assertMathPreserved(document: Document, markdown: string): void;

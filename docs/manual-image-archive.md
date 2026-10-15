@@ -104,6 +104,9 @@ and templates), `template` (the initial editor content), and `output` (the conte
 being saved). Changed templates, selections, highlights, AI processing or editor
 changes are recorded without guessing whether an omission was intentional.
 Text is never repaired or restored automatically.
+The captured snapshot retains recoverable MathJax TeX/display information before
+generic script/style cleanup, so spacing encoded in CHTML styles is not lost from
+the later check baseline. The original page and formula comparison rules are unchanged.
 
 Implemented scopes are Cell/Nature main caption paragraphs, order and links;
 Cell full bibliography text/links and per-reference inline citation counts;

@@ -155,6 +155,16 @@ export function mathInventory(document) {
 	});
 }
 
+// Call on the snapshot copy before generic script/style cleanup. CHTML spacing
+// and sibling TeX scripts are formula data, not merely page presentation.
+export function retainMathForSnapshot(document) {
+	for (const item of mathInventory(document)) {
+		if (item.error) continue;
+		item.element.setAttribute('data-latex', item.latex);
+		item.element.setAttribute('display', String(item.block));
+	}
+}
+
 export function prepareMath(document) {
 	const inventory = mathInventory(document);
 	const unsupported = inventory.filter(item => item.error);

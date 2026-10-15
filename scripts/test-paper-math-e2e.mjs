@@ -43,6 +43,10 @@ try {
 	await popup.locator('#more-btn').click();
 	const save = await openSavePage(context, () => popup.locator('#save-image-archive').click());
 	const archive = unzipSync((await readCompletedZip(worker, save, downloads)).bytes);
+	const checks = JSON.parse(strFromU8(archive[Object.keys(archive).find(key => key.endsWith('/checks.json'))]));
+	for (const stage of ['extraction', 'template', 'output']) assert.deepEqual(
+		{ status: checks.stages[stage].math.status, expected: checks.stages[stage].math.expected, matched: checks.stages[stage].math.matched },
+		{ status: 'passed', expected: 8, matched: 8 });
 	const saved = strFromU8(archive[Object.keys(archive).find(key => key.endsWith('/paper.md'))]);
 	assert.equal(checkMathPreservation(source, saved).status, 'passed');
 	const formulas = Array.from(saved.matchAll(/\$\$([\s\S]*?)\$\$|\$([^$\n]+)\$/g), match => ({ latex: match[1] ?? match[2], block: match[1] !== undefined }));

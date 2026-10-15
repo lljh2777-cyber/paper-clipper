@@ -6,7 +6,7 @@ import { getDomain } from './utils/string-utils';
 import { extractContentBySelector as extractContentBySelectorShared } from './utils/shared';
 import Defuddle from 'defuddle';
 import { prepareDocumentForExtraction } from './utils/publisher-figures';
-import { assertMathPreserved } from './utils/paper-math.mjs';
+import { assertMathPreserved, retainMathForSnapshot } from './utils/paper-math.mjs';
 import { createMarkdownContent } from 'defuddle/full';
 import { flattenShadowDom } from './utils/flatten-shadow-dom';
 import { serializeChildren } from './utils/dom-utils';
@@ -232,6 +232,7 @@ declare global {
 				const parser = new DOMParser();
 				// Parse the document's HTML
 				const doc = parser.parseFromString(document.documentElement.outerHTML, 'text/html');
+				retainMathForSnapshot(doc);
 
 				// Remove all script and style elements
 				doc.querySelectorAll('script, style').forEach(el => el.remove());
