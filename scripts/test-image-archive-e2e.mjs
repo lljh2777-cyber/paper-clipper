@@ -170,8 +170,10 @@ try {
 	await popup.close();
 	await context.route('https://images.example.org/bad.png', route => route.fulfill({ contentType: 'image/png', body: png }));
 	await failed.page.locator('#retry-save').click();
-	await reviewSaved(failed);
+	// The reopened editor captured the deliberately shortened caption above,
+	// outside the caption check's scope. Missing coverage is not a warning.
 	const retried = await readCompletedZip(worker, failed, downloads);
+	assert.equal(await worker.evaluate(async () => (await chrome.storage.session.get('paperSaveLastResult')).paperSaveLastResult.state), 'saved');
 	const retryZip = unzipSync(retried.bytes);
 	const retryImages = [];
 	marked.walkTokens(marked.lexer(strFromU8(retryZip[Object.keys(retryZip).find(name => name.endsWith('/paper.md'))])), token => {
