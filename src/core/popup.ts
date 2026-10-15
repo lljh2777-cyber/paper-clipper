@@ -28,7 +28,7 @@ import { lastPaperSaveResult, openPaperDirectorySave } from '../utils/paper-dire
 import { translatePage, getMessage, setupLanguageAndDirection } from '../utils/i18n';
 import { formatPropertyValue } from '../utils/shared';
 import { exportPageHtml } from '../utils/page-html-export';
-import { notifySidePanelState } from '../utils/side-panel-lifecycle';
+import { notifySidePanelState, requestEmbeddedPanelToggle } from '../utils/side-panel-lifecycle';
 import { ManualExportSnapshot, prepareManualExportChecks } from '../utils/manual-export-checks';
 
 interface ReaderModeResponse {
@@ -454,10 +454,15 @@ function setupEventListeners(tabId: number) {
 		if (embeddedModeButton) {
 			embeddedModeButton.addEventListener('click', async function() {
 				try {
-					await browser.runtime.sendMessage({ action: "getActiveTabAndToggleIframe" });
+					const result = await requestEmbeddedPanelToggle();
+					if (result === 'invalidated') {
+						manualSaveStatus().textContent = getMessage('embeddedPanelReloadRequired');
+						return;
+					}
 					setTimeout(() => window.close(), 50);
 				} catch (error) {
-					console.error('Error toggling emedded iframe:', error);
+					console.error('Error toggling embedded iframe:', error);
+					manualSaveStatus().textContent = getMessage('embeddedPanelToggleFailed');
 				}
 			});
 		}

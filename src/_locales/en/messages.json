@@ -690,6 +690,12 @@
 	"pleaseReload": {
 		"message": "Please try reloading the page."
 	},
+	"embeddedPanelReloadRequired": {
+		"message": "The extension was reloaded. Copy any unsaved edits, then refresh the article page and reopen Paper Clipper."
+	},
+	"embeddedPanelToggleFailed": {
+		"message": "Could not switch panels. Your edits remain here; copy any unsaved edits before refreshing the page."
+	},
 	"popularModels": {
 		"message": "Popular models"
 	},

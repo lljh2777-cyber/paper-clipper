@@ -690,6 +690,12 @@
 	"pleaseReload": {
 		"message": "请尝试重新加载页面。"
 	},
+	"embeddedPanelReloadRequired": {
+		"message": "扩展已重新加载。请先复制尚未保存的修改，再刷新论文页面并重新打开 Paper Clipper。"
+	},
+	"embeddedPanelToggleFailed": {
+		"message": "无法切换面板，当前编辑内容仍保留在这里；刷新页面前请先复制尚未保存的修改。"
+	},
 	"popularModels": {
 		"message": "热门模型"
 	},
