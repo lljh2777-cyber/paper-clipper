@@ -136,10 +136,14 @@ try {
 		self.saveActivations = [];
 		chrome.tabs.onActivated.addListener(({ tabId }) => self.saveActivations.push(tabId));
 	});
-	const activeUrl = () => worker.evaluate(async () => (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0]?.url);
+	// Tab IDs are available without adding the broad `tabs` permission. URLs of
+	// extension pages may be redacted from tabs.query even for this extension.
+	const activeId = () => worker.evaluate(async () => (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0]?.id);
+	const articleId = await worker.evaluate(async () => (await chrome.tabs.query({ url: 'https://paper.example.org/article' }))[0].id);
+	const settingsId = await settings.evaluate(async () => (await chrome.tabs.getCurrent()).id);
 	const assertActive = async page => {
 		await page.waitForFunction(async () => (await chrome.tabs.getCurrent()).active);
-		assert.equal(await activeUrl(), page.url());
+		assert.equal(await activeId(), await page.evaluate(async () => (await chrome.tabs.getCurrent()).id));
 	};
 	const openSave = async title => {
 		await article.bringToFront();
@@ -176,7 +180,7 @@ try {
 	let save = await openSave('Embedded edited title');
 	const savedUrl = save.page.url();
 	await save.page.locator('#save-status').filter({ hasText: '正在下载图片' }).waitFor();
-	assert.equal(await activeUrl(), article.url());
+	assert.equal(await activeId(), articleId);
 	assert.deepEqual(await worker.evaluate(() => self.saveActivations), []);
 	assert.equal(await save.page.locator('#authorize-save').isVisible(), false);
 	// Success must not steal focus back if the user switches tabs mid-save.
@@ -186,7 +190,7 @@ try {
 	await save.closed;
 	await embedded.locator('#image-archive-status').filter({ hasText: '已保存：Literature_translation/2025_Embedded_edited_title__10.1234_example' }).waitFor();
 	assert.match(await embedded.locator('#image-archive-status').textContent(), /checks.json/);
-	assert.equal(await activeUrl(), settings.url());
+	assert.equal(await activeId(), settingsId);
 	assert.deepEqual(await worker.evaluate(() => self.saveActivations), []);
 	const embeddedBundle = await readEmbedded('Embedded_edited_title');
 	assert.equal(embeddedBundle.checks.changes.editor, 'changed');
