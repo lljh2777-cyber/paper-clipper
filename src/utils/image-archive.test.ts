@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { unzipSync, strFromU8 } from 'fflate';
 import { createImageArchive, prepareImageFiles } from './image-archive';
+import { paperFolderName } from './paper-bundle';
+import { markdownSha256 } from './manual-export-report';
 
 const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1]);
 function mockFetch() {
@@ -22,15 +24,15 @@ describe('manual image ZIP', () => {
 		expect(md).toContain('`![code](https://other.example.org/x)`');
 		expect(fetcher).toHaveBeenCalledTimes(1);
 		expect(fetcher.mock.calls[0]).toEqual(['https://cdn.example.org/a?Expires=42&Signature=secret', expect.objectContaining({ credentials: 'omit', redirect: 'error' })]);
-		expect(Object.keys(files)).toHaveLength(3);
-		expect(Object.keys(files).every(key => !key.includes('..'))).toBe(true);
+		expect(Object.keys(files)).toHaveLength(5);
+		expect(Object.keys(files).every(key => !key.split('/').includes('..'))).toBe(true);
 		expect(result.fileName).not.toMatch(/[\\/]/);
 	});
 	it('resolves relative addresses and keeps edits and caption text', async () => {
 		mockFetch();
 		const result = await createImageArchive('Edited\n![x](/a.png)\nFigure 1. Caption', 'Paper', 'https://example.org/article');
 		const files = unzipSync(result.bytes);
-		expect(strFromU8(Object.values(files)[1])).toBe('Edited\n![x](<images/image-1.png>)\nFigure 1. Caption');
+		expect(strFromU8(files[Object.keys(files).find(key => key.endsWith('/paper.md'))!])).toBe('Edited\n![x](<images/image-1.png>)\nFigure 1. Caption');
 	});
 	it.each(['http://127.0.0.1/x', 'http://localhost/x', 'http://192.168.1.2/x', 'file:///tmp/x', 'data:image/png;base64,AA', 'https://user:pass@example.org/a'])('rejects unsupported address %s before requesting', async url => {
 		const fetcher = mockFetch();
@@ -59,6 +61,32 @@ describe('manual image ZIP', () => {
 		const fetcher = mockFetch();
 		const result = await createImageArchive('My note', 'Paper', 'https://example.org');
 		expect(result.imageCount).toBe(0);
+		const files = unzipSync(result.bytes);
+		const root = result.fileName.slice(0, -4);
+		expect(root).toMatch(/^unknown_Paper__[0-9a-f-]+$/);
+		expect(Object.keys(files).sort()).toEqual(['checks.json', 'images/', 'paper.md', 'translation.json'].map(name => `${root}/${name}`));
+		expect(fetcher).not.toHaveBeenCalled();
+	});
+	it('uses shared directory naming and hashes the localized source for translation', async () => {
+		mockFetch();
+		const identity = { doi: 'https://doi.org/10.1234/EXAMPLE', published: '2026-10-15' };
+		const result = await createImageArchive('![A](https://example.org/a.png)', 'A short title', 'https://example.org', undefined, {}, undefined, identity);
+		const files = unzipSync(result.bytes);
+		const root = result.fileName.slice(0, -4);
+		const metadata = JSON.parse(strFromU8(files[`${root}/translation.json`]));
+		const checks = JSON.parse(strFromU8(files[`${root}/checks.json`]));
+		expect(root).toBe(paperFolderName('A short title', { ...identity, doi: '10.1234/example' }, metadata.id));
+		expect(metadata).toMatchObject({ schemaVersion: 1, doi: '10.1234/example', published: identity.published,
+			sourceFile: 'paper.md', translationFile: 'paper.zh-CN.md', status: 'not-started', archiveStatus: 'complete',
+			acquisition: { checksFile: 'checks.json', images: 1, completeness: checks.completeness, preservation: checks.preservation, coverage: checks.coverage } });
+		expect(metadata.sourceVersion).toEqual({ algorithm: 'sha256', value: await markdownSha256(strFromU8(files[`${root}/paper.md`])) });
+		expect(metadata.sourceVersion.value).toBe(checks.artifact.value);
+		expect(files[`${root}/paper.zh-CN.md`]).toBeUndefined();
+	});
+	it('rejects invalid explicit DOI before downloading images', async () => {
+		const fetcher = mockFetch();
+		await expect(createImageArchive('![A](https://example.org/a.png)', 'Paper', 'https://example.org', undefined, {}, undefined,
+			{ doi: '../bad', published: null })).rejects.toThrow('Invalid paper DOI');
 		expect(fetcher).not.toHaveBeenCalled();
 	});
 	it.each(['image', 'esm'])('prefers full-size Nature %s images and records the chosen source', async kind => {

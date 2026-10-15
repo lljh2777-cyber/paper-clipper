@@ -34,10 +34,18 @@ pre-authorized and actual browser downloads. Native permission prompts, real
 download security dialogs, Firefox and Safari need manual acceptance. Unit tests
 cover denial, interrupted/unknown results, completion races and safe retry.
 
-Extract the ZIP into your Vault. Keep its enclosing `paper-<unique-id>` folder:
-it contains `paper.md`, `checks.json` and an `images/` directory. The unique folder prevents
-attachment collisions between papers. Rename the note if desired, keeping it
-next to `images/`. Extraction itself is performed by you, not by the extension.
+ZIP and default-directory saves share the `year_short-title__DOI` folder layout
+(spaces and unsafe filename characters become underscores). The ZIP filename
+matches this folder. Missing years use `unknown`; missing DOIs use a UUID, never
+an inferred DOI. Each folder contains `paper.md`, `images/` (even without images),
+`checks.json` and `translation.json`; image source selections may also produce
+`image-report.json`. Translation metadata hashes the final localized `paper.md`,
+starts at `not-started`, and names the future `paper.zh-CN.md` without creating it.
+
+Extraction is manual. ZIP export cannot inspect or deduplicate your destination
+folders. Repeated ZIP filenames are uniquified by the browser, but their internal
+folder names can match. Do not merge or overwrite an existing translated folder;
+extract into a separate location or use the default-directory duplicate controls.
 
 This command archives the **current editor contents**, not a newly fetched
 article. It preserves frontmatter, prose and captions, downloads inline and

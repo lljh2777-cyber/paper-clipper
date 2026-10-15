@@ -1,6 +1,7 @@
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import type { RootContent, Definition } from 'mdast';
 import { zip, strToU8 } from 'fflate';
+import { normalizeDoi, paperFolderName, paperTranslationMetadata, type PaperIdentity } from './paper-bundle';
 import { imageDownloadCandidates } from './image-sources.mjs';
 import { unassessedManualExportChecks, markdownSha256, ManualExportCheckContext, ManualExportChecks } from './manual-export-report';
 
@@ -134,11 +135,18 @@ export async function prepareImageFiles(markdown: string, source: string,
 
 export async function createImageArchive(markdown: string, title: string, source: string,
 	onProgress: (done: number, total: number) => void = () => {}, imageSources: Record<string, string> = {},
-	checkContext?: ManualExportCheckContext): Promise<{ bytes: Uint8Array; fileName: string; imageCount: number; checks: ManualExportChecks }> {
+	checkContext?: ManualExportCheckContext, identity: PaperIdentity = { doi: null, published: null }): Promise<{ bytes: Uint8Array; fileName: string; imageCount: number; checks: ManualExportChecks }> {
+	const doi = normalizeDoi(identity.doi);
+	if (identity.doi && !doi) throw new Error('Invalid paper DOI');
+	identity = { ...identity, doi };
 	const prepared = await prepareImageFiles(markdown, source, onProgress, imageSources, checkContext);
-	const safeTitle = title.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/g, '').slice(0, 90) || 'paper';
-	const root = `paper-${crypto.randomUUID()}`;
+	const id = crypto.randomUUID();
+	const root = paperFolderName(title, identity, id);
+	const metadata = await paperTranslationMetadata({ title, source, identity }, prepared, id);
+	metadata.archiveStatus = 'complete';
+	prepared.files['translation.json'] = strToU8(JSON.stringify(metadata, null, 2) + '\n');
+	prepared.files['images/'] = new Uint8Array();
 	const files = Object.fromEntries(Object.entries(prepared.files).map(([name, bytes]) => [`${root}/${name}`, bytes]));
 	const bytes = await new Promise<Uint8Array>((resolve, reject) => zip(files, { level: 0 }, (error, result) => error ? reject(error) : resolve(result)));
-	return { bytes, fileName: `paper-${safeTitle}.zip`, imageCount: prepared.imageCount, checks: prepared.checks };
+	return { bytes, fileName: `${root}.zip`, imageCount: prepared.imageCount, checks: prepared.checks };
 }

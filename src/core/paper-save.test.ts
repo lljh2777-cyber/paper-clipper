@@ -95,7 +95,7 @@ it('retries a pre-write image failure only on a click, with the original editor 
 	expect(vi.mocked(savePaperDirectory).mock.calls[1][1]).toBe(vi.mocked(savePaperDirectory).mock.calls[0][1]);
 });
 
-const zipInput = { format: 'zip' as const, title: 'Edited title', markdown: 'Edited source', source: '', identity: { doi: null, published: null } };
+const zipInput = { format: 'zip' as const, title: 'Edited title', markdown: 'Edited source', source: '', identity: { doi: '10.1234/test', published: '2026-10-15' } };
 it('requests ZIP authorization only on a click and waits for download completion before closing', async () => {
 	vi.mocked(takePaperDirectorySave).mockResolvedValue(zipInput);
 	vi.mocked(hasZipDownloadPermission).mockResolvedValue(false);
@@ -107,6 +107,8 @@ it('requests ZIP authorization only on a click and waits for download completion
 	expect(createImageArchive).not.toHaveBeenCalled();
 	authorize().click();
 	await vi.waitFor(() => expect(downloadPaperZip).toHaveBeenCalledOnce());
+	expect(createImageArchive).toHaveBeenCalledWith(zipInput.markdown, zipInput.title, zipInput.source,
+		expect.any(Function), undefined, undefined, zipInput.identity);
 	expect(close).not.toHaveBeenCalled();
 	expect(getPaperDirectory).not.toHaveBeenCalled();
 	complete('paper (1).zip');

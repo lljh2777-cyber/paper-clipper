@@ -32,6 +32,12 @@ try {
 	const article = await context.newPage();
 	const downloads = await configureZipDownloads(context, article, directory);
 	await article.goto(cellPage);
+	await article.evaluate(() => {
+		for (const [name, content] of [['citation_doi', '10.1234/synthetic'], ['citation_publication_date', '2026-10-15']]) {
+			const meta = document.createElement('meta');
+			meta.name = name; meta.content = content; document.head.append(meta);
+		}
+	});
 	const next = context.waitForEvent('page');
 	await worker.evaluate(url => chrome.tabs.create({ url, active: false }), `${origin}/popup.html`);
 	let popup = await next;
@@ -71,11 +77,16 @@ try {
 	}
 	await reviewSaved(save);
 	const download = await readCompletedZip(worker, save, downloads);
-	assert.equal(download.fileName, 'paper-Edited synthetic paper.zip');
+	assert.equal(download.fileName, '2026_Edited_synthetic_paper__10.1234_synthetic.zip');
 	const zip = unzipSync(download.bytes);
-	assert.equal(Object.keys(zip).length, 3);
+	assert.equal(Object.keys(zip).length, 5);
+	const metadata = JSON.parse(strFromU8(zip[Object.keys(zip).find(name => name.endsWith('/translation.json'))]));
+	assert.equal(metadata.doi, '10.1234/synthetic');
+	assert.equal(metadata.archiveStatus, 'complete');
+	assert.equal(metadata.translationFile, 'paper.zh-CN.md');
 	const checks = JSON.parse(strFromU8(zip[Object.keys(zip).find(name => name.endsWith('/checks.json'))]));
 	assert.equal(checks.completeness, 'not-assessed');
+	assert.equal(metadata.sourceVersion.value, checks.artifact.value);
 	assert.equal(checks.changes.editor, 'changed');
 	assert.equal(checks.images.downloaded, 1);
 	assert.equal(checks.stages.extraction.captions.status, 'passed');
@@ -87,8 +98,9 @@ try {
 	assert.equal(md.match(/images\/image-1.png/g)?.length, 2);
 	const extracted = path.join(directory, 'extracted');
 	for (const [name, bytes] of Object.entries(zip)) {
-		assert.match(name, /^paper-[0-9a-f-]+\/(?:paper.md|checks.json|images\/image-1.png)$/);
+		assert.match(name, /^2026_Edited_synthetic_paper__10\.1234_synthetic\/(?:paper\.md|checks\.json|translation\.json|images\/|images\/image-1\.png)$/);
 		const target = path.join(extracted, name);
+		if (name.endsWith('/')) { await mkdir(target, { recursive: true }); continue; }
 		await mkdir(path.dirname(target), { recursive: true });
 		await writeFile(target, bytes);
 	}

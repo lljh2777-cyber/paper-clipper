@@ -94,7 +94,7 @@ async function save() {
 	};
 	let checks: ManualExportChecks | undefined;
 	if (input!.format === 'zip') {
-		archive ??= await createImageArchive(input!.markdown, input!.title, input!.source, progress, input!.imageSources, input!.checkContext);
+				archive ??= await createImageArchive(input!.markdown, input!.title, input!.source, progress, input!.imageSources, input!.checkContext, input!.identity);
 		status.textContent = getMessage('paperZipDownloading');
 		void reportPaperDirectorySave(requestId, { state: 'saving', message: status.textContent });
 		const savedName = await downloadPaperZip(archive.bytes, archive.fileName, () => {
