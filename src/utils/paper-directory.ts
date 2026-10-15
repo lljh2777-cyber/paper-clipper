@@ -1,4 +1,5 @@
 import { ImageArchiveError, prepareImageFiles } from './image-archive';
+import type { ManualExportCheckContext } from './manual-export-report';
 
 export interface WritableDirectory extends FileSystemDirectoryHandle {
 	queryPermission(options: { mode: 'readwrite' }): Promise<PermissionState>;
@@ -56,7 +57,7 @@ export async function authorizePaperDirectory(handle?: WritableDirectory): Promi
 }
 
 export interface PaperIdentity { doi: string | null; published: string | null }
-export interface PaperDirectoryInput { markdown: string; title: string; source: string; identity: PaperIdentity; imageSources?: Record<string, string> }
+export interface PaperDirectoryInput { markdown: string; title: string; source: string; identity: PaperIdentity; imageSources?: Record<string, string>; checkContext?: ManualExportCheckContext }
 export function paperIdentity(meta: { name?: string | null; property?: string | null; content: string | null }[],
 	properties: { name: string; value: unknown }[], source: string, published?: string): PaperIdentity {
 	const normalizeDoi = (value: unknown): string | null => {
@@ -109,7 +110,7 @@ export async function savePaperDirectory(parent: WritableDirectory, input: Paper
 	if (await parent.queryPermission({ mode: 'readwrite' }) !== 'granted') throw new PaperDirectoryError('permission');
 	if (await exists(parent, folder)) throw new PaperDirectoryError('exists', folder);
 	// Images must all succeed before any output directory or file is created.
-	const prepared = await prepareImageFiles(input.markdown, input.source, progress, input.imageSources);
+	const prepared = await prepareImageFiles(input.markdown, input.source, progress, input.imageSources, input.checkContext);
 	const hash = await crypto.subtle.digest('SHA-256', new Uint8Array(prepared.files['paper.md']).buffer);
 	const sourceVersion = [...new Uint8Array(hash)].map(value => value.toString(16).padStart(2, '0')).join('');
 	return navigator.locks.request('paper-clipper-directory-write', async () => {
@@ -120,7 +121,8 @@ export async function savePaperDirectory(parent: WritableDirectory, input: Paper
 			sourceUrl: input.source, sourceFile: 'paper.md', translationFile: 'paper.zh-CN.md',
 			sourceVersion: { algorithm: 'sha256', value: sourceVersion }, createdAt: new Date().toISOString(),
 			status: 'not-started', model: null, completedSections: [], archiveStatus: 'writing',
-			acquisition: { method: 'extension-editor', completeness: 'not-assessed', preservation: 'not-assessed', coverage: 'not-assessed', images: prepared.imageCount },
+			acquisition: { method: 'extension-editor', completeness: prepared.checks.completeness, preservation: prepared.checks.preservation,
+				coverage: prepared.checks.coverage, images: prepared.imageCount, checksFile: 'checks.json' },
 			translationChecks: 'not-run', humanReview: 'not-reviewed',
 		};
 		try {
@@ -129,7 +131,7 @@ export async function savePaperDirectory(parent: WritableDirectory, input: Paper
 			const images = await directory.getDirectoryHandle('images', { create: true });
 			for (const [name, bytes] of Object.entries(prepared.files)) {
 				if (name === 'paper.md') continue;
-				if (name === 'image-report.json') await writeFile(directory, name, bytes);
+				if (name === 'image-report.json' || name === 'checks.json') await writeFile(directory, name, bytes);
 				else await writeFile(images, name.slice('images/'.length), bytes);
 			}
 			await writeFile(directory, 'paper.md', prepared.files['paper.md']);

@@ -72,6 +72,7 @@ try {
 		const original = await read('paper.md');
 		const metadata = JSON.parse(await read('translation.json'));
 		const imageReport = JSON.parse(await read('image-report.json'));
+		const checks = JSON.parse(await read('checks.json'));
 		const image = await (await (await folder.getDirectoryHandle('images')).getFileHandle('image-1.png')).getFile();
 		const bitmap = await createImageBitmap(image);
 		const dimensions = [bitmap.width, bitmap.height]; bitmap.close();
@@ -79,9 +80,12 @@ try {
 		// A pre-existing translation must survive subsequent saves and forgetting the root.
 		const writer = await (await folder.getFileHandle('paper.zh-CN.md', { create: true })).createWritable();
 		await writer.write('人工译文'); await writer.close();
-		return { original, metadata, imageReport, dimensions, entries };
+		return { original, metadata, imageReport, checks, dimensions, entries };
 	});
-	assert.deepEqual(bundle.entries.sort(), ['image-report.json', 'images', 'paper.md', 'translation.json']);
+	assert.deepEqual(bundle.entries.sort(), ['checks.json', 'image-report.json', 'images', 'paper.md', 'translation.json']);
+	assert.equal(bundle.checks.changes.editor, 'changed');
+	assert.equal(bundle.checks.artifact.value, bundle.metadata.sourceVersion.value);
+	assert.equal(bundle.metadata.acquisition.preservation, bundle.checks.preservation);
 	assert.match(bundle.original, /images\/image-1.png/);
 	assert.equal(bundle.metadata.status, 'not-started');
 	assert.equal(bundle.metadata.archiveStatus, 'complete');
@@ -147,6 +151,7 @@ try {
 		return {
 			markdown: await (await (await folder.getFileHandle('paper.md')).getFile()).text(),
 			metadata: JSON.parse(await (await (await folder.getFileHandle('translation.json')).getFile()).text()),
+			checks: JSON.parse(await (await (await folder.getFileHandle('checks.json')).getFile()).text()),
 			imageSize: (await (await (await folder.getDirectoryHandle('images')).getFileHandle('image-1.png')).getFile()).size,
 		};
 	}, title);
@@ -155,6 +160,8 @@ try {
 	assert.equal(await save.title(), 'Paper Clipper | Save');
 	assert.equal(await save.locator('#authorize-save').isVisible(), false);
 	const embeddedBundle = await readEmbedded('Embedded_edited_title');
+	assert.equal(embeddedBundle.checks.changes.editor, 'changed');
+	assert.equal(embeddedBundle.checks.artifact.value, embeddedBundle.metadata.sourceVersion.value);
 	assert.match(embeddedBundle.markdown, /Edited in the embedded clipper/);
 	assert.match(embeddedBundle.markdown, /^---\r?\n/);
 	assert.match(embeddedBundle.markdown, /images\/image-1.png/);

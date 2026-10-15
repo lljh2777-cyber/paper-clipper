@@ -2,6 +2,7 @@ import { fromMarkdown } from 'mdast-util-from-markdown';
 import type { RootContent, Definition } from 'mdast';
 import { zip, strToU8 } from 'fflate';
 import { imageDownloadCandidates } from './image-sources.mjs';
+import { unassessedManualExportChecks, markdownSha256, ManualExportCheckContext, ManualExportChecks } from './manual-export-report';
 
 const MAX_IMAGE = 20 * 1024 * 1024;
 const MAX_TOTAL = 100 * 1024 * 1024;
@@ -60,8 +61,10 @@ async function download(url: string, maxBytes = MAX_IMAGE): Promise<{ bytes: Uin
 }
 
 export async function prepareImageFiles(markdown: string, source: string,
-	onProgress: (done: number, total: number) => void = () => {}, imageSources: Record<string, string> = {}): Promise<{ files: Record<string, Uint8Array>; imageCount: number }> {
+	onProgress: (done: number, total: number) => void = () => {}, imageSources: Record<string, string> = {},
+	checkContext?: ManualExportCheckContext): Promise<{ files: Record<string, Uint8Array>; imageCount: number; checks: ManualExportChecks }> {
 	if (markdown.length > 5 * 1024 * 1024) throw new ImageArchiveError('limit');
+	const checks = checkContext?.inputSha256 === await markdownSha256(markdown) ? checkContext.report : unassessedManualExportChecks();
 	const frontmatter = markdown.match(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/)?.[0] ?? '';
 	const tree = fromMarkdown(markdown.slice(frontmatter.length));
 	const nodes: RootContent[] = [];
@@ -116,20 +119,26 @@ export async function prepareImageFiles(markdown: string, source: string,
 		markdown = markdown.slice(0, image.start) + replacement + markdown.slice(image.end);
 	}
 	files['paper.md'] = strToU8(markdown);
+	files['checks.json'] = strToU8(JSON.stringify({ ...checks,
+		artifact: { file: 'paper.md', algorithm: 'sha256', value: await markdownSha256(markdown) },
+		images: { status: 'passed', scope: 'referenced-images-http-mime-signature', downloaded: urls.length,
+			originalFallbacks: selections.filter(item => item.selection === 'original-fallback').length },
+	}, null, 2) + '\n');
 	if (selections.some(item => item.selection !== 'original')) files['image-report.json'] = strToU8(JSON.stringify({
 		schemaVersion: 1, policy: 'prefer-publisher-high-resolution', items: selections,
 	}, null, 2) + '\n');
-	return { files, imageCount: urls.length };
+	return { files, imageCount: urls.length, checks };
 }
 
 export async function createImageArchive(markdown: string, title: string, source: string,
-	onProgress: (done: number, total: number) => void = () => {}, imageSources: Record<string, string> = {}): Promise<{ bytes: Uint8Array; fileName: string; imageCount: number }> {
-	const prepared = await prepareImageFiles(markdown, source, onProgress, imageSources);
+	onProgress: (done: number, total: number) => void = () => {}, imageSources: Record<string, string> = {},
+	checkContext?: ManualExportCheckContext): Promise<{ bytes: Uint8Array; fileName: string; imageCount: number; checks: ManualExportChecks }> {
+	const prepared = await prepareImageFiles(markdown, source, onProgress, imageSources, checkContext);
 	const safeTitle = title.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/g, '').slice(0, 90) || 'paper';
 	const root = `paper-${crypto.randomUUID()}`;
 	const files = Object.fromEntries(Object.entries(prepared.files).map(([name, bytes]) => [`${root}/${name}`, bytes]));
 	const bytes = await new Promise<Uint8Array>((resolve, reject) => zip(files, { level: 0 }, (error, result) => error ? reject(error) : resolve(result)));
-	return { bytes, fileName: `paper-${safeTitle}.zip`, imageCount: prepared.imageCount };
+	return { bytes, fileName: `paper-${safeTitle}.zip`, imageCount: prepared.imageCount, checks: prepared.checks };
 }
 
 export function downloadImageArchive(bytes: Uint8Array, fileName: string): void {

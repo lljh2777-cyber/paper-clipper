@@ -1,4 +1,7 @@
 {
+	"manualChecksAttention": { "message": "發現內容差異，請複核 checks.json。未判定全文完整性。" },
+	"manualChecksScoped": { "message": "已涵蓋的檢查通過，詳見 checks.json。未判定全文完整性。" },
+	"manualChecksUnassessed": { "message": "尚未驗證來源內容保留情況，詳見 checks.json。" },
 	"paperDirectoryError_images": { "message": "未儲存：圖片準備失敗（第 $1 張，0 表示預檢查），未建立輸出目錄。請檢查圖片連結、格式與大小限制。" },
 	"savePaperDirectory": { "message": "儲存到預設目錄" },
 	"paperDirectoryLabel": { "message": "預設論文目錄" },

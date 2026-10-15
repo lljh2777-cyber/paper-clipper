@@ -17,7 +17,7 @@ The existing Add to Obsidian and plain Markdown actions do not download images.
 
 For direct translation-ready folders, choose a [default paper directory](docs/default-paper-directory.md)
 in extension Settings, then use **Save to default directory**. This creates
-`paper.md`, `images/` and `translation.json` without ZIP extraction and refuses
+`paper.md`, `images/`, `checks.json` and `translation.json` without ZIP extraction and refuses
 existing same-name destinations. Directory authorization is local to the browser.
 
 The primary interactive route is now the [usual-browser queue](docs/browser-queue.md):

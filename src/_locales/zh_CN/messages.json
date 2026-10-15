@@ -1,4 +1,7 @@
 {
+	"manualChecksAttention": { "message": "发现内容差异，请复核 checks.json。未判定全文完整性。" },
+	"manualChecksScoped": { "message": "已覆盖的检查通过，详见 checks.json。未判定全文完整性。" },
+	"manualChecksUnassessed": { "message": "尚未验证源内容保留情况，详见 checks.json。" },
 	"paperDirectoryHandedOff": { "message": "已将当前编辑内容交给保存页，请在该页查看保存结果。" },
 	"paperDirectoryNeedsPermission": { "message": "等待目录访问授权。" },
 	"paperDirectoryAuthorize": { "message": "授权并保存" },

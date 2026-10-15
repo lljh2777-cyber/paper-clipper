@@ -22,7 +22,7 @@ describe('manual image ZIP', () => {
 		expect(md).toContain('`![code](https://other.example.org/x)`');
 		expect(fetcher).toHaveBeenCalledTimes(1);
 		expect(fetcher.mock.calls[0]).toEqual(['https://cdn.example.org/a?Expires=42&Signature=secret', expect.objectContaining({ credentials: 'omit', redirect: 'error' })]);
-		expect(Object.keys(files)).toHaveLength(2);
+		expect(Object.keys(files)).toHaveLength(3);
 		expect(Object.keys(files).every(key => !key.includes('..'))).toBe(true);
 		expect(result.fileName).not.toMatch(/[\\/]/);
 	});

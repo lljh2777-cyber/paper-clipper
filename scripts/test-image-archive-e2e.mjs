@@ -21,7 +21,7 @@ const largePath = '/cms/10.1234/test/asset/different/main.assets/gr1_lrg.png';
 const cellPage = 'https://www.cell.com/cell/fulltext/synthetic-images';
 try {
 	await context.route('https://raw.githubusercontent.com/**', route => route.fulfill({ contentType: 'application/json', body: '{}' }));
-	await context.route(cellPage, route => route.fulfill({ contentType: 'text/html', body: '<html><head><title>Synthetic paper</title></head><body><article><h1>Synthetic paper</h1><p>' + 'Synthetic paper body. '.repeat(100) + `</p><figure><img src="https://www.cell.com${smallPath}" data-viewer-src="${largePath}"><figcaption>Synthetic figure.</figcaption></figure></article></body></html>` }));
+	await context.route(cellPage, route => route.fulfill({ contentType: 'text/html', body: '<html><head><title>Synthetic paper</title></head><body><article><h1>Synthetic paper</h1><p>' + 'Synthetic paper body. '.repeat(100) + `</p><figure class="graphic"><img src="https://www.cell.com${smallPath}" data-viewer-src="${largePath}"><figcaption><div class="figure__title">Synthetic figure.</div><div class="accordion" hidden><div class="figure__caption__text__content"><p>Synthetic captured caption describing the experimental measurements.</p></div></div></figcaption></figure></article></body></html>` }));
 	await context.route(`https://www.cell.com${smallPath}`, route => route.fulfill({ contentType: 'image/png', body: png }));
 	await context.route(`https://www.cell.com${largePath}`, route => route.fulfill({ contentType: 'image/png', body: largePng }));
 	await context.route('https://images.example.org/**', route => route.fulfill({ contentType: 'image/png', body: png }));
@@ -38,6 +38,9 @@ try {
 	await popup.locator('#note-content-field').waitFor({ state: 'visible' });
 	await popup.locator('#save-image-archive').waitFor({ state: 'attached' });
 	await popup.waitForFunction(() => document.querySelector('#note-content-field')?.value.includes('Synthetic paper body.'));
+	assert.match(await popup.locator('#note-content-field').inputValue(), /Synthetic captured caption/);
+	// Changing the live source after extraction must not change the report's baseline.
+	await article.evaluate(() => { document.querySelector('.figure__caption__text__content').textContent = 'Changed after capture.'; });
 	await popup.locator('#note-name-field').fill('Edited synthetic paper');
 	const markdown = '# Edited paper\n\n![Panel A](https://images.example.org/a.png?Expires=42&Signature=test)\n\nFigure 1. Preserved caption.\n\n![Panel B](https://images.example.org/a.png?Expires=42&Signature=test)';
 	await popup.locator('#note-content-field').fill(markdown);
@@ -49,14 +52,21 @@ try {
 	const download = await downloading;
 	assert.equal(download.suggestedFilename(), 'paper-Edited synthetic paper.zip');
 	const zip = unzipSync(await readFile(await download.path()));
-	assert.equal(Object.keys(zip).length, 2);
+	assert.equal(Object.keys(zip).length, 3);
+	const checks = JSON.parse(strFromU8(zip[Object.keys(zip).find(name => name.endsWith('/checks.json'))]));
+	assert.equal(checks.completeness, 'not-assessed');
+	assert.equal(checks.changes.editor, 'changed');
+	assert.equal(checks.images.downloaded, 1);
+	assert.equal(checks.stages.extraction.captions.status, 'passed');
+	assert.equal(checks.stages.output.captions.status, 'failed');
+	assert.equal(checks.preservation, 'attention-required');
 	const md = strFromU8(zip[Object.keys(zip).find(name => name.endsWith('/paper.md'))]);
 	assert.match(md, /# Edited paper/);
 	assert.match(md, /Figure 1\. Preserved caption\./);
 	assert.equal(md.match(/images\/image-1.png/g)?.length, 2);
 	const extracted = path.join(directory, 'extracted');
 	for (const [name, bytes] of Object.entries(zip)) {
-		assert.match(name, /^paper-[0-9a-f-]+\/(?:paper.md|images\/image-1.png)$/);
+		assert.match(name, /^paper-[0-9a-f-]+\/(?:paper.md|checks.json|images\/image-1.png)$/);
 		const target = path.join(extracted, name);
 		await mkdir(path.dirname(target), { recursive: true });
 		await writeFile(target, bytes);
@@ -71,6 +81,7 @@ try {
 	await offline.close();
 	assert.equal(await popup.locator('#note-content-field').inputValue(), markdown);
 	await popup.locator('#image-archive-status').filter({ hasText: 'ZIP download requested (1 images).' }).waitFor();
+	assert.match(await popup.locator('#image-archive-status').textContent(), /Content differences found/);
 	await popup.setViewportSize({ width: 390, height: 844 });
 	await popup.screenshot({ path: path.join(directory, 'saved-mobile.png') });
 	assert.equal(await popup.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);

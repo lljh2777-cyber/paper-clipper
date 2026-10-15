@@ -56,12 +56,15 @@ describe('translation directory', () => {
 		const parent = new Directory();
 		const folder = await savePaperDirectory(asHandle(parent), input);
 		const bundle = parent.directories.get(folder)!;
-		expect([...bundle.files.keys()]).toEqual(['translation.json', 'paper.md']);
+		expect([...bundle.files.keys()]).toEqual(['translation.json', 'checks.json', 'paper.md']);
 		expect([...bundle.directories.keys()]).toEqual(['images']);
 		expect(new TextDecoder().decode(bundle.files.get('paper.md') as ArrayBuffer)).toBe(input.markdown);
 		const metadata = JSON.parse(bundle.files.get('translation.json') as string);
 		expect(metadata).toMatchObject({ status: 'not-started', archiveStatus: 'complete', translationFile: 'paper.zh-CN.md', humanReview: 'not-reviewed', acquisition: { completeness: 'not-assessed' } });
 		expect(metadata.sourceVersion.value).toMatch(/^[0-9a-f]{64}$/);
+		const checks = JSON.parse(new TextDecoder().decode(bundle.files.get('checks.json') as ArrayBuffer));
+		expect(checks.artifact.value).toBe(metadata.sourceVersion.value);
+		expect(metadata.acquisition).toMatchObject({ checksFile: 'checks.json', completeness: checks.completeness, preservation: checks.preservation, coverage: checks.coverage });
 	});
 	it('never replaces an existing paper or translation, and refuses a file occupying the folder name', async () => {
 		const parent = new Directory();

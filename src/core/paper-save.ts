@@ -2,6 +2,7 @@ import { createIcons, FolderOpen, X } from 'lucide';
 import { getMessage, setupLanguageAndDirection, translatePage } from '../utils/i18n';
 import { authorizePaperDirectory, choosePaperDirectory, getPaperDirectory, PaperDirectoryInput, paperDirectoryFailure, savePaperDirectory, WritableDirectory } from '../utils/paper-directory';
 import { takePaperDirectorySave } from '../utils/paper-directory-handoff';
+import { manualChecksMessageKey } from '../utils/manual-export-report';
 
 const status = document.getElementById('save-status')!;
 const authorize = document.getElementById('authorize-save') as HTMLButtonElement;
@@ -28,7 +29,7 @@ async function save() {
 	const folder = await savePaperDirectory(directory!, input!, (done, total) => {
 		status.textContent = getMessage('imageArchiveProgress', [String(done), String(total)]);
 	});
-	status.textContent = getMessage('paperDirectorySaved', `${directory!.name}/${folder}`);
+	status.textContent = getMessage('paperDirectorySaved', `${directory!.name}/${folder}`) + ' ' + getMessage(manualChecksMessageKey(input?.checkContext?.report));
 	input = undefined;
 }
 authorize.addEventListener('click', async () => {

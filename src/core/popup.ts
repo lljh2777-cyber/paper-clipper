@@ -1,4 +1,5 @@
 import dayjs from 'dayjs';
+import { createMarkdownContent } from 'defuddle/full';
 import { Template, Property, PromptVariable } from '../types/types';
 import { incrementStat, addHistoryEntry, getClipHistory } from '../utils/storage-utils';
 import { generateFrontmatter, saveToObsidian } from '../utils/obsidian-note-creator';
@@ -29,6 +30,8 @@ import { translatePage, getMessage, setupLanguageAndDirection } from '../utils/i
 import { formatPropertyValue } from '../utils/shared';
 import { exportPageHtml } from '../utils/page-html-export';
 import { notifySidePanelState } from '../utils/side-panel-lifecycle';
+import { ManualExportSnapshot, prepareManualExportChecks } from '../utils/manual-export-checks';
+import { manualChecksMessageKey } from '../utils/manual-export-report';
 
 interface ReaderModeResponse {
 	success: boolean;
@@ -40,6 +43,8 @@ let currentTemplate: Template | null = null;
 let templates: Template[] = [];
 let currentVariables: { [key: string]: string } = {};
 let currentTabId: number | undefined;
+type ExportPage = { data: NonNullable<Awaited<ReturnType<typeof extractPageContent>>>; source: string };
+let manualExportPage: { data: ExportPage['data']; snapshot: ManualExportSnapshot } | undefined;
 let lastSelectedVault: string | null = null;
 
 const isSidePanel = window.location.pathname.includes('side-panel.html');
@@ -669,6 +674,7 @@ async function waitForInterpreter(interpretBtn: HTMLButtonElement): Promise<void
 }
 
 async function refreshFields(tabId: number, { checkTemplateTriggers = true, rebuildSkeleton = true }: { checkTemplateTriggers?: boolean; rebuildSkeleton?: boolean } = {}) {
+	manualExportPage = undefined;
 	if (templates.length === 0) {
 		console.warn('No templates available');
 		showError('noTemplates');
@@ -743,7 +749,8 @@ async function refreshFields(tabId: number, { checkTemplateTriggers = true, rebu
 					tabId,
 					currentTemplate,
 					initializedContent.currentVariables,
-					extractedData.schemaOrgData
+					extractedData.schemaOrgData,
+					{ data: extractedData, source: currentUrl }
 				);
 
 				// Update variables panel if it's open
@@ -896,7 +903,7 @@ function buildTemplateFieldsSkeleton(template: Template | null) {
 	}
 }
 
-async function fillTemplateFieldValues(currentTabId: number, template: Template | null, variables: { [key: string]: string }, schemaOrgData?: any) {
+async function fillTemplateFieldValues(currentTabId: number, template: Template | null, variables: { [key: string]: string }, schemaOrgData?: any, exportPage?: ExportPage) {
 	if (!template) return;
 
 	const currentUrl = currentTabId ? (await getTabInfo(currentTabId)).url || '' : '';
@@ -950,6 +957,12 @@ async function fillTemplateFieldValues(currentTabId: number, template: Template 
 	const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
 	if (noteContentField) {
 		noteContentField.value = template.noteContentFormat ? formattedContent : '';
+		// Bind checks, identity and image hints to the same capture that filled the
+		// editor. A later save must not silently re-extract a changed page.
+		manualExportPage = exportPage ? { data: exportPage.data, snapshot: {
+			document: new DOMParser().parseFromString(exportPage.data.fullHtml, 'text/html'), source: exportPage.source,
+			extractedMarkdown: createMarkdownContent(exportPage.data.content, exportPage.source), templateMarkdown: noteContentField.value,
+		} } : undefined;
 	}
 
 	if (generalSettings.interpreterEnabled) {
@@ -1339,13 +1352,14 @@ async function handleSavePaperDirectory() {
 		const markdown = (document.getElementById('note-content-field') as HTMLTextAreaElement).value;
 		const title = (document.getElementById('note-name-field') as HTMLInputElement).value;
 		const properties = getPropertiesFromDOM();
+		const page = manualExportPage;
 		const directory = window.top === window ? await authorizePaperDirectory(await getPaperDirectory()) : undefined;
 		const frontmatter = await generateFrontmatter(properties);
-		const tab = await getCurrentTabInfo();
-		const data = currentTabId ? await memoizedExtractPageContent(currentTabId) : null;
-		const identity = paperIdentity(data?.metaTags ?? [], properties, tab.url, data?.published);
-		const imageSources = data?.fullHtml ? collectImageSources(new DOMParser().parseFromString(data.fullHtml, 'text/html'), tab.url) : {};
-		const input = { markdown: frontmatter + markdown, title, source: tab.url, identity, imageSources };
+		const source = page?.snapshot.source ?? '';
+		const identity = paperIdentity(page?.data.metaTags ?? [], properties, source, page?.data.published);
+		const imageSources = page ? collectImageSources(page.snapshot.document, source) : {};
+		const checkContext = await prepareManualExportChecks(page?.snapshot, frontmatter + markdown);
+		const input = { markdown: frontmatter + markdown, title, source, identity, imageSources, checkContext };
 		if (!directory) {
 			await openPaperDirectorySave(input);
 			status.textContent = getMessage('paperDirectoryHandedOff');
@@ -1353,7 +1367,7 @@ async function handleSavePaperDirectory() {
 		}
 		const folder = await savePaperDirectory(directory, input,
 			(done, total) => { status!.textContent = getMessage('imageArchiveProgress', [String(done), String(total)]); });
-		status.textContent = getMessage('paperDirectorySaved', `${directory.name}/${folder}`);
+		status.textContent = getMessage('paperDirectorySaved', `${directory.name}/${folder}`) + ' ' + getMessage(manualChecksMessageKey(checkContext.report));
 	} catch (error) {
 		const failure = paperDirectoryFailure(error);
 		status.textContent = getMessage(failure.key, failure.detail);
@@ -1378,14 +1392,15 @@ async function handleSaveImageArchive() {
 	try {
 		const content = (document.getElementById('note-content-field') as HTMLTextAreaElement).value;
 		const title = (document.getElementById('note-name-field') as HTMLInputElement).value;
+		const page = manualExportPage;
 		const frontmatter = await generateFrontmatter(getPropertiesFromDOM());
-		const tab = await getCurrentTabInfo();
-		const data = currentTabId ? await memoizedExtractPageContent(currentTabId) : null;
-		const imageSources = data?.fullHtml ? collectImageSources(new DOMParser().parseFromString(data.fullHtml, 'text/html'), tab.url) : {};
-		const archive = await createImageArchive(frontmatter + content, title, tab.url,
-			(done, total) => { status!.textContent = getMessage('imageArchiveProgress', [String(done), String(total)]); }, imageSources);
+		const source = page?.snapshot.source ?? '';
+		const imageSources = page ? collectImageSources(page.snapshot.document, source) : {};
+		const checkContext = await prepareManualExportChecks(page?.snapshot, frontmatter + content);
+		const archive = await createImageArchive(frontmatter + content, title, source,
+			(done, total) => { status!.textContent = getMessage('imageArchiveProgress', [String(done), String(total)]); }, imageSources, checkContext);
 		downloadImageArchive(archive.bytes, archive.fileName);
-		status.textContent = getMessage('imageArchiveReady', String(archive.imageCount));
+		status.textContent = getMessage('imageArchiveReady', String(archive.imageCount)) + ' ' + getMessage(manualChecksMessageKey(archive.checks));
 	} catch (error) {
 		const reason = error instanceof ImageArchiveError ? error.reason : 'download';
 		status.textContent = getMessage(`imageArchiveError_${reason}`, String(error instanceof ImageArchiveError ? error.imageNumber : 0));

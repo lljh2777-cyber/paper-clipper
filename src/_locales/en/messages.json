@@ -1,4 +1,7 @@
 {
+	"manualChecksAttention": { "message": "Content differences found; review checks.json. Full-text completeness is not assessed." },
+	"manualChecksScoped": { "message": "Scoped checks passed; see checks.json. Full-text completeness is not assessed." },
+	"manualChecksUnassessed": { "message": "Source preservation is not assessed; see checks.json." },
 	"paperDirectoryHandedOff": { "message": "Save page opened with the current edits. Check the result there." },
 	"paperDirectoryNeedsPermission": { "message": "Waiting for directory access." },
 	"paperDirectoryAuthorize": { "message": "Authorize and save" },

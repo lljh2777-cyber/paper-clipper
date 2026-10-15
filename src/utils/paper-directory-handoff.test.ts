@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import browser from './browser-polyfill';
 import { openPaperDirectorySave, takePaperDirectorySave } from './paper-directory-handoff';
+import { prepareManualExportChecks } from './manual-export-checks';
 
 vi.mock('./browser-polyfill', () => ({ default: {
 	storage: { session: { get: vi.fn(), set: vi.fn(), remove: vi.fn() } },
@@ -23,12 +24,13 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 it('hands off the exact snapshot with only an opaque identifier in the tab URL', async () => {
-	await openPaperDirectorySave(input);
+	const checkedInput = { ...input, checkContext: await prepareManualExportChecks(undefined, input.markdown) };
+	await openPaperDirectorySave(checkedInput);
 	const draft = session[key];
-	expect(draft.input).toEqual(input);
+	expect(draft.input).toEqual(checkedInput);
 	expect(draft.expires).toBeGreaterThan(Date.now());
 	expect(browser.tabs.create).toHaveBeenCalledWith({ url: `chrome-extension://extension/paper-save.html#${draft.id}` });
-	expect(await takePaperDirectorySave(draft.id)).toEqual(input);
+	expect(await takePaperDirectorySave(draft.id)).toEqual(checkedInput);
 	expect(session[key]).toBeUndefined();
 	await expect(takePaperDirectorySave(draft.id)).rejects.toMatchObject({ reason: 'expired' });
 });

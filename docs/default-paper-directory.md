@@ -49,6 +49,7 @@ available. No browser credentials or personal files are read for the handoff.
 E:\Literature_translation\
   2025_Novae__10.1038_s41592-025-02899-6\
     paper.md
+    checks.json
     images\
       image-1.png
     translation.json
@@ -65,8 +66,11 @@ lookup or verification of article identity/completeness.
 image downloading and localization as ZIP export. Both future language versions
 can share `images/`. No empty Chinese file is created. `translation.json` names
 `paper.zh-CN.md` as the future output and records `not-started`, an English-source
-SHA-256 fingerprint, image count, provenance and separate unassessed acquisition,
-translation-check and human-review states. No translation is performed.
+SHA-256 fingerprint, image count, provenance and separate acquisition,
+translation-check and human-review states. Acquisition preservation/coverage
+match the shared [manual export report](manual-image-archive.md#export-checks)
+in `checks.json`; full-text completeness remains unassessed. No translation is
+performed and no existing paper is rewritten to add a report.
 
 ## Protection And Limits
 

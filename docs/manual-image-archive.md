@@ -10,7 +10,7 @@ edit the note, then use the arrow next to **Add to Obsidian** and choose
 download starts. No local service, pairing key or Vault permission is needed.
 
 Extract the ZIP into your Vault. Keep its enclosing `paper-<unique-id>` folder:
-it contains `paper.md` and an `images/` directory. The unique folder prevents
+it contains `paper.md`, `checks.json` and an `images/` directory. The unique folder prevents
 attachment collisions between papers. Rename the note if desired, keeping it
 next to `images/`. Extraction itself is performed by you, not by the extension.
 
@@ -64,6 +64,50 @@ HTML imports and the API/CLI conversion paths.
 Content absent from the captured HTML cannot be recovered by these rules. Reload
 the extension and refresh the paper before exporting again. Existing notes and
 translations are not repaired or overwritten automatically.
+
+## Export checks
+
+ZIP and default-directory saves now include the same `checks.json`, bound by
+SHA-256 to the final `paper.md` after localizing images. Checks run locally with
+no additional network requests. The source is the capture that populated the
+editor, not a fresh extraction at save time. Image hints and DOI metadata also
+come from that capture. The top-level save-page handoff carries only the compact
+report and an input hash, not an additional copy of publisher HTML.
+
+The report distinguishes three stages: `extraction` (before selections/highlights
+and templates), `template` (the initial editor content), and `output` (the content
+being saved). Changed templates, selections, highlights, AI processing or editor
+changes are recorded without guessing whether an omission was intentional.
+Text is never repaired or restored automatically.
+
+Implemented scopes are Cell/Nature main caption paragraphs, order and links;
+Cell full bibliography text/links and per-reference inline citation counts;
+Nature explicitly declared Extended Data image URLs under their headings; and
+the existing MathJax formula-preservation check. Numeric footnotes use the
+converter's paragraph/indented-continuation format. This does not verify citation
+semantics, every alternative Markdown dialect, extended captions, all ordinary
+paragraphs, tables, non-MathJax equations, or content absent from the capture.
+
+- `completeness` remains `not-assessed`: these checks cannot prove full-text access.
+- `preservation` is `passed-within-scope`, `attention-required`, or `not-assessed`.
+  A failure at any stage remains visible even if later editing restores it.
+- `coverage` is `partial-source` when supported checks ran, otherwise `not-assessed`.
+  Individual unavailable/unsupported checks say `not-covered`, never "complete".
+- Image download checks are separate and record original-resolution fallbacks.
+  Response type/signature checks are not image decoding or visual-quality checks.
+
+Content differences produce a visible review warning while retaining the edited
+note and report. Unknown publishers are not rejected solely for missing coverage.
+Existing formula-extraction and image-download failure gates are unchanged;
+image failure still prevents publishing a ZIP or creating a paper directory.
+Plain Markdown downloads and Add to Obsidian do not generate this report.
+
+Synthetic tests cover missing captions, reference text/links/counts, formulas and
+extended images, edited/custom-template outputs, absent coverage, stale report
+binding, ZIP/file consistency and save-page handoff. A read-only local replay on
+2026-10-15 matched Cell's 5 captions, 112 references and 29 formulas, plus DeepMet's
+5 main captions and 10 extended images. Private captures are not CI fixtures and
+were not modified; these counts do not establish universal publisher coverage.
 
 ## Limits
 
