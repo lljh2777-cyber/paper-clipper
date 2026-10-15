@@ -18,9 +18,12 @@ function observeSave(id: string, onStatus: (status: PaperDirectorySaveStatus) =>
 	let finish!: () => void;
 	const finished = new Promise<void>(resolve => { finish = resolve; });
 	const dispose = () => {
+		if (settled) return;
 		settled = true;
-		browser.runtime.onMessage.removeListener(onMessage);
-		browser.tabs.onRemoved.removeListener(onRemoved);
+		try {
+			browser.runtime.onMessage.removeListener(onMessage);
+			browser.tabs.onRemoved.removeListener(onRemoved);
+		} catch { /* Extension reload may invalidate an editor before pagehide. */ }
 		globalThis.removeEventListener('pagehide', dispose);
 		finish();
 	};

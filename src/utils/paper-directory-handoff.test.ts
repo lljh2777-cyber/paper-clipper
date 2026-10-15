@@ -141,3 +141,11 @@ it('does not report a committed save as failed when no editor receives its notif
 	await expect(reportPaperDirectorySave('job', { state: 'saved', message: 'Saved' })).resolves.toBeUndefined();
 	expect(browser.runtime.sendMessage).toHaveBeenCalledWith({ action: 'paperDirectorySaveStatus', id: 'job', status: { state: 'saved', message: 'Saved' } });
 });
+
+it('finishes cleanup safely when an extension reload invalidates the editor runtime', async () => {
+	const job = await openPaperDirectorySave(input);
+	vi.mocked(browser.runtime.onMessage.removeListener).mockImplementation(() => { throw new Error('Extension context invalidated.'); });
+	lifecycle.dispatchEvent(new Event('pagehide'));
+	await job.finished;
+	expect(session[key].input).toEqual(input);
+});
