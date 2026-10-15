@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { openSavePage } from './fixtures/manual-save.mjs';
 
 // Browser plugin not available. Use isolated Chromium; never authorize a personal directory.
 // A synthetic picker returns a real OPFS handle. Native OS picker consent still needs manual QA.
@@ -60,15 +61,31 @@ try {
 	await article.goto('https://paper.example.org/article');
 	const next = context.waitForEvent('page');
 	await worker.evaluate(url => chrome.tabs.create({ url, active: false }), `${origin}/popup.html`);
-	const popup = await next;
+	let popup = await next;
 	popup.on('pageerror', error => errors.push(error.message));
 	await popup.waitForFunction(() => document.querySelector('#note-content-field')?.value.includes('Synthetic paper body.'));
 	const markdown = `# English source\n\n![Figure](${smallImage})\n\nCaption.`;
 	await popup.locator('#note-name-field').fill('Synthetic paper');
 	await popup.locator('#note-content-field').fill(markdown);
 	assert.equal(await popup.locator('#clip-btn').innerText(), '保存到默认目录');
-	await popup.locator('#clip-btn').click();
-	await popup.locator('#image-archive-status').filter({ hasText: '已保存：Literature_translation/2025_Synthetic_paper__10.1234_example' }).waitFor();
+	let releasePopupImage;
+	imageGate = new Promise(resolve => { releasePopupImage = resolve; });
+	const popupSave = await openSavePage(context, () => popup.locator('#clip-btn').click());
+	popupSave.page.on('pageerror', error => errors.push(error.message));
+	await popupSave.page.locator('#save-status').filter({ hasText: '正在下载图片' }).waitFor();
+	assert.equal(await popupSave.page.evaluate(async () => (await chrome.tabs.getCurrent()).active), false);
+	await popup.close();
+	imageGate = undefined; releasePopupImage();
+	await popupSave.closed;
+	const reopening = context.waitForEvent('page');
+	await article.bringToFront();
+	await worker.evaluate(url => chrome.tabs.create({ url, active: false }), `${origin}/popup.html`);
+	popup = await reopening;
+	popup.on('pageerror', error => errors.push(error.message));
+	await popup.locator('#image-archive-status').filter({ hasText: '上次保存结果：已保存：Literature_translation/2025_Synthetic_paper__10.1234_example' }).waitFor();
+	await popup.waitForFunction(() => document.querySelector('#note-content-field')?.value.includes('Synthetic paper body.'));
+	await popup.locator('#note-name-field').fill('Synthetic paper');
+	await popup.locator('#note-content-field').fill(markdown);
 	const bundle = await settings.evaluate(async () => {
 		const root = await (await navigator.storage.getDirectory()).getDirectoryHandle('Literature_translation');
 		const folder = await root.getDirectoryHandle('2025_Synthetic_paper__10.1234_example');
@@ -96,9 +113,11 @@ try {
 	assert.equal(bundle.metadata.doi, '10.1234/example');
 	assert.deepEqual(bundle.dimensions, [128, 128]);
 	assert.equal(bundle.imageReport.items[0].selection, 'preferred');
-	await popup.locator('#clip-btn').click();
+	const collision = await openSavePage(context, () => popup.locator('#clip-btn').click());
 	await popup.locator('#image-archive-status').filter({ hasText: '已存在' }).waitFor();
 	assert.equal(await popup.locator('#note-content-field').inputValue(), markdown);
+	assert.equal(await collision.page.locator('#retry-save').isVisible(), false);
+	await collision.page.close();
 	// Exercise the actual cross-origin frame, not just a standalone popup. The
 	// permission adapter below simulates prompts over OPFS; no personal grants.
 	await context.addInitScript(() => {
@@ -215,7 +234,7 @@ try {
 	await embedded.locator('#image-archive-status').filter({ hasText: '已存在' }).waitFor();
 	assert.deepEqual(await readEmbedded('Embedded_edited_title'), embeddedBundle);
 	await save.page.close();
-	await embedded.locator('#image-archive-status').filter({ hasText: '尚未确认保存结果' }).waitFor();
+	await embedded.locator('#image-archive-status').filter({ hasText: '已存在' }).waitFor();
 	await settings.evaluate(() => localStorage.setItem('qa-permission', 'prompt'));
 	save = await openSave('Permission test');
 	await save.page.locator('#save-status').filter({ hasText: '等待目录访问授权' }).waitFor();
@@ -247,13 +266,14 @@ try {
 	}), false);
 	await settings.locator('#forget-paper-directory').click();
 	await settings.locator('#paper-directory-name').filter({ hasText: '未设置' }).waitFor();
-	await popup.locator('#clip-btn').click();
+	const missing = await openSavePage(context, () => popup.locator('#clip-btn').click());
 	await popup.locator('#image-archive-status').filter({ hasText: '请先在设置中选择' }).waitFor();
+	await missing.page.close();
 	assert.equal(await settings.evaluate(async () => {
 		const root = await (await navigator.storage.getDirectory()).getDirectoryHandle('Literature_translation');
 		const folder = await root.getDirectoryHandle('2025_Synthetic_paper__10.1234_example');
 		return (await (await folder.getFileHandle('paper.zh-CN.md')).getFile()).text();
 	}), '人工译文');
 	assert.deepEqual(errors, []);
-	console.log(JSON.stringify({ passed: true, screenshots: directory, checks: ['settings-picker-adapter', 'handle-persistence-after-reload', 'default-action', 'real-files-and-image', 'collision-protection', 'forget-keeps-files', 'missing-directory', 'responsive-settings', 'cross-origin-embedded-handoff', 'background-save-without-focus-change', 'success-closes-and-reports-checks-to-editor', 'failure-and-permission-activate-save-page', 'edited-snapshot-preserved', 'no-iframe-permission-call', 'no-reload-replay', 'simulated-permission-denial-and-user-gesture', 'cancel-before-writes', 'responsive-save-page'] }));
+	console.log(JSON.stringify({ passed: true, screenshots: directory, checks: ['settings-picker-adapter', 'handle-persistence-after-reload', 'default-action', 'popup-close-during-background-save', 'last-result-restored', 'real-files-and-image', 'collision-protection', 'forget-keeps-files', 'missing-directory', 'responsive-settings', 'cross-origin-embedded-handoff', 'background-save-without-focus-change', 'success-closes-and-reports-checks-to-editor', 'failure-and-permission-activate-save-page', 'failure-preserved-after-close', 'edited-snapshot-preserved', 'no-iframe-permission-call', 'no-reload-replay', 'simulated-permission-denial-and-user-gesture', 'cancel-before-writes', 'responsive-save-page'] }));
 } finally { await context.close(); }

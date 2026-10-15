@@ -4,8 +4,8 @@ In the updated extension, open Settings > General > Behavior. Use the folder
 icon beside **Default paper directory** to choose a local directory such as
 `E:\Literature_translation` and grant access. Optionally set **Save behavior**
 to **Save to default directory** to make this the main button. Otherwise the
-same command is available in the save menu. ZIP and plain Markdown downloads
-and Add to Obsidian remain separate, unchanged operations.
+same command is available in the save menu. ZIP is a separate output format on
+the same background-save path. Plain Markdown and Add to Obsidian are unchanged.
 
 The selected directory is an extension-local File System Access handle stored
 in IndexedDB, not a typed absolute path and not a synced setting. The browser
@@ -15,9 +15,9 @@ clears this preference and never deletes files. Browsers without a directory
 picker can continue to use ZIP export. This does not change the browser's global
 Downloads location. Only the directory name can be displayed, not its full path.
 
-### Embedded Clipper
+### Background Saving
 
-Saving from an embedded Clipper (including the reader's embedded Clipper) opens
+Saving from the popup, sidebar or embedded Clipper (including the reader) opens
 a background **Paper Clipper | Save** tab without switching away from the article.
 It receives the current edited Markdown,
 title, frontmatter and explicit identity, without extracting the page again.
@@ -25,7 +25,8 @@ It saves automatically when the chosen directory already has write permission,
 then closes itself after all files and completion metadata have been written.
 Only missing permission, a missing directory or a save error activates the tab.
 If permission needs renewing, click **Authorize and save** there. If no directory
-is configured, select one there. Standalone popup saving is unchanged.
+is configured, select one there. Closing the originating popup does not stop
+image preparation or file writes after the handoff.
 This respects Chromium's cross-origin iframe restrictions on filesystem prompts;
 changing a manifest permission or repeatedly selecting the same folder in an
 iframe cannot fix that boundary.
@@ -40,7 +41,17 @@ waiting for authorization cancels without writing. Reloading
 or duplicating it never automatically repeats the save: start again from the
 editor, whose contents remain unchanged. Closing it mid-write can leave partial
 output, under the same protection rules below. If it closes without a completion
-message, the editor reports an unconfirmed result, never a false success.
+message, the editor reports an unconfirmed result, never a false success. A
+specific known failure remains visible even after the failed save page closes.
+Reopening the editor shows the last terminal result in this browser session,
+labelled **Last save result**, not as a result for the current article.
+
+Image download failures offer **Retry save** in the save page. This uses the
+same edited snapshot and runs only on an explicit click; no output directory
+was created before that failure. Unsupported images and size limits require
+review in the editor instead. Partial writes, existing directories and unknown
+outcomes do not offer blind retries. Inspect the named folder before a new
+save; the tool never deletes or overwrites it to make a retry succeed.
 
 There is no new server, pairing or external message endpoint. A single pending snapshot is
 kept in trusted extension **session** storage, never synced; only a random request
@@ -52,7 +63,9 @@ handoff failures, not folder-permission failures; the editor and ZIP route remai
 available. No browser credentials or personal files are read for the handoff.
 Status-only runtime notifications are accepted only from the matching extension
 save page and request ID. They carry no article HTML or Markdown, and do not
-persist a second copy of the snapshot.
+persist a second copy of the snapshot. Only one terminal status message is kept
+in session storage, without article contents or image URLs; it is not a durable
+history or an automatic resume queue.
 
 ## Output
 
@@ -85,8 +98,8 @@ performed and no existing paper is rewritten to add a report.
 
 ## Protection And Limits
 
-- Keep the standalone popup, or the independent save tab for embedded mode, open
-  until saving finishes.
+- Keep the browser and independent save tab open until saving finishes. The
+  originating popup/sidebar can close once it reports background saving.
 - All images must be prepared successfully before creating any output files.
   The [ZIP image limits](manual-image-archive.md#limits) still apply.
 - Existing same-name directories or files are refused, including partial output
@@ -100,8 +113,9 @@ performed and no existing paper is rewritten to add a report.
   and the English file close successfully. Disk/permission failures may leave a
   recoverable partial directory, marked `failed` when metadata can still be
   written. The error names the directory; no success is reported.
-- The permission only covers the selected folder. No local server, new manifest
-  permission, browser Cookie reading, or personal-Vault migration is added.
+- Directory permission only covers the selected folder. No local server,
+  browser Cookie reading, or personal-Vault migration is added. ZIP separately
+  requests optional browser download permission to confirm completion.
 
 ## Verification
 
@@ -113,7 +127,7 @@ bytes, metadata, collision refusal, forgetting without deletion, and desktop/
 narrow settings layout. It never grants access to personal folders. The native
 OS picker, real external-folder grants and permission persistence after browser
 restart require manual acceptance. Firefox/Safari direct-folder writes are not
-validated; ZIP remains available.
+validated; neither are Firefox/Safari confirmed ZIP downloads.
 
 The embedded regression uses a real cross-origin extension iframe, and forbids
 filesystem permission calls from that frame. It covers edited snapshot handoff,
@@ -124,4 +138,7 @@ protection, and narrow/desktop save-page layout. Permission simulation over OPFS
 does not prove native external-directory permission persistence. Unit tests also
 cover single-consumption/concurrent claims (including snapshots without a DOI),
 expiry, failed tab launches and session-quota failures. These tests use synthetic
-content and isolated profiles.
+content and isolated profiles. The ordinary-popup regression closes the editor
+while image preparation is pending, then verifies completed files and restored
+feedback. Unit tests exercise failure retention, explicit safe retry of the
+unchanged snapshot, and refusal to retry partial writes.

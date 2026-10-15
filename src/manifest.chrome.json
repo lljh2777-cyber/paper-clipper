@@ -5,6 +5,7 @@
 	"homepage_url": "https://github.com/lljh2777-cyber/paper-clipper",
 	"version": "1.7.1",
 	"description": "__MSG_extensionDescription__",
+	"optional_permissions": ["downloads"],
 	"permissions": [
 		"alarms",
 		"activeTab",

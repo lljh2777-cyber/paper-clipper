@@ -24,6 +24,7 @@ test('every locale identifies the independent extension, including native browse
 		assert.equal(manifest.description, '__MSG_extensionDescription__');
 		assert.equal(manifest.default_locale, 'en');
 		assert.equal(manifest.homepage_url, repository);
+		assert.deepEqual(manifest.optional_permissions, ['downloads']);
 	}
 });
 

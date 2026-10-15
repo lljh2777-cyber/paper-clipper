@@ -11,11 +11,12 @@
 <body>
 	<header><img src="icons/paper-clipper.svg" width="32" height="32" alt=""><h1>Paper Clipper</h1><button id="close-save" type="button"><i data-lucide="x"></i></button></header>
 	<main>
-		<h2 data-i18n="savePaperDirectory"></h2>
+		<h2 id="save-heading" data-i18n="savePaperDirectory"></h2>
 		<p id="paper-title"></p>
 		<p id="save-directory"></p>
 		<p id="save-status" role="status" aria-live="polite"></p>
 		<button id="authorize-save" type="button" hidden><i data-lucide="folder-open"></i><span></span></button>
+		<button id="retry-save" type="button" hidden><i data-lucide="rotate-cw"></i><span data-i18n="paperSaveRetry"></span></button>
 	</main>
 </body>
 </html>

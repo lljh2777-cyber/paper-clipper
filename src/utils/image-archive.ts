@@ -140,13 +140,3 @@ export async function createImageArchive(markdown: string, title: string, source
 	const bytes = await new Promise<Uint8Array>((resolve, reject) => zip(files, { level: 0 }, (error, result) => error ? reject(error) : resolve(result)));
 	return { bytes, fileName: `paper-${safeTitle}.zip`, imageCount: prepared.imageCount, checks: prepared.checks };
 }
-
-export function downloadImageArchive(bytes: Uint8Array, fileName: string): void {
-	const blob = new Blob([new Uint8Array(bytes).buffer], { type: 'application/zip' });
-	const url = URL.createObjectURL(blob);
-	const anchor = document.createElement('a');
-	anchor.href = url;
-	anchor.download = fileName;
-	document.body.appendChild(anchor);
-	try { anchor.click(); } finally { anchor.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000); }
-}

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import browser from './browser-polyfill';
-import { openPaperDirectorySave, reportPaperDirectorySave, takePaperDirectorySave } from './paper-directory-handoff';
+import { lastPaperSaveResult, openPaperDirectorySave, reportPaperDirectorySave, takePaperDirectorySave } from './paper-directory-handoff';
 import { prepareManualExportChecks } from './manual-export-checks';
 
 vi.mock('./browser-polyfill', () => ({ default: {
@@ -44,6 +44,10 @@ it('does not consume another request on a stale or invented identifier', async (
 	await openPaperDirectorySave(input);
 	await expect(takePaperDirectorySave('wrong')).rejects.toMatchObject({ reason: 'expired' });
 	expect(session[key].input).toEqual(input);
+});
+it('preserves the ZIP mode across a single-use handoff', async () => {
+	await openPaperDirectorySave({ ...input, format: 'zip' });
+	expect(await takePaperDirectorySave(session[key].id)).toEqual({ ...input, format: 'zip' });
 });
 it('serializes simultaneous opens and claims, so only one can win', async () => {
 	const opens = await Promise.allSettled([openPaperDirectorySave(input), openPaperDirectorySave(input)]);
@@ -134,6 +138,29 @@ it('disposes observers when the editor unloads without cancelling the independen
 	expect(update).not.toHaveBeenCalled();
 	expect(session[key].input).toEqual(input);
 	expect(browser.runtime.onMessage.removeListener).toHaveBeenCalledOnce();
+});
+it('retains a specific failure when its save page closes, and clears that failure once retry starts', async () => {
+	for (const retrying of [false, true]) {
+		const update = vi.fn();
+		const job = await openPaperDirectorySave(input, update);
+		const id = session[key].id;
+		await takePaperDirectorySave(id);
+		receive()(message(id, 'failed'), sender(id), vi.fn());
+		if (retrying) receive()(message(id, 'saving'), sender(id), vi.fn());
+		const calls = vi.mocked(browser.tabs.onRemoved.addListener).mock.calls;
+		calls[calls.length - 1][0](42, { windowId: 1, isWindowClosing: false });
+		await job.finished;
+		expect(update).toHaveBeenLastCalledWith(retrying ? { state: 'closed' } : message(id, 'failed').status);
+	}
+});
+it('keeps only the latest terminal message in session storage, even when the editor has closed', async () => {
+	vi.mocked(browser.runtime.sendMessage).mockRejectedValue(new Error('Editor closed'));
+	await reportPaperDirectorySave('first', { state: 'failed', message: 'Image failed; no files written.' });
+	await reportPaperDirectorySave('next', { state: 'saving', message: 'In progress' });
+	expect(await lastPaperSaveResult()).toBe('Image failed; no files written.');
+	await reportPaperDirectorySave('next', { state: 'saved', message: 'Saved: paper.zip. Scoped checks only.' });
+	expect(session.paperSaveLastResult).toEqual({ id: 'next', state: 'saved', message: 'Saved: paper.zip. Scoped checks only.' });
+	expect(JSON.stringify(session)).not.toContain(input.markdown);
 });
 
 it('does not report a committed save as failed when no editor receives its notification', async () => {

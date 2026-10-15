@@ -1,20 +1,20 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { createServer } from 'node:http';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { parseHTML } from 'linkedom';
 import { unzipSync, strFromU8 } from 'fflate';
 import temml from 'temml';
 import { mathHtml } from './fixtures/mathjax.mjs';
 import { checkMathPreservation, mathInventory } from '../src/utils/paper-math.mjs';
+import { authorizedDownloadExtension, configureZipDownloads, openSavePage, readCompletedZip } from './fixtures/manual-save.mjs';
 
 // Browser plugin not available. Only a fresh, isolated Chromium profile is used.
 // Flow: synthetic page -> actual extension popup -> ZIP -> rendered formulas.
 const directory = await mkdtemp(path.join(tmpdir(), 'paper-math-qa-'));
-const extension = fileURLToPath(new URL('../dev', import.meta.url));
+const extension = await authorizedDownloadExtension(directory);
 const server = createServer((request, response) => { response.setHeader('Content-Type', 'text/html; charset=utf-8'); response.end(mathHtml); });
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const url = `http://127.0.0.1:${server.address().port}/synthetic-math`;
@@ -28,6 +28,7 @@ try {
 	const origin = `chrome-extension://${new URL(worker.url()).hostname}`;
 	await worker.evaluate(() => chrome.storage.local.set({ language: 'en' }));
 	const article = await context.newPage();
+	const downloads = await configureZipDownloads(context, article, directory);
 	await article.goto(url);
 	assert.equal(await article.title(), 'Synthetic math preservation');
 	const next = context.waitForEvent('page');
@@ -40,9 +41,8 @@ try {
 	const source = parseHTML(mathHtml).document;
 	assert.equal(checkMathPreservation(source, markdown).matched, 8);
 	await popup.locator('#more-btn').click();
-	const downloading = popup.waitForEvent('download');
-	await popup.locator('#save-image-archive').click();
-	const archive = unzipSync(await readFile(await (await downloading).path()));
+	const save = await openSavePage(context, () => popup.locator('#save-image-archive').click());
+	const archive = unzipSync((await readCompletedZip(worker, save, downloads)).bytes);
 	const saved = strFromU8(archive[Object.keys(archive).find(key => key.endsWith('/paper.md'))]);
 	assert.equal(checkMathPreservation(source, saved).status, 'passed');
 	const formulas = Array.from(saved.matchAll(/\$\$([\s\S]*?)\$\$|\$([^$\n]+)\$/g), match => ({ latex: match[1] ?? match[2], block: match[1] !== undefined }));

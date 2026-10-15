@@ -22,16 +22,14 @@ import { memoizeWithExpiration } from '../utils/memoize';
 import { debounce } from '../utils/debounce';
 import { sanitizeFileName } from '../utils/string-utils';
 import { saveFile } from '../utils/file-utils';
-import { createImageArchive, downloadImageArchive, ImageArchiveError } from '../utils/image-archive';
 import { collectImageSources } from '../utils/image-sources.mjs';
-import { authorizePaperDirectory, getPaperDirectory, paperIdentity, paperDirectoryFailure, savePaperDirectory } from '../utils/paper-directory';
-import { openPaperDirectorySave } from '../utils/paper-directory-handoff';
+import { paperIdentity, paperDirectoryFailure } from '../utils/paper-directory';
+import { lastPaperSaveResult, openPaperDirectorySave } from '../utils/paper-directory-handoff';
 import { translatePage, getMessage, setupLanguageAndDirection } from '../utils/i18n';
 import { formatPropertyValue } from '../utils/shared';
 import { exportPageHtml } from '../utils/page-html-export';
 import { notifySidePanelState } from '../utils/side-panel-lifecycle';
 import { ManualExportSnapshot, prepareManualExportChecks } from '../utils/manual-export-checks';
-import { manualChecksMessageKey } from '../utils/manual-export-report';
 
 interface ReaderModeResponse {
 	success: boolean;
@@ -174,6 +172,8 @@ async function initializeExtension(tabId: number) {
 		
 		// Setup language and RTL support
 		await setupLanguageAndDirection();
+		const lastSave = await lastPaperSaveResult();
+		if (lastSave && !imageArchiveBusy) manualSaveStatus().textContent = getMessage('paperSaveLastResult', lastSave);
 		
 		// First, add the browser class to allow browser-specific styles to apply
 		await addBrowserClassToHtml();
@@ -1333,9 +1333,7 @@ async function handleSaveToDownloads() {
 }
 
 let imageArchiveBusy = false;
-async function handleSavePaperDirectory() {
-	if (imageArchiveBusy) return;
-	imageArchiveBusy = true;
+function manualSaveStatus(): HTMLElement {
 	let status = document.getElementById('image-archive-status');
 	if (!status) {
 		status = document.createElement('div');
@@ -1344,74 +1342,40 @@ async function handleSavePaperDirectory() {
 		status.style.cssText = 'padding:8px;overflow-wrap:anywhere;white-space:normal';
 		document.getElementById('clip-btn')?.parentElement?.before(status);
 	}
+	return status;
+}
+
+const handleSavePaperDirectory = () => handleManualSave('directory');
+const handleSaveImageArchive = () => handleManualSave('zip');
+
+async function handleManualSave(format: 'directory' | 'zip') {
+	if (imageArchiveBusy) return;
+	imageArchiveBusy = true;
+	const status = manualSaveStatus();
 	document.getElementById('more-dropdown')?.classList.remove('show');
 	status.textContent = getMessage('paperDirectorySaving');
 	try {
-		// Embedded extension frames cannot prompt for filesystem permission. Snapshot
-		// all editor fields before handing off to a background top-level save page.
+		// Every editor surface hands off the same immutable snapshot. Images and
+		// writes belong to the save page, so closing a popup cannot interrupt them.
 		const markdown = (document.getElementById('note-content-field') as HTMLTextAreaElement).value;
 		const title = (document.getElementById('note-name-field') as HTMLInputElement).value;
 		const properties = getPropertiesFromDOM();
 		const page = manualExportPage;
-		const directory = window.top === window ? await authorizePaperDirectory(await getPaperDirectory()) : undefined;
 		const frontmatter = await generateFrontmatter(properties);
 		const source = page?.snapshot.source ?? '';
 		const identity = paperIdentity(page?.data.metaTags ?? [], properties, source, page?.data.published);
 		const imageSources = page ? collectImageSources(page.snapshot.document, source) : {};
 		const checkContext = await prepareManualExportChecks(page?.snapshot, frontmatter + markdown);
-		const input = { markdown: frontmatter + markdown, title, source, identity, imageSources, checkContext };
-		if (!directory) {
-			status.textContent = getMessage('paperDirectoryHandedOff');
-			const job = await openPaperDirectorySave(input, update => {
-				status!.textContent = update.state === 'closed' ? getMessage('paperDirectoryClosed') : update.message;
-			});
-			await job.finished;
-			return;
-		}
-		const folder = await savePaperDirectory(directory, input,
-			(done, total) => { status!.textContent = getMessage('imageArchiveProgress', [String(done), String(total)]); });
-		status.textContent = getMessage('paperDirectorySaved', `${directory.name}/${folder}`) + ' ' + getMessage(manualChecksMessageKey(checkContext.report));
+		const input = { format, markdown: frontmatter + markdown, title, source, identity, imageSources, checkContext };
+		status.textContent = getMessage('paperDirectoryHandedOff');
+		const job = await openPaperDirectorySave(input, update => {
+			status.textContent = update.state === 'closed' ? getMessage('paperDirectoryClosed') : update.message;
+		});
+		await job.finished;
 	} catch (error) {
 		const failure = paperDirectoryFailure(error);
 		status.textContent = getMessage(failure.key, failure.detail);
 	} finally { imageArchiveBusy = false; }
-}
-
-async function handleSaveImageArchive() {
-	if (imageArchiveBusy) return;
-	imageArchiveBusy = true;
-	let status = document.getElementById('image-archive-status');
-	if (!status) {
-		status = document.createElement('div');
-		status.id = 'image-archive-status';
-		status.setAttribute('role', 'status');
-		status.style.cssText = 'padding:8px;overflow-wrap:anywhere;white-space:normal';
-		document.getElementById('clip-btn')?.parentElement?.before(status);
-	}
-	const button = document.getElementById('save-image-archive');
-	button?.setAttribute('aria-busy', 'true');
-	button?.setAttribute('aria-disabled', 'true');
-	document.getElementById('more-dropdown')?.classList.remove('show');
-	try {
-		const content = (document.getElementById('note-content-field') as HTMLTextAreaElement).value;
-		const title = (document.getElementById('note-name-field') as HTMLInputElement).value;
-		const page = manualExportPage;
-		const frontmatter = await generateFrontmatter(getPropertiesFromDOM());
-		const source = page?.snapshot.source ?? '';
-		const imageSources = page ? collectImageSources(page.snapshot.document, source) : {};
-		const checkContext = await prepareManualExportChecks(page?.snapshot, frontmatter + content);
-		const archive = await createImageArchive(frontmatter + content, title, source,
-			(done, total) => { status!.textContent = getMessage('imageArchiveProgress', [String(done), String(total)]); }, imageSources, checkContext);
-		downloadImageArchive(archive.bytes, archive.fileName);
-		status.textContent = getMessage('imageArchiveReady', String(archive.imageCount)) + ' ' + getMessage(manualChecksMessageKey(archive.checks));
-	} catch (error) {
-		const reason = error instanceof ImageArchiveError ? error.reason : 'download';
-		status.textContent = getMessage(`imageArchiveError_${reason}`, String(error instanceof ImageArchiveError ? error.imageNumber : 0));
-	} finally {
-		imageArchiveBusy = false;
-		button?.removeAttribute('aria-busy');
-		button?.removeAttribute('aria-disabled');
-	}
 }
 
 function determineMainAction() {

@@ -6,8 +6,33 @@ an independent option without directory authorization.
 
 Reload the updated extension, open a paper, and open Paper Clipper. Review or
 edit the note, then use the arrow next to **Add to Obsidian** and choose
-**Download Markdown + images ZIP**. Keep the popup or sidebar open until the
-download starts. No local service, pairing key or Vault permission is needed.
+**Download Markdown + images ZIP**. The editor hands its current snapshot to a
+background save tab. You can close the popup/sidebar after handoff; keep the
+browser and save tab open until it finishes. No local service, pairing key or
+Vault permission is needed.
+
+The first ZIP save asks for optional browser **downloads** permission in the
+save page. Click **Allow ZIP downloads** to grant it. Subsequent saves run in the
+background without activating that page, and auto-close only after the browser
+reports the ZIP download complete. This permission is not required for direct
+directory saving and does not grant access to a Vault or browser Cookies.
+The extension monitors only the download ID it created, never scans download
+history, and uses `uniquify` to avoid replacing an existing ZIP.
+
+Failures and missing permission activate the save page. An image download
+failure offers explicit retry of the same snapshot before any ZIP is published.
+A recoverable browser interruption offers a new download of the already prepared
+ZIP, without repeating image downloads. Security blocks and uncertain completion
+do not offer blind retries. Check the browser Downloads page for any interrupted
+file, pause or security warning; the extension never accepts a dangerous download
+on your behalf. After ten minutes without a confirmed terminal result, it reports
+an unknown outcome, not success. Closing a failed save page preserves its specific
+error; reopening the editor shows the last terminal result in the browser session.
+
+Automated Chromium tests use an isolated extension copy with this optional grant
+pre-authorized and actual browser downloads. Native permission prompts, real
+download security dialogs, Firefox and Safari need manual acceptance. Unit tests
+cover denial, interrupted/unknown results, completion races and safe retry.
 
 Extract the ZIP into your Vault. Keep its enclosing `paper-<unique-id>` folder:
 it contains `paper.md`, `checks.json` and an `images/` directory. The unique folder prevents
