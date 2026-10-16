@@ -63,7 +63,7 @@ async function download(url: string, maxBytes = MAX_IMAGE): Promise<{ bytes: Uin
 
 export async function prepareImageFiles(markdown: string, source: string,
 	onProgress: (done: number, total: number) => void = () => {}, imageSources: Record<string, string> = {},
-	checkContext?: ManualExportCheckContext): Promise<{ files: Record<string, Uint8Array>; imageCount: number; checks: ManualExportChecks }> {
+	checkContext?: ManualExportCheckContext, figureLinks: Record<string, string> = {}): Promise<{ files: Record<string, Uint8Array>; imageCount: number; checks: ManualExportChecks }> {
 	if (markdown.length > 5 * 1024 * 1024) throw new ImageArchiveError('limit');
 	const checks = checkContext?.inputSha256 === await markdownSha256(markdown) ? checkContext.report : unassessedManualExportChecks();
 	const frontmatter = markdown.match(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/)?.[0] ?? '';
@@ -115,9 +115,31 @@ export async function prepareImageFiles(markdown: string, source: string,
 		} catch (error) { throw new ImageArchiveError(error instanceof ImageArchiveError ? error.reason : 'download', index + 1); }
 	}
 	const escape = (text: string) => text.replace(/[\\[\]"]/g, '\\$&').replace(/\r?\n/g, ' ');
-	for (const image of images.reverse()) {
+	const edits: { start: number; end: number; replacement: string }[] = [];
+	for (const image of images) {
 		const replacement = `![${escape(image.alt)}](<${destinations.get(image.url)}>${image.title ? ` "${escape(image.title)}"` : ''})`;
-		markdown = markdown.slice(0, image.start) + replacement + markdown.slice(image.end);
+		edits.push({ start: image.start, end: image.end, replacement });
+	}
+	for (const node of nodes) {
+		if (node.type !== 'link' && node.type !== 'linkReference') continue;
+		const definition = node.type === 'link' ? node : definitions.get(node.identifier);
+		if (!definition || !node.children.length || node.position?.start.offset === undefined || node.position.end.offset === undefined) continue;
+		const start = frontmatter.length + node.position.start.offset, end = frontmatter.length + node.position.end.offset;
+		if (images.some(image => image.start >= start && image.end <= end)) continue;
+		let destination: string | undefined;
+		try {
+			const url = new URL(definition.url, source).href;
+			const target = Object.prototype.hasOwnProperty.call(figureLinks, url) ? figureLinks[url] : url;
+			destination = destinations.get(imageUrl(target, source));
+		} catch { continue; }
+		if (!destination) continue;
+		const first = node.children[0].position?.start.offset, last = node.children[node.children.length - 1].position?.end.offset;
+		if (first === undefined || last === undefined) continue;
+		const label = markdown.slice(frontmatter.length + first, frontmatter.length + last);
+		edits.push({ start, end, replacement: `[${label}](<${destination}>${definition.title ? ` "${escape(definition.title)}"` : ''})` });
+	}
+	for (const edit of edits.sort((a, b) => b.start - a.start)) {
+		markdown = markdown.slice(0, edit.start) + edit.replacement + markdown.slice(edit.end);
 	}
 	files['paper.md'] = strToU8(markdown);
 	const finalChecks: ManualExportChecks = { ...checks,
@@ -135,11 +157,11 @@ export async function prepareImageFiles(markdown: string, source: string,
 
 export async function createImageArchive(markdown: string, title: string, source: string,
 	onProgress: (done: number, total: number) => void = () => {}, imageSources: Record<string, string> = {},
-	checkContext?: ManualExportCheckContext, identity: PaperIdentity = { doi: null, published: null }): Promise<{ bytes: Uint8Array; fileName: string; imageCount: number; checks: ManualExportChecks }> {
+	checkContext?: ManualExportCheckContext, identity: PaperIdentity = { doi: null, published: null }, figureLinks: Record<string, string> = {}): Promise<{ bytes: Uint8Array; fileName: string; imageCount: number; checks: ManualExportChecks }> {
 	const doi = normalizeDoi(identity.doi);
 	if (identity.doi && !doi) throw new Error('Invalid paper DOI');
 	identity = { ...identity, doi };
-	const prepared = await prepareImageFiles(markdown, source, onProgress, imageSources, checkContext);
+	const prepared = await prepareImageFiles(markdown, source, onProgress, imageSources, checkContext, figureLinks);
 	const id = crypto.randomUUID();
 	const root = paperFolderName(title, identity, id);
 	const metadata = await paperTranslationMetadata({ title, source, identity }, prepared, id);

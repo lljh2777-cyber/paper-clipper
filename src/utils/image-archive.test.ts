@@ -12,6 +12,19 @@ function mockFetch() {
 }
 afterEach(() => vi.unstubAllGlobals());
 describe('manual image ZIP', () => {
+	it('localizes figure citations only when their mapped image was archived, preserving labels and unrelated links', async () => {
+		mockFetch();
+		const source = 'https://www.nature.com/articles/test';
+		const input = '---\nsource: https://www.nature.com/articles/test#Fig1\n---\nSee [**1b**](https://www.nature.com/articles/test#Fig1) and [panel][fig].\n\n![Figure](https://example.org/a.png)\n\n[fig]: #Fig1 "Panel"\n\n[Other](https://www.nature.com/articles/other#Fig1) [Missing](#Fig2) ` [code](#Fig1) `';
+		const result = await createImageArchive(input, 'Paper', source, undefined, {}, undefined, undefined,
+			{ [`${source}#Fig1`]: 'https://example.org/a.png', [`${source}#Fig2`]: 'https://example.org/missing.png' });
+		const files = unzipSync(result.bytes);
+		const md = strFromU8(files[`${result.fileName.slice(0, -4)}/paper.md`]);
+		expect(md).toContain('source: https://www.nature.com/articles/test#Fig1');
+		expect(md).toContain('[**1b**](<images/image-1.png>)');
+		expect(md).toContain('[panel](<images/image-1.png> "Panel")');
+		expect(md).toContain('[Other](https://www.nature.com/articles/other#Fig1) [Missing](#Fig2) ` [code](#Fig1) `');
+	});
 	it('preserves frontmatter and prose, localizes inline/reference images, deduplicates signed URLs', async () => {
 		const fetcher = mockFetch();
 		const input = '---\r\ncustom: keep\r\n---\r\n# Paper\n\n![A](https://cdn.example.org/a?Expires=42&Signature=secret "Caption")\n\n![B][fig]\n\n[fig]: https://cdn.example.org/a?Expires=42&Signature=secret\n\n`![code](https://other.example.org/x)`';

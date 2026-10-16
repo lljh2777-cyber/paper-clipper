@@ -23,6 +23,7 @@ import { debounce } from '../utils/debounce';
 import { sanitizeFileName } from '../utils/string-utils';
 import { saveFile } from '../utils/file-utils';
 import { collectImageSources } from '../utils/image-sources.mjs';
+import { collectFigureLinks } from '../utils/figure-links';
 import { paperIdentity, paperDirectoryFailure } from '../utils/paper-directory';
 import { lastPaperSaveResult, openPaperDirectorySave } from '../utils/paper-directory-handoff';
 import { translatePage, getMessage, setupLanguageAndDirection } from '../utils/i18n';
@@ -1371,7 +1372,8 @@ async function handleManualSave(format: 'directory' | 'zip') {
 		const identity = paperIdentity(page?.data.metaTags ?? [], properties, source, page?.data.published);
 		const imageSources = page ? collectImageSources(page.snapshot.document, source) : {};
 		const checkContext = await prepareManualExportChecks(page?.snapshot, frontmatter + markdown);
-		const input = { format, markdown: frontmatter + markdown, title, source, identity, imageSources, checkContext };
+		const figureLinks = page ? collectFigureLinks(page.snapshot.document, source) : {};
+		const input = { format, markdown: frontmatter + markdown, title, source, identity, imageSources, checkContext, figureLinks };
 		let receivedStatus = false;
 		const job = await openPaperDirectorySave(input, update => {
 			receivedStatus = true;

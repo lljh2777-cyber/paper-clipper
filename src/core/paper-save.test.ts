@@ -108,7 +108,7 @@ it('requests ZIP authorization only on a click and waits for download completion
 	authorize().click();
 	await vi.waitFor(() => expect(downloadPaperZip).toHaveBeenCalledOnce());
 	expect(createImageArchive).toHaveBeenCalledWith(zipInput.markdown, zipInput.title, zipInput.source,
-		expect.any(Function), undefined, undefined, zipInput.identity);
+		expect.any(Function), undefined, undefined, zipInput.identity, undefined);
 	expect(close).not.toHaveBeenCalled();
 	expect(getPaperDirectory).not.toHaveBeenCalled();
 	complete('paper (1).zip');

@@ -33,6 +33,7 @@ try {
 	const downloads = await configureZipDownloads(context, article, directory);
 	await article.goto(cellPage);
 	await article.evaluate(() => {
+		document.querySelector('figure').id = 'Fig1';
 		for (const [name, content] of [['citation_doi', '10.1234/synthetic'], ['citation_publication_date', '2026-10-15']]) {
 			const meta = document.createElement('meta');
 			meta.name = name; meta.content = content; document.head.append(meta);
@@ -119,7 +120,7 @@ try {
 	await popup.screenshot({ path: path.join(directory, 'saved-mobile.png') });
 	assert.equal(await popup.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
 	// The original page, not an invented filename, supplies Cell's different asset ID.
-	await popup.locator('#note-content-field').fill(`![Figure](https://www.cell.com${smallPath})\n\nCaption.`);
+	await popup.locator('#note-content-field').fill(`See [1b](${cellPage}#Fig1).\n\n![Figure](https://www.cell.com${smallPath})\n\nCaption.`);
 	for (const fallback of [false, true]) {
 		if (fallback) await context.route(`https://www.cell.com${largePath}`, route => route.fulfill({ status: 403, body: 'Denied' }));
 		await popup.locator('#more-btn').click();
@@ -128,6 +129,7 @@ try {
 		const completed = await readCompletedZip(worker, saving, downloads);
 		assert.notEqual(completed.fileName, download.fileName);
 		const archive = unzipSync(completed.bytes);
+		assert.match(strFromU8(archive[Object.keys(archive).find(name => name.endsWith('/paper.md'))]), /\[1b\]\(<images\/image-1\.png>\)/);
 		const image = archive[Object.keys(archive).find(name => name.endsWith('/images/image-1.png'))];
 		const report = JSON.parse(strFromU8(archive[Object.keys(archive).find(name => name.endsWith('/image-report.json'))]));
 		assert.equal(report.items[0].selection, fallback ? 'original-fallback' : 'preferred');

@@ -51,7 +51,12 @@ This command archives the **current editor contents**, not a newly fetched
 article. It preserves frontmatter, prose and captions, downloads inline and
 reference-style Markdown images, and rewrites their displayed references to
 relative local paths. Repeated URLs are downloaded once. Unused reference
-definitions, ordinary hyperlinks and frontmatter values remain unchanged.
+definitions and frontmatter values remain unchanged. Figure citations with an
+explicit single-image association in the captured page now link to that archived
+image locally (including panel labels such as Fig. 1b). Unknown, ambiguous or
+unarchived targets and unrelated hyperlinks stay unchanged; figure order is
+never used to guess a destination. This applies to ZIP and default-directory
+saves, not the unsaved editor preview or previously exported notes.
 It does not prove article completeness or replace the Core's DOI, preservation
 and Vault checks. Existing Add to Obsidian and plain Markdown downloads are
 unchanged and still retain remote images.
