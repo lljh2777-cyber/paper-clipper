@@ -70,6 +70,7 @@ try {
 		await popup.setViewportSize({ width, height });
 		assert.equal(await popup.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
 		assert.equal(await popup.locator('#paper-attachments input').nth(1).isVisible(), true);
+		assert.equal(await popup.locator('.metadata-properties').evaluate(properties => properties.clientHeight >= properties.firstElementChild.getBoundingClientRect().height), true);
 		assert.equal(await popup.locator('#more-btn').evaluate(button => {
 			const bounds = button.getBoundingClientRect();
 			return bounds.top >= 0 && bounds.bottom <= Math.min(innerHeight, document.body.getBoundingClientRect().bottom, document.documentElement.getBoundingClientRect().bottom);

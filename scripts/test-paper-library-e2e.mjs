@@ -50,7 +50,9 @@ try {
 	});
 	const before = await contents();
 	// Trap any archive-page attempt to read notes or create/write/delete files.
-	await context.addInitScript(() => {
+	await context.addInitScript(expectedOrigin => {
+		// A newly opened tab can first initialize an insecure about:blank document.
+		if (location.origin !== expectedOrigin) return;
 		const getFileHandle = FileSystemDirectoryHandle.prototype.getFileHandle;
 		FileSystemDirectoryHandle.prototype.getFileHandle = function(name, options) {
 			if (name !== 'translation.json' || options?.create) throw new Error('Unexpected file access');
@@ -58,7 +60,8 @@ try {
 		};
 		FileSystemFileHandle.prototype.createWritable = () => { throw new Error('Unexpected write'); };
 		FileSystemDirectoryHandle.prototype.removeEntry = () => { throw new Error('Unexpected delete'); };
-	});
+		globalThis.archiveReadOnlyGuardInstalled = true;
+	}, origin);
 	const settings = await context.newPage();
 	await settings.goto(`${origin}/settings.html`);
 	const next = context.waitForEvent('page');
@@ -68,6 +71,7 @@ try {
 	page.on('pageerror', error => errors.push(error.message));
 	page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
 	await page.locator('.archive-row').first().waitFor();
+	assert.equal(await page.evaluate(() => globalThis.archiveReadOnlyGuardInstalled), true);
 	assert.equal(await page.title(), 'Paper Clipper | Archives');
 	assert.equal(new URL(page.url()).pathname, '/paper-library.html');
 	assert.equal(await page.locator('.archive-row').count(), 3);
@@ -94,6 +98,7 @@ try {
 	}
 	await page.reload();
 	await page.locator('.archive-row').first().waitFor();
+	assert.equal(await page.evaluate(() => globalThis.archiveReadOnlyGuardInstalled), true);
 	assert.equal(await page.locator('.archive-row').count(), 3);
 	assert.deepEqual(await contents(), before);
 	assert.deepEqual(errors, []);

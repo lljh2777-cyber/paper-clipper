@@ -4,7 +4,7 @@
 	font-size: 13px;
 	letter-spacing: 0;
 	summary { cursor: pointer; overflow-wrap: anywhere; }
-	.attachment-list { max-height: 120px; overflow-y: auto; margin-top: 8px; }
+	.attachment-list { max-height: 110px; overflow-y: auto; margin-top: 8px; }
 	label { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 6px 4px; cursor: pointer; }
 	input[type=checkbox] { flex: none; margin: 3px 0 0; width: 16px; height: 16px; }
 	span { min-width: 0; overflow-wrap: anywhere; line-height: 1.4; }
@@ -16,7 +16,8 @@
 .clipper:has(#paper-attachments) {
 	min-height: 0;
 	overflow-y: auto;
+	.metadata-properties { min-height: calc(var(--metadata-input-height) + 10px); }
 	#note-content-container { min-height: 60px; }
 	.clipper-footer { flex-shrink: 0; }
-	#image-archive-status { margin: 0; max-height: 64px; overflow-y: auto; }
+	#image-archive-status { margin: 0; max-height: 56px; line-height: 20px; overflow-y: auto; }
 }
