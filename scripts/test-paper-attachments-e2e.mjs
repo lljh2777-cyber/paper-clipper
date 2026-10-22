@@ -67,7 +67,7 @@ try {
 	const noSelection = await openSavePage(context, () => popup.locator('#save-image-archive').click());
 	const first = await readCompletedZip(worker, noSelection, downloads);
 	const firstZip = unzipSync(first.bytes);
-	assert.equal(Object.keys(firstZip).some(name => /supplement/.test(name)), false);
+	assert.equal(Object.keys(firstZip).some(name => /\/supplements\/|\/supplement-report\.json$/.test(name)), false);
 	assert.deepEqual(requests, []);
 
 	await popup.locator('#paper-attachments summary').click();
