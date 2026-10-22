@@ -1,0 +1,26 @@
+main { max-width: 1150px; }
+.library-heading { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+.library-heading h2 { margin: 0; }
+#library-directory, .library-note, .archive-folder, .archive-meta { color: #5c6268; overflow-wrap: anywhere; }
+.library-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.library-search { display: flex; align-items: center; gap: 8px; flex: 1 1 300px; padding: 0 10px; border: 1px solid #9da6ad; border-radius: 4px; }
+input, select { min-height: 40px; font: inherit; font-size: 14px; color: inherit; background: transparent; }
+input { width: 100%; min-width: 0; border: 0; }
+select { border: 1px solid #9da6ad; border-radius: 4px; padding: 0 8px; max-width: 100%; }
+option { color: #222629; background: #fff; }
+#library-status { min-height: 24px; margin-bottom: 8px; }
+#library-status[data-error=true], #library-issues { color: #a13b28; }
+.library-note { font-size: 13px; margin-top: 8px; }
+#library-results { padding: 0; margin: 20px 0; list-style: none; }
+.archive-row { border-top: 1px solid #dce1e5; padding: 16px 0; }
+.archive-row h3 { font-size: 16px; line-height: 1.5; margin: 0 0 6px; overflow-wrap: anywhere; }
+.archive-meta { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 13px; line-height: 1.6; }
+.archive-folder { font-size: 13px; margin: 6px 0 0; user-select: all; }
+.archive-doi { color: #137d78; overflow-wrap: anywhere; }
+[hidden] { display: none !important; }
+@media (prefers-color-scheme: dark) {
+	#library-directory, .library-note, .archive-folder, .archive-meta { color: #b0b8bd; }
+	.archive-row { border-color: #41484d; }
+	.archive-doi { color: #75d0c7; }
+	#library-status[data-error=true], #library-issues { color: #ed9c85; }
+}

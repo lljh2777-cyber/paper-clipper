@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Paper Clipper | Archives</title>
+	<link rel="icon" href="icons/icon48.png">
+	<link rel="stylesheet" href="paper-save.css">
+	<link rel="stylesheet" href="paper-library.css">
+	<script src="paper-library.js" defer></script>
+</head>
+<body>
+	<header><img src="icons/paper-clipper.svg" width="32" height="32" alt=""><h1>Paper Clipper</h1></header>
+	<main>
+		<div class="library-heading"><h2 data-i18n="paperLibrary"></h2><span id="library-directory"></span></div>
+		<div class="library-tools">
+			<label class="library-search"><i data-lucide="search"></i><input id="library-query" type="search" data-i18n-placeholder="paperLibrarySearch" aria-label="Search archives"></label>
+			<select id="library-sort" aria-label="Sort archives"><option value="newest" data-i18n="paperLibraryNewest"></option><option value="title" data-i18n="paperLibraryTitle"></option><option value="year" data-i18n="paperLibraryYear"></option></select>
+			<button id="library-refresh" type="button" data-i18n-title="paperLibraryRefresh" aria-label="Refresh"><i data-lucide="refresh-cw"></i></button>
+			<button id="library-choose" type="button"><i data-lucide="folder-open"></i><span data-i18n="paperLibraryChoose"></span></button>
+			<button id="library-authorize" type="button" hidden data-i18n="paperLibraryAuthorize"></button>
+		</div>
+		<p id="library-status" role="status" aria-live="polite"></p>
+		<details id="library-issues" hidden><summary data-i18n="paperLibraryIssues"></summary><ul></ul></details>
+		<p class="library-note" data-i18n="paperLibraryRecorded"></p>
+		<ul id="library-results" aria-label="Archives"></ul>
+		<button id="library-more" type="button" hidden data-i18n="paperLibraryMore"></button>
+	</main>
+</body>
+</html>

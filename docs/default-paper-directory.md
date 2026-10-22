@@ -1,5 +1,8 @@
 # Default Paper Directory
 
+Use [Archives](paper-library.md) from the extension or Settings to search the
+authorized root's recorded papers without opening or changing notes/translations.
+
 In the updated extension, open Settings > General > Behavior. Use the folder
 icon beside **Default paper directory** to choose a local directory such as
 `E:\Literature_translation` and grant access. Optionally set **Save behavior**

@@ -36,6 +36,8 @@ jobs:
         run: npx vitest run src/utils/image-archive.test.ts src/utils/figure-links.test.ts src/utils/paper-directory.test.ts src/utils/paper-directory-handoff.test.ts src/utils/paper-zip-download.test.ts src/utils/manual-export-checks.test.ts src/core/paper-save.test.ts
       - name: Test stale side panel notifications
         run: npx vitest run src/utils/side-panel-lifecycle.test.ts
+      - name: Test read-only archive catalog
+        run: npx vitest run src/utils/paper-library.test.ts src/core/paper-library.test.ts
       - name: Test publisher content preservation with synthetic pages
         run: npx vitest run src/utils/publisher-figures.test.ts src/utils/publisher-citations.test.ts src/utils/paper-math.test.ts
       - name: Build development extension without cleanup
@@ -50,6 +52,8 @@ jobs:
         run: node scripts/test-paper-math-e2e.mjs
       - name: Exercise default directory settings and file writes
         run: node scripts/test-paper-directory-e2e.mjs
+      - name: Exercise read-only archive browsing
+        run: node scripts/test-paper-library-e2e.mjs
       - name: Exercise extension queue with synthetic pages only
         run: npm run test:browser-queue:e2e
       - name: Exercise branded settings and queue navigation
@@ -64,6 +68,7 @@ jobs:
           path: |
             /tmp/paper-image-zip-qa-*/review-*.png
             /tmp/paper-directory-qa-*/duplicate-*.png
+            /tmp/paper-library-qa-*/archives-*.png
 
   core:
     name: Core / ${{ matrix.os }} / Node ${{ matrix.node }}
