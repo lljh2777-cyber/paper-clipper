@@ -1,4 +1,11 @@
 {
+	"paperAttachmentsSelection": { "message": "补充附件（ZIP / 目录）：已选 $1 / $2" },
+	"paperAttachmentsProgress": { "message": "正在准备选中的 $1 个补充附件…" },
+	"paperAttachmentsSaved": { "message": "已保存补充附件 $1 个；未检查附件内容安全性。" },
+	"paperAttachmentsError_unsupported": { "message": "未保存：第 $1 个补充附件的地址、格式或响应不受支持，未发布归档。请回编辑器检查勾选项。" },
+	"paperAttachmentsError_limit": { "message": "未保存：补充附件超出限制（第 $1 个，0 表示勾选检查）。最多 20 个、单个 50 MiB、总计 100 MiB，未发布归档。" },
+	"paperAttachmentsError_download": { "message": "未保存：第 $1 个补充附件下载失败，未发布归档。可重试，或回编辑器调整勾选项。" },
+	"paperAttachmentsError_blocked": { "message": "未保存：第 $1 个补充附件需要访问权限或被拒绝。未使用浏览器登录凭据，也未发布归档；请核查权限或调整勾选项。" },
 	"paperLibrary": { "message": "归档列表" },
 	"paperLibrarySearch": { "message": "搜索标题、DOI、年份或目录名" },
 	"paperLibrarySort": { "message": "归档排序" },

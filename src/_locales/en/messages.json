@@ -1,4 +1,11 @@
 {
+	"paperAttachmentsSelection": { "message": "Supplementary files (ZIP / directory): $1 / $2 selected" },
+	"paperAttachmentsProgress": { "message": "Preparing $1 selected supplementary files..." },
+	"paperAttachmentsSaved": { "message": "Supplementary files saved: $1. Content safety has not been assessed." },
+	"paperAttachmentsError_unsupported": { "message": "Not saved: supplementary file $1 has an unsupported URL, format or response. No archive was published. Review the selection in the editor." },
+	"paperAttachmentsError_limit": { "message": "Not saved: supplementary file limits exceeded (file $1; 0 means selection). Maximum 20 files, 50 MiB each and 100 MiB total. No archive was published." },
+	"paperAttachmentsError_download": { "message": "Not saved: supplementary file $1 could not be downloaded. No archive was published. Retry, or change the selection in the editor." },
+	"paperAttachmentsError_blocked": { "message": "Not saved: supplementary file $1 requires access or was denied. Browser credentials were not used. No archive was published; review access or change the selection." },
 	"paperLibrary": { "message": "Archives" },
 	"paperLibrarySearch": { "message": "Search title, DOI, year or folder" },
 	"paperLibrarySort": { "message": "Sort archives" },

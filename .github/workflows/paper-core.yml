@@ -33,7 +33,7 @@ jobs:
       - name: Test queue service and snapshot client
         run: npm run test:browser-queue
       - name: Test manual image archives
-        run: npx vitest run src/utils/image-archive.test.ts src/utils/figure-links.test.ts src/utils/paper-directory.test.ts src/utils/paper-directory-handoff.test.ts src/utils/paper-zip-download.test.ts src/utils/manual-export-checks.test.ts src/core/paper-save.test.ts
+        run: npx vitest run src/utils/image-archive.test.ts src/utils/paper-attachments.test.ts src/utils/figure-links.test.ts src/utils/paper-directory.test.ts src/utils/paper-directory-handoff.test.ts src/utils/paper-zip-download.test.ts src/utils/manual-export-checks.test.ts src/core/paper-save.test.ts
       - name: Test stale side panel notifications
         run: npx vitest run src/utils/side-panel-lifecycle.test.ts
       - name: Test read-only archive catalog
@@ -48,6 +48,8 @@ jobs:
         run: node node_modules/playwright/cli.js install --with-deps chromium
       - name: Exercise manual image ZIP downloads
         run: node scripts/test-image-archive-e2e.mjs
+      - name: Exercise opt-in supplementary file downloads
+        run: node scripts/test-paper-attachments-e2e.mjs
       - name: Exercise MathJax preservation and formula rendering
         run: node scripts/test-paper-math-e2e.mjs
       - name: Exercise default directory settings and file writes
@@ -69,6 +71,7 @@ jobs:
             /tmp/paper-image-zip-qa-*/review-*.png
             /tmp/paper-directory-qa-*/duplicate-*.png
             /tmp/paper-library-qa-*/archives-*.png
+            /tmp/paper-attachments-qa-*/attachments-*.png
 
   core:
     name: Core / ${{ matrix.os }} / Node ${{ matrix.node }}

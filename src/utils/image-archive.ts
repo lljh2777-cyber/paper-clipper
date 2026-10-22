@@ -3,6 +3,7 @@ import type { RootContent, Definition } from 'mdast';
 import { zip, strToU8 } from 'fflate';
 import { normalizeDoi, paperFolderName, paperTranslationMetadata, type PaperIdentity } from './paper-bundle';
 import { imageDownloadCandidates } from './image-sources.mjs';
+import { preparePaperAttachments, type PaperAttachment } from './paper-attachments';
 import { unassessedManualExportChecks, markdownSha256, ManualExportCheckContext, ManualExportChecks } from './manual-export-report';
 
 const MAX_IMAGE = 20 * 1024 * 1024;
@@ -63,7 +64,7 @@ async function download(url: string, maxBytes = MAX_IMAGE): Promise<{ bytes: Uin
 
 export async function prepareImageFiles(markdown: string, source: string,
 	onProgress: (done: number, total: number) => void = () => {}, imageSources: Record<string, string> = {},
-	checkContext?: ManualExportCheckContext, figureLinks: Record<string, string> = {}): Promise<{ files: Record<string, Uint8Array>; imageCount: number; checks: ManualExportChecks }> {
+	checkContext?: ManualExportCheckContext, figureLinks: Record<string, string> = {}, attachments: PaperAttachment[] = []): Promise<{ files: Record<string, Uint8Array>; imageCount: number; checks: ManualExportChecks }> {
 	if (markdown.length > 5 * 1024 * 1024) throw new ImageArchiveError('limit');
 	const checks = checkContext?.inputSha256 === await markdownSha256(markdown) ? checkContext.report : unassessedManualExportChecks();
 	const frontmatter = markdown.match(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/)?.[0] ?? '';
@@ -114,6 +115,9 @@ export async function prepareImageFiles(markdown: string, source: string,
 			onProgress(index + 1, urls.length);
 		} catch (error) { throw new ImageArchiveError(error instanceof ImageArchiveError ? error.reason : 'download', index + 1); }
 	}
+	const supplements = await preparePaperAttachments(attachments);
+	Object.assign(files, supplements.files);
+	for (const [url, destination] of supplements.destinations) destinations.set(url, destination);
 	const escape = (text: string) => text.replace(/[\\[\]"]/g, '\\$&').replace(/\r?\n/g, ' ');
 	const edits: { start: number; end: number; replacement: string }[] = [];
 	for (const image of images) {
@@ -143,6 +147,7 @@ export async function prepareImageFiles(markdown: string, source: string,
 	}
 	files['paper.md'] = strToU8(markdown);
 	const finalChecks: ManualExportChecks = { ...checks,
+		...(supplements.count ? { attachments: { selected: supplements.count, downloaded: supplements.count, scope: 'http-type-signature', contentSafety: 'not-assessed' as const } } : {}),
 		images: { status: 'passed', scope: 'referenced-images-http-mime-signature', downloaded: urls.length,
 			originalFallbacks: selections.filter(item => item.selection === 'original-fallback').length },
 	};
@@ -157,11 +162,11 @@ export async function prepareImageFiles(markdown: string, source: string,
 
 export async function createImageArchive(markdown: string, title: string, source: string,
 	onProgress: (done: number, total: number) => void = () => {}, imageSources: Record<string, string> = {},
-	checkContext?: ManualExportCheckContext, identity: PaperIdentity = { doi: null, published: null }, figureLinks: Record<string, string> = {}): Promise<{ bytes: Uint8Array; fileName: string; imageCount: number; checks: ManualExportChecks }> {
+	checkContext?: ManualExportCheckContext, identity: PaperIdentity = { doi: null, published: null }, figureLinks: Record<string, string> = {}, attachments: PaperAttachment[] = []): Promise<{ bytes: Uint8Array; fileName: string; imageCount: number; checks: ManualExportChecks }> {
 	const doi = normalizeDoi(identity.doi);
 	if (identity.doi && !doi) throw new Error('Invalid paper DOI');
 	identity = { ...identity, doi };
-	const prepared = await prepareImageFiles(markdown, source, onProgress, imageSources, checkContext, figureLinks);
+	const prepared = await prepareImageFiles(markdown, source, onProgress, imageSources, checkContext, figureLinks, attachments);
 	const id = crypto.randomUUID();
 	const root = paperFolderName(title, identity, id);
 	const metadata = await paperTranslationMetadata({ title, source, identity }, prepared, id);

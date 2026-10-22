@@ -96,6 +96,17 @@ it('retries a pre-write image failure only on a click, with the original editor 
 });
 
 const zipInput = { format: 'zip' as const, title: 'Edited title', markdown: 'Edited source', source: '', identity: { doi: '10.1234/test', published: '2026-10-15' } };
+it.each(['download', 'blocked', 'unsupported', 'limit'] as const)('reports attachment %s failures without publishing, with network-only retry', async reason => {
+	const { AttachmentError } = await import('../utils/paper-attachments');
+	const attachments = [{ url: 'https://example.org/supplement.pdf', label: 'Supplement' }];
+	vi.mocked(takePaperDirectorySave).mockResolvedValue({ ...zipInput, attachments });
+	vi.mocked(createImageArchive).mockRejectedValueOnce(new AttachmentError(reason, 1));
+	await import('./paper-save');
+	await vi.waitFor(() => expect(status().textContent).toBe(`paperAttachmentsError_${reason}: 1`));
+	expect(downloadPaperZip).not.toHaveBeenCalled(); expect(close).not.toHaveBeenCalled();
+	expect(retry().hidden).toBe(reason !== 'download');
+	expect(vi.mocked(createImageArchive).mock.calls[0][8]).toEqual(attachments);
+});
 it('requests ZIP authorization only on a click and waits for download completion before closing', async () => {
 	vi.mocked(takePaperDirectorySave).mockResolvedValue(zipInput);
 	vi.mocked(hasZipDownloadPermission).mockResolvedValue(false);
@@ -108,7 +119,7 @@ it('requests ZIP authorization only on a click and waits for download completion
 	authorize().click();
 	await vi.waitFor(() => expect(downloadPaperZip).toHaveBeenCalledOnce());
 	expect(createImageArchive).toHaveBeenCalledWith(zipInput.markdown, zipInput.title, zipInput.source,
-		expect.any(Function), undefined, undefined, zipInput.identity, undefined);
+		expect.any(Function), undefined, undefined, zipInput.identity, undefined, undefined);
 	expect(close).not.toHaveBeenCalled();
 	expect(getPaperDirectory).not.toHaveBeenCalled();
 	complete('paper (1).zip');

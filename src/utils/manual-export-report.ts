@@ -17,6 +17,7 @@ export interface ManualExportChecks {
 	stages: { extraction: ManualChecks; template: ManualChecks; output: ManualChecks };
 	limitations: string[];
 	images?: { status: 'passed'; scope: string; downloaded: number; originalFallbacks: number };
+	attachments?: { selected: number; downloaded: number; scope: string; contentSafety: 'not-assessed' };
 }
 export const manualCheckLimitations = [
 	'Not proof of full-text access or article completeness.',

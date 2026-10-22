@@ -1,5 +1,9 @@
 # Default Paper Directory
 
+Optional [supplementary file selection](paper-attachments.md) adds checked files
+to `supplements/` using the same rules as ZIP. Existing archives and translations
+remain protected; attachment failure prevents creating a new output directory.
+
 Use [Archives](paper-library.md) from the extension or Settings to search the
 authorized root's recorded papers without opening or changing notes/translations.
 

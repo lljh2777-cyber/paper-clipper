@@ -24,6 +24,7 @@ import { sanitizeFileName } from '../utils/string-utils';
 import { saveFile } from '../utils/file-utils';
 import { collectImageSources } from '../utils/image-sources.mjs';
 import { collectFigureLinks } from '../utils/figure-links';
+import { resetAttachmentPicker, selectedPaperAttachments } from '../utils/attachment-picker';
 import { paperIdentity, paperDirectoryFailure } from '../utils/paper-directory';
 import { lastPaperSaveResult, openPaperDirectorySave } from '../utils/paper-directory-handoff';
 import { translatePage, getMessage, setupLanguageAndDirection } from '../utils/i18n';
@@ -681,6 +682,7 @@ async function waitForInterpreter(interpretBtn: HTMLButtonElement): Promise<void
 
 async function refreshFields(tabId: number, { checkTemplateTriggers = true, rebuildSkeleton = true }: { checkTemplateTriggers?: boolean; rebuildSkeleton?: boolean } = {}) {
 	manualExportPage = undefined;
+	resetAttachmentPicker();
 	if (templates.length === 0) {
 		console.warn('No templates available');
 		showError('noTemplates');
@@ -969,6 +971,7 @@ async function fillTemplateFieldValues(currentTabId: number, template: Template 
 			document: new DOMParser().parseFromString(exportPage.data.fullHtml, 'text/html'), source: exportPage.source,
 			extractedMarkdown: createMarkdownContent(exportPage.data.content, exportPage.source), templateMarkdown: noteContentField.value,
 		} } : undefined;
+		resetAttachmentPicker(manualExportPage?.snapshot);
 	}
 
 	if (generalSettings.interpreterEnabled) {
@@ -1367,13 +1370,14 @@ async function handleManualSave(format: 'directory' | 'zip') {
 		const title = (document.getElementById('note-name-field') as HTMLInputElement).value;
 		const properties = getPropertiesFromDOM();
 		const page = manualExportPage;
+		const attachments = selectedPaperAttachments();
 		const frontmatter = await generateFrontmatter(properties);
 		const source = page?.snapshot.source ?? '';
 		const identity = paperIdentity(page?.data.metaTags ?? [], properties, source, page?.data.published);
 		const imageSources = page ? collectImageSources(page.snapshot.document, source) : {};
 		const checkContext = await prepareManualExportChecks(page?.snapshot, frontmatter + markdown);
 		const figureLinks = page ? collectFigureLinks(page.snapshot.document, source) : {};
-		const input = { format, markdown: frontmatter + markdown, title, source, identity, imageSources, checkContext, figureLinks };
+		const input = { format, markdown: frontmatter + markdown, title, source, identity, imageSources, checkContext, figureLinks, attachments };
 		let receivedStatus = false;
 		const job = await openPaperDirectorySave(input, update => {
 			receivedStatus = true;

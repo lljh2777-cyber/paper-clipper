@@ -42,6 +42,21 @@ beforeEach(() => vi.stubGlobal('navigator', { locks: { request: async (_name: st
 afterEach(() => vi.unstubAllGlobals());
 
 describe('translation directory', () => {
+	it('prepares supplementary files before writes and protects an existing translated archive', async () => {
+		const parent = new Directory();
+		const attachments = [{ url: 'https://example.org/supplement.csv', label: 'Source data' }];
+		const fetcher = vi.fn(async () => new Response('x,y\n1,2', { headers: { 'Content-Type': 'text/csv' } })); vi.stubGlobal('fetch', fetcher);
+		const { folder } = await savePaperDirectory(asHandle(parent), { ...input, attachments });
+		const bundle = parent.directories.get(folder)!;
+		expect(new TextDecoder().decode(bundle.directories.get('supplements')!.files.get('attachment-1-supplement.csv') as ArrayBuffer)).toBe('x,y\n1,2');
+		expect(bundle.files.has('supplement-report.json')).toBe(true);
+		bundle.files.set('paper.zh-CN.md', 'Keep translation'); const before = [...bundle.files];
+		await expect(savePaperDirectory(asHandle(parent), { ...input, attachments })).rejects.toMatchObject({ reason: 'duplicate' });
+		expect([...bundle.files]).toEqual(before); expect(fetcher).toHaveBeenCalledOnce();
+		const empty = new Directory(); fetcher.mockResolvedValue(new Response('Denied', { status: 403 }));
+		await expect(savePaperDirectory(asHandle(empty), { ...input, attachments })).rejects.toMatchObject({ reason: 'blocked' });
+		expect(empty.directories.size).toBe(0);
+	});
 	it('distinguishes permission, image, write and unknown failures without leaking raw details', () => {
 		expect(paperDirectoryFailure(new DOMException('Private URL', 'SecurityError')).key).toBe('paperDirectoryError_permission');
 		expect(paperDirectoryFailure(new ImageArchiveError('download', 2))).toEqual({ key: 'paperDirectoryError_images', detail: '2' });

@@ -3,6 +3,7 @@ import { getMessage, setupLanguageAndDirection, translatePage } from '../utils/i
 import { authorizePaperDirectory, choosePaperDirectory, getPaperDirectory, paperDirectoryFailure, savePaperDirectory, WritableDirectory } from '../utils/paper-directory';
 import { PaperSaveInput, reportPaperDirectorySave, takePaperDirectorySave } from '../utils/paper-directory-handoff';
 import { createImageArchive, ImageArchiveError } from '../utils/image-archive';
+import { AttachmentError } from '../utils/paper-attachments';
 import { authorizeZipDownload, downloadPaperZip, hasZipDownloadPermission, PaperZipDownloadError } from '../utils/paper-zip-download';
 import { manualChecksMessageKey, ManualExportChecks } from '../utils/manual-export-report';
 import browser from '../utils/browser-polyfill';
@@ -49,6 +50,7 @@ function checkSummary(checks?: ManualExportChecks): { warning: boolean; message:
 		warning = true;
 		lines.push(getMessage('paperSaveImageFallback', String(checks.images.originalFallbacks)));
 	}
+	if (checks?.attachments) lines.push(getMessage('paperAttachmentsSaved', String(checks.attachments.downloaded)));
 	return { warning, message: lines.join('\n') };
 }
 
@@ -64,6 +66,9 @@ async function showFailure(error: unknown) {
 	if (error instanceof ImageArchiveError) {
 		status.textContent = getMessage(`paperSaveImageError_${error.reason}`, String(error.imageNumber));
 		// Image preparation precedes all filesystem/download side effects.
+		retry.hidden = !input || error.reason !== 'download';
+	} else if (error instanceof AttachmentError) {
+		status.textContent = getMessage(`paperAttachmentsError_${error.reason}`, String(error.attachmentNumber));
 		retry.hidden = !input || error.reason !== 'download';
 	} else if (error instanceof PaperZipDownloadError) {
 		status.textContent = getMessage(`paperZipError_${error.reason}`);
@@ -89,12 +94,12 @@ async function save() {
 	status.textContent = getMessage('paperDirectorySaving');
 	void reportPaperDirectorySave(requestId, { state: 'saving', message: status.textContent });
 	const progress = (done: number, total: number) => {
-		status.textContent = getMessage('imageArchiveProgress', [String(done), String(total)]);
+		status.textContent = done === total && input?.attachments?.length ? getMessage('paperAttachmentsProgress', String(input.attachments.length)) : getMessage('imageArchiveProgress', [String(done), String(total)]);
 		void reportPaperDirectorySave(requestId, { state: 'saving', message: status.textContent });
 	};
 	let checks: ManualExportChecks | undefined;
 	if (input!.format === 'zip') {
-				archive ??= await createImageArchive(input!.markdown, input!.title, input!.source, progress, input!.imageSources, input!.checkContext, input!.identity, input!.figureLinks);
+		archive ??= await createImageArchive(input!.markdown, input!.title, input!.source, progress, input!.imageSources, input!.checkContext, input!.identity, input!.figureLinks, input!.attachments);
 		status.textContent = getMessage('paperZipDownloading');
 		void reportPaperDirectorySave(requestId, { state: 'saving', message: status.textContent });
 		const savedName = await downloadPaperZip(archive.bytes, archive.fileName, () => {

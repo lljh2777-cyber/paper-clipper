@@ -1,5 +1,6 @@
 import { ImageArchiveError, prepareImageFiles } from './image-archive';
 import type { ManualExportCheckContext } from './manual-export-report';
+import type { PaperAttachment } from './paper-attachments';
 import { normalizeDoi, paperFolderName, paperTranslationMetadata, type PaperIdentity } from './paper-bundle';
 export { paperFolderName, type PaperIdentity } from './paper-bundle';
 
@@ -59,7 +60,7 @@ export async function authorizePaperDirectory(handle?: WritableDirectory): Promi
 	return handle;
 }
 
-export interface PaperDirectoryInput { markdown: string; title: string; source: string; identity: PaperIdentity; imageSources?: Record<string, string>; checkContext?: ManualExportCheckContext; figureLinks?: Record<string, string> }
+export interface PaperDirectoryInput { markdown: string; title: string; source: string; identity: PaperIdentity; imageSources?: Record<string, string>; checkContext?: ManualExportCheckContext; figureLinks?: Record<string, string>; attachments?: PaperAttachment[] }
 
 export function paperIdentity(meta: { name?: string | null; property?: string | null; content: string | null }[],
 	properties: { name: string; value: unknown }[], source: string, published?: string): PaperIdentity {
@@ -125,8 +126,8 @@ export async function savePaperDirectory(parent: WritableDirectory, input: Paper
 	const duplicates = await matchingArchives(parent, doi);
 	if (duplicates.length && !options.newVersion) throw new PaperDirectoryError('duplicate', duplicates.join('\n'));
 	if (await exists(parent, folder)) throw new PaperDirectoryError('exists', folder);
-	// Images must all succeed before any output directory or file is created.
-	const prepared = await prepareImageFiles(input.markdown, input.source, progress, input.imageSources, input.checkContext, input.figureLinks);
+	// Images and selected attachments must succeed before creating any output.
+	const prepared = await prepareImageFiles(input.markdown, input.source, progress, input.imageSources, input.checkContext, input.figureLinks, input.attachments);
 	const baseMetadata = await paperTranslationMetadata({ ...input, identity: { ...input.identity, doi } }, prepared, id);
 	return navigator.locks.request('paper-clipper-directory-write', async () => {
 		const previousArchives = await matchingArchives(parent, doi);
@@ -141,10 +142,12 @@ export async function savePaperDirectory(parent: WritableDirectory, input: Paper
 			directory = await parent.getDirectoryHandle(folder, { create: true });
 			await writeFile(directory, 'translation.json', JSON.stringify(metadata, null, 2) + '\n');
 			const images = await directory.getDirectoryHandle('images', { create: true });
+			const supplements = prepared.checks.attachments ? await directory.getDirectoryHandle('supplements', { create: true }) : undefined;
 			for (const [name, bytes] of Object.entries(prepared.files)) {
 				if (name === 'paper.md') continue;
-				if (name === 'image-report.json' || name === 'checks.json') await writeFile(directory, name, bytes);
-				else await writeFile(images, name.slice('images/'.length), bytes);
+				if (name.startsWith('images/')) await writeFile(images, name.slice('images/'.length), bytes);
+				else if (name.startsWith('supplements/') && supplements) await writeFile(supplements, name.slice('supplements/'.length), bytes);
+				else await writeFile(directory, name, bytes);
 			}
 			await writeFile(directory, 'paper.md', prepared.files['paper.md']);
 			metadata.archiveStatus = 'complete';

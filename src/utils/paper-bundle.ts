@@ -25,7 +25,8 @@ export async function paperTranslationMetadata(input: { title: string; source: s
 		sourceVersion: { algorithm: 'sha256', value: [...new Uint8Array(hash)].map(value => value.toString(16).padStart(2, '0')).join('') },
 		createdAt: new Date().toISOString(), status: 'not-started', model: null, completedSections: [], archiveStatus: 'writing',
 		acquisition: { method: 'extension-editor', completeness: prepared.checks.completeness, preservation: prepared.checks.preservation,
-			coverage: prepared.checks.coverage, images: prepared.imageCount, checksFile: 'checks.json' },
+			coverage: prepared.checks.coverage, images: prepared.imageCount, checksFile: 'checks.json',
+			...(prepared.checks.attachments ? { attachments: prepared.checks.attachments.downloaded, attachmentsReport: 'supplement-report.json' } : {}) },
 		translationChecks: 'not-run', humanReview: 'not-reviewed',
 	};
 }
