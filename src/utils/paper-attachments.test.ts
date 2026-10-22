@@ -4,12 +4,25 @@ import { unzipSync, strFromU8 } from 'fflate';
 import { collectPaperAttachments, preparePaperAttachments } from './paper-attachments';
 import { createImageArchive } from './image-archive';
 import { resetAttachmentPicker, selectedPaperAttachments } from './attachment-picker';
+import Defuddle from 'defuddle';
+import { createMarkdownContent } from 'defuddle/full';
+import { prepareDocumentForExtraction } from './publisher-figures';
+import * as fixture from '../../scripts/fixtures/paper-attachments.mjs';
 
 vi.mock('./i18n', () => ({ getMessage: (key: string, values: string[]) => `${key}: ${values.join('/')}` }));
 afterEach(() => { vi.unstubAllGlobals(); resetAttachmentPicker(); });
 const source = 'https://journal.example.org/article';
 const item = { url: 'https://journal.example.org/supplement.pdf?Signature=private', label: 'Supplementary information' };
 const pdf = '%PDF-1.4\nSynthetic supplementary material';
+
+it('retains the browser fixture links through the existing converter before localizing them', () => {
+	const page = new DOMParser().parseFromString(fixture.html, 'text/html');
+	const extracted = new Defuddle(prepareDocumentForExtraction(page, fixture.source), { url: fixture.source }).parse();
+	const markdown = createMarkdownContent(extracted.content, fixture.source);
+	expect(markdown).toContain(fixture.pdfUrl);
+	expect(markdown).toContain(fixture.csvUrl);
+	expect(markdown).toContain('https://files.example.org/article.pdf');
+});
 
 it('discovers explicit supported supplementary links, not the article PDF or arbitrary/executable links', () => {
 	document.body.innerHTML = `<a href="/article.pdf">Download PDF</a><a href="/random.csv">Other data</a>

@@ -6,6 +6,7 @@ import path from 'node:path';
 import { chromium } from 'playwright';
 import { unzipSync, strFromU8 } from 'fflate';
 import { authorizedDownloadExtension, configureZipDownloads, openSavePage, readCompletedZip } from './fixtures/manual-save.mjs';
+import { source, pdfUrl, csvUrl, pdf, csv, html } from './fixtures/paper-attachments.mjs';
 
 // Browser plugin not available. Run only in isolated hosted Chromium, never
 // against personal browser sessions, publisher captures or local paper folders.
@@ -15,11 +16,6 @@ const context = await chromium.launchPersistentContext(path.join(directory, 'pro
 	channel: 'chromium', headless: true, acceptDownloads: true,
 	args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
 });
-const source = 'https://journal.example.org/article';
-const pdfUrl = 'https://files.example.org/supplement.pdf?Signature=synthetic-secret';
-const csvUrl = 'https://files.example.org/table-s1.csv';
-const pdf = '%PDF-1.4\nSynthetic supplementary methods';
-const csv = 'sample,value\nA,10\nB,20\n';
 const requests = [];
 const errors = [];
 let failPdf = true;
@@ -31,15 +27,7 @@ try {
 		});
 	});
 	await context.route('https://raw.githubusercontent.com/**', route => route.fulfill({ contentType: 'application/json', body: '{}' }));
-	await context.route(source, route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head>
-		<title>Synthetic supplementary paper</title><meta name="citation_doi" content="10.1234/attachments">
-		<meta name="citation_publication_date" content="2026-10-22"></head><body><article>
-		<h1>Synthetic supplementary paper</h1><p>${'The synthetic measurements compare independent samples under controlled conditions. '.repeat(50)}</p>
-		<p><a href="https://files.example.org/article.pdf">Download PDF</a></p>
-		<h2>Supplementary information</h2><p>The methods and tabular measurements are available in
-		<a href="${pdfUrl}">Supplementary methods and experimental protocol</a> and
-		<a href="${csvUrl}">Supplementary Table S1: measurements</a>.</p>
-		</article></body></html>` }));
+	await context.route(source, route => route.fulfill({ contentType: 'text/html', body: html }));
 	await context.route('https://files.example.org/**', route => {
 		const url = route.request().url(); requests.push(url);
 		assert.equal(route.request().headers().cookie, undefined);
@@ -59,6 +47,10 @@ try {
 	await popup.waitForURL(`${origin}/popup.html`);
 	assert.equal(popup.url(), `${origin}/popup.html`);
 	await popup.waitForFunction(() => document.querySelector('#note-content-field')?.value.includes('synthetic measurements'));
+	// Keep these links inside ordinary prose: Defuddle intentionally removes some
+	// standalone link-dense blocks. This test covers archiving, not extractor policy.
+	assert.match(await popup.locator('#note-content-field').inputValue(), /files\.example\.org\/supplement\.pdf/);
+	assert.equal(await popup.title(), 'Paper Clipper');
 	await popup.locator('#paper-attachments summary').waitFor();
 	assert.equal(await popup.locator('#paper-attachments input').count(), 2);
 	assert.equal(await popup.locator('#paper-attachments input:checked').count(), 0);
@@ -78,6 +70,10 @@ try {
 		await popup.setViewportSize({ width, height });
 		assert.equal(await popup.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
 		assert.equal(await popup.locator('#paper-attachments input').nth(1).isVisible(), true);
+		assert.equal(await popup.locator('#more-btn').evaluate(button => {
+			const bounds = button.getBoundingClientRect();
+			return bounds.top >= 0 && bounds.bottom <= Math.min(innerHeight, document.body.getBoundingClientRect().bottom, document.documentElement.getBoundingClientRect().bottom);
+		}), true, 'Save controls must fit without programmatic scrolling');
 		await popup.screenshot({ path: path.join(directory, `attachments-${width}.png`) });
 	}
 	await popup.locator('#more-btn').click();

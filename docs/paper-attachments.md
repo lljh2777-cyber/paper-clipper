@@ -24,6 +24,8 @@ file's display label, local filename, byte count and SHA-256; it omits source
 URLs so signed query parameters are not copied into a new receipt. Matching
 Markdown links become relative links to the downloaded files. Other links,
 frontmatter and unused reference definitions are unchanged and may remain online.
+If extraction or editing removed a link, the selected file is still available in
+`supplements/` and its receipt; saving does not insert extra prose into the note.
 
 `checks.json` records attachment count and the limited HTTP/type/signature scope
 separately from article completeness, preservation and verification coverage.
