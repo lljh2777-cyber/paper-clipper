@@ -71,11 +71,11 @@ async function sendExtractRequest(tabId: number): Promise<ContentResponse> {
 		action: "sendMessageToTab",
 		tabId: tabId,
 		message: { action: "getPageContent" }
-	}) as ContentResponse & { success?: boolean; error?: string; code?: string };
+	}) as ContentResponse & { success?: boolean; error?: string; code?: string; formulaPreservation?: unknown };
 
 	// Check for explicit error from background script
 	if (response && 'success' in response && !response.success && response.error) {
-		throw Object.assign(new Error(response.error), { code: response.code });
+		throw Object.assign(new Error(response.error), { code: response.code, formulaPreservation: response.formulaPreservation });
 	}
 
 	if (response && response.content) {

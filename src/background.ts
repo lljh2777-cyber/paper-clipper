@@ -8,6 +8,7 @@ import { Settings } from './types/types';
 import { debugLog } from './utils/debug';
 import { incrementStat } from './utils/storage-utils';
 import { hasStoredHighlights } from './utils/url-utils';
+import { capturePageHtml } from './utils/page-html-export';
 
 const YOUTUBE_EMBED_RULE_ID = 9001;
 installPaperQueueBackground();
@@ -399,6 +400,13 @@ browser.runtime.onMessage.addListener((request: unknown) => {
 browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime.MessageSender, sendResponse: (response?: any) => void): true | undefined => {
 	if (typeof request === 'object' && request !== null) {
 		const typedRequest = request as { action: string; isActive?: boolean; hasHighlights?: boolean; tabId?: number; text?: string; section?: string; readerUrl?: string; url?: string };
+		if (typedRequest.action === 'captureMathSnapshot') {
+			if (sender.tab?.id === undefined || sender.frameId !== 0 || !/^https?:\/\//.test(sender.url ?? '')) return;
+			browser.scripting.executeScript({ target: { tabId: sender.tab.id, frameIds: [0] }, world: 'MAIN', func: capturePageHtml })
+				.then(results => sendResponse(results[0]?.result))
+				.catch(() => sendResponse({ error: 'htmlExportFailed' }));
+			return true;
+		}
 
 		if (typedRequest.action === 'loadContentScriptForHighlights') {
 			const tabId = sender.tab?.id;

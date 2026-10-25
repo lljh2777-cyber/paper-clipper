@@ -14,6 +14,7 @@ import { saveFile } from './utils/file-utils';
 import { debugLog } from './utils/debug';
 import { updateSidebarWidth, addResizeHandle, cleanupResizeHandlers } from './utils/iframe-resize';
 import { parseForClip } from './utils/clip-utils';
+import { captureDocumentWithMath } from './utils/page-html-export';
 
 declare global {
 	interface Window {
@@ -155,9 +156,9 @@ declare global {
 		}
 
 		if (request.action === "copyMarkdownToClipboard") {
-			flattenShadowDom(document).then(() => {
+			flattenShadowDom(document).then(async () => {
 				try {
-					const defuddled = parseForClip(document);
+					const defuddled = parseForClip(await captureDocumentWithMath(document));
 
 					// Convert HTML content to markdown
 					const markdown = createMarkdownContent(defuddled.content, document.URL);
@@ -182,7 +183,7 @@ declare global {
 		if (request.action === "saveMarkdownToFile") {
 			flattenShadowDom(document).then(async () => {
 				try {
-					const defuddled = parseForClip(document);
+					const defuddled = parseForClip(await captureDocumentWithMath(document));
 					const markdown = createMarkdownContent(defuddled.content, document.URL);
 					const title = defuddled.title || document.title || 'Untitled';
 					const fileName = title.replace(/[/\\?%*:|"<>]/g, '-');
@@ -217,13 +218,14 @@ declare global {
 
 				// Use parseAsync to ensure async variables like {{transcript}} are available.
 				// If it hangs (e.g. another extension has corrupted fetch), fall back to sync parse.
-				const defuddle = new Defuddle(prepareDocumentForExtraction(document, document.URL), { url: document.URL });
+				const extractionDoc = await captureDocumentWithMath(document);
+				const defuddle = new Defuddle(prepareDocumentForExtraction(extractionDoc, document.URL), { url: document.URL });
 				const parseTimeout = new Promise<never>((_, reject) =>
 					setTimeout(() => reject(new Error('parseAsync timeout')), 8000)
 				);
 				const defuddled = await Promise.race([defuddle.parseAsync(), parseTimeout])
 					.catch(() => defuddle.parse());
-				assertMathPreserved(document, createMarkdownContent(defuddled.content, document.URL));
+				assertMathPreserved(extractionDoc, createMarkdownContent(defuddled.content, document.URL));
 				const extractedContent: { [key: string]: string } = {
 					...defuddled.variables,
 				};
@@ -231,7 +233,7 @@ declare global {
 				// Create a new DOMParser
 				const parser = new DOMParser();
 				// Parse the document's HTML
-				const doc = parser.parseFromString(document.documentElement.outerHTML, 'text/html');
+				const doc = parser.parseFromString(extractionDoc.documentElement.outerHTML, 'text/html');
 				retainMathForSnapshot(doc);
 
 				// Remove all script and style elements
@@ -297,8 +299,11 @@ declare global {
 				highlighter.updatePageDomainSettings({ site: defuddled.site, favicon: defuddled.favicon });
 				sendResponse(response);
 			}).catch((error: unknown) => {
-				console.error('[Paper Clipper] getPageContent error:', error);
+				if (error instanceof Error && 'code' in error && error.code === 'formula-preservation') {
+					console.warn('[Paper Clipper] Extraction stopped:', error.message);
+				} else console.error('[Paper Clipper] getPageContent error:', error);
 				sendResponse({ success: false, error: error instanceof Error ? error.message : String(error),
+					formulaPreservation: error instanceof Error && 'formulaPreservation' in error ? error.formulaPreservation : undefined,
 					code: error instanceof Error && 'code' in error ? error.code : undefined });
 			});
 			return true;

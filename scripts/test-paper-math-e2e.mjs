@@ -8,6 +8,7 @@ import { parseHTML } from 'linkedom';
 import { unzipSync, strFromU8 } from 'fflate';
 import temml from 'temml';
 import { mathHtml } from './fixtures/mathjax.mjs';
+import { runtimeMathHtml, installSyntheticMathJax } from './fixtures/mathjax-runtime.mjs';
 import { checkMathPreservation, mathInventory } from '../src/utils/paper-math.mjs';
 import { authorizedDownloadExtension, configureZipDownloads, openSavePage, readCompletedZip } from './fixtures/manual-save.mjs';
 
@@ -15,7 +16,10 @@ import { authorizedDownloadExtension, configureZipDownloads, openSavePage, readC
 // Flow: synthetic page -> actual extension popup -> ZIP -> rendered formulas.
 const directory = await mkdtemp(path.join(tmpdir(), 'paper-math-qa-'));
 const extension = await authorizedDownloadExtension(directory);
-const server = createServer((request, response) => { response.setHeader('Content-Type', 'text/html; charset=utf-8'); response.end(mathHtml); });
+const server = createServer((request, response) => {
+	response.setHeader('Content-Type', 'text/html; charset=utf-8');
+	response.end(request.url === '/lazy' ? runtimeMathHtml.replace('</body>', `<script>(${installSyntheticMathJax.toString()})();</script></body>`) : mathHtml);
+});
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const url = `http://127.0.0.1:${server.address().port}/synthetic-math`;
 const context = await chromium.launchPersistentContext(path.join(directory, 'profile'), {
@@ -24,6 +28,7 @@ const context = await chromium.launchPersistentContext(path.join(directory, 'pro
 });
 try {
 	await context.route('https://**', route => route.fulfill({ contentType: 'application/json', body: '{}' }));
+	await context.route('https://images.example.org/math-figure.png', route => route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jGZkAAAAASUVORK5CYII=', 'base64') }));
 	const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
 	const origin = `chrome-extension://${new URL(worker.url()).hostname}`;
 	await worker.evaluate(() => chrome.storage.local.set({ language: 'en' }));
@@ -35,6 +40,10 @@ try {
 	await worker.evaluate(url => chrome.tabs.create({ url, active: false }), `${origin}/popup.html`);
 	const popup = await next;
 	const errors = [];
+	const consoleErrors = [];
+	const observeConsole = page => page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()); });
+	observeConsole(article);
+	observeConsole(popup);
 	popup.on('pageerror', error => errors.push(error.message));
 	await popup.waitForFunction(() => document.querySelector('#note-content-field')?.value.includes('The spaced matrix is:'));
 	const markdown = await popup.locator('#note-content-field').inputValue();
@@ -69,15 +78,50 @@ try {
 	assert.deepEqual(errors, []);
 	// A recognized but unsupported source must show its formula error, not a
 	// misleading extension-startup error or a successful incomplete note.
-	await article.evaluate(() => document.querySelector('mjx-math').innerHTML = '<mjx-msqrt></mjx-msqrt>');
+	await article.evaluate(() => {
+		document.querySelector('mjx-math').innerHTML = '<mjx-msqrt></mjx-msqrt>';
+		const extra = document.createElement('p');
+		extra.innerHTML = '<mjx-container><mjx-lazy></mjx-lazy></mjx-container>'.repeat(100);
+		document.querySelector('article').append(extra);
+	});
 	await popup.close();
 	await article.bringToFront();
 	const opening = context.waitForEvent('page');
 	await worker.evaluate(url => chrome.tabs.create({ url, active: false }), `${origin}/popup.html`);
 	const rejected = await opening;
+	observeConsole(rejected);
 	await rejected.locator('.error-message').filter({ hasText: 'formula(s) could not be safely converted' }).waitFor();
+	assert.match(await rejected.locator('.error-message').textContent(), /101 formula/);
+	assert.ok((await rejected.locator('.error-message').textContent()).length < 200);
+	for (const [label, width, height] of [['desktop', 1100, 900], ['mobile', 390, 844]]) {
+		await rejected.setViewportSize({ width, height });
+		const bounds = await rejected.locator('.error-message').boundingBox();
+		assert.ok(bounds && bounds.y >= 0 && bounds.y + bounds.height <= height);
+		await rejected.screenshot({ path: path.join(directory, `error-${label}.png`) });
+	}
+	await rejected.close();
+	await article.goto(new URL('/lazy', url).href);
+	await article.bringToFront();
+	assert.equal(await article.locator('mjx-lazy').count(), 5);
+	assert.equal(await article.locator('[data-paper-mathml], mjx-container[data-latex]').count(), 0);
+	const lazyOpening = context.waitForEvent('page');
+	await worker.evaluate(url => chrome.tabs.create({ url, active: false }), `${origin}/popup.html`);
+	const lazyPopup = await lazyOpening;
+	observeConsole(lazyPopup);
+	lazyPopup.on('pageerror', error => errors.push(error.message));
+	await lazyPopup.waitForFunction(() => document.querySelector('#note-content-field')?.value.includes('bold caption text'));
+	assert.equal(checkMathPreservation(parseHTML(runtimeMathHtml).document, await lazyPopup.locator('#note-content-field').inputValue()).matched, 5);
+	assert.equal(await article.locator('[data-paper-mathml], mjx-container[data-latex]').count(), 0);
+	await lazyPopup.locator('#more-btn').click();
+	const lazySave = await openSavePage(context, () => lazyPopup.locator('#save-image-archive').click());
+	const lazyArchive = unzipSync((await readCompletedZip(worker, lazySave, downloads)).bytes);
+	const lazyChecks = JSON.parse(strFromU8(lazyArchive[Object.keys(lazyArchive).find(key => key.endsWith('/checks.json'))]));
+	for (const stage of ['extraction', 'template', 'output']) assert.equal(lazyChecks.stages[stage].math.matched, 5);
+	assert.equal(checkMathPreservation(parseHTML(runtimeMathHtml).document, strFromU8(lazyArchive[Object.keys(lazyArchive).find(key => key.endsWith('/paper.md'))])).matched, 5);
+	assert.deepEqual(errors, []);
+	assert.deepEqual(consoleErrors, []);
 	console.log(JSON.stringify({ passed: true, directory, sourceFormulas: mathInventory(source).length,
-		checks: ['extension-popup', 'zip-roundtrip', 'tex-rendering', 'matrix-rows-and-columns', 'desktop-and-mobile', 'no-runtime-errors', 'unsupported-error-visible'] }));
+		checks: ['extension-popup', 'zip-roundtrip', 'tex-rendering', 'matrix-rows-and-columns', 'desktop-and-mobile', 'no-runtime-errors', 'unsupported-error-visible', 'main-world-lazy-source', 'caption-occurrences', 'numbered-equations'] }));
 } finally {
 	await context.close();
 	server.closeAllConnections();

@@ -2,11 +2,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import browser from './browser-polyfill';
 import { saveFile } from './file-utils';
-import { capturePageHtml, exportPageHtml, PageHtmlSnapshot } from './page-html-export';
+import { capturePageHtml, exportPageHtml, captureDocumentWithMath, PageHtmlSnapshot } from './page-html-export';
+import { runtimeMathHtml, installSyntheticMathJax } from '../../scripts/fixtures/mathjax-runtime.mjs';
+import { checkMathPreservation, mathInventory } from './paper-math.mjs';
+import { parseForClip } from './clip-utils';
+import { createMarkdownContent } from 'defuddle/full';
 
 vi.mock('./browser-polyfill', () => ({ default: {
 	scripting: { executeScript: vi.fn() },
-	runtime: { getManifest: () => ({ version: '1.7.1' }) },
+	runtime: { getManifest: () => ({ version: '1.7.1' }), sendMessage: vi.fn() },
 } }));
 vi.mock('./file-utils', () => ({ saveFile: vi.fn() }));
 
@@ -30,6 +34,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	vi.unstubAllGlobals();
+	delete (window as any).MathJax;
 	document.documentElement.className = '';
 	document.head.replaceChildren();
 	document.body.replaceChildren();
@@ -93,7 +98,7 @@ describe('HTML export downloads', () => {
 		const captured = snapshot();
 		vi.mocked(browser.scripting.executeScript).mockResolvedValue([{ frameId: 0, result: { snapshot: captured } }]);
 		await exportPageHtml(42, url);
-		expect(browser.scripting.executeScript).toHaveBeenCalledWith({ target: { tabId: 42, frameIds: [0] }, func: capturePageHtml });
+		expect(browser.scripting.executeScript).toHaveBeenCalledWith({ target: { tabId: 42, frameIds: [0] }, world: 'MAIN', func: capturePageHtml });
 		const [html, json] = vi.mocked(saveFile).mock.calls.map(call => call[0]);
 		expect(html.content).toBe(captured.html);
 		expect(html.mimeType).toBe('text/html');
@@ -135,5 +140,57 @@ describe('HTML export downloads', () => {
 		vi.mocked(saveFile).mockImplementation(async options => { options.onError!(new Error('Download failed')); });
 		await expect(exportPageHtml(42, url)).rejects.toThrow('Download failed');
 		expect(saveFile).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('retained MathJax input capture', () => {
+	it('captures lazy MathML and TeX by DOM identity without scrolling or changing the live page', () => {
+		document.documentElement.innerHTML = runtimeMathHtml;
+		installSyntheticMathJax();
+		const before = document.documentElement.outerHTML;
+		const injected = new Function(`return (${capturePageHtml.toString()})();`);
+		const captured = new DOMParser().parseFromString(injected().snapshot.html, 'text/html');
+		expect(mathInventory(captured)).toHaveLength(5);
+		const markdown = createMarkdownContent(parseForClip(captured).content, url);
+		expect(checkMathPreservation(captured, markdown)).toMatchObject({ status: 'passed', expected: 5, matched: 5 });
+		expect(markdown).toContain('bold caption text');
+		expect(markdown).toContain('\\left\\|x\\right\\|');
+		expect(markdown).toContain('\\begin{aligned}');
+		expect(markdown).toContain('(2)');
+		expect(document.documentElement.outerHTML).toBe(before);
+	});
+
+	it('ignores detached, mismatched, oversized and unsafe runtime inputs', () => {
+		document.body.innerHTML = '<mjx-container><mjx-lazy></mjx-lazy></mjx-container>';
+		const target = document.querySelector('mjx-container')!;
+		const bad = [
+			{ typesetRoot: target.cloneNode(true), math: '<math><mi>x</mi></math>' },
+			{ typesetRoot: target, math: '<math><script>unsafe()</script></math>' },
+			{ typesetRoot: target, math: '<math><annotation-xml><html>bad</html></annotation-xml></math>' },
+			{ typesetRoot: target, math: '<math><mi>' + 'x'.repeat(200001) + '</mi></math>' },
+			{ typesetRoot: target, math: '<math><mi>x</mi></math>', inputJax: { name: 'Unknown' } },
+		];
+		for (const item of bad) {
+			(window as any).MathJax = { startup: { document: { math: [{ display: false, inputJax: { name: 'MathML' }, ...item }] } } };
+			const captured = new DOMParser().parseFromString(snapshot().html, 'text/html');
+			expect(captured.querySelector('[data-paper-mathml], [data-latex]')).toBeNull();
+			expect(checkMathPreservation(captured, '').status).toBe('failed');
+		}
+	});
+
+	it('uses a same-page captured document and fails closed on snapshot errors or navigation', async () => {
+		document.documentElement.innerHTML = runtimeMathHtml;
+		installSyntheticMathJax();
+		const captured = snapshot();
+		vi.mocked(browser.runtime.sendMessage).mockResolvedValue({ snapshot: captured });
+		const copy = await captureDocumentWithMath(document);
+		expect(copy).not.toBe(document);
+		expect(copy.URL).toBe(document.URL);
+		expect(mathInventory(copy).every(item => !item.error)).toBe(true);
+		vi.mocked(browser.runtime.sendMessage).mockResolvedValue({ snapshot: { ...captured, url: url + 'different' } });
+		expect(await captureDocumentWithMath(document)).toBe(document);
+		vi.mocked(browser.runtime.sendMessage).mockRejectedValue(new Error('Unsupported browser'));
+		expect(await captureDocumentWithMath(document)).toBe(document);
+		expect(checkMathPreservation(document, '').status).toBe('failed');
 	});
 });

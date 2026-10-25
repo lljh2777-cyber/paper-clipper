@@ -770,7 +770,9 @@ async function refreshFields(tabId: number, { checkTemplateTriggers = true, rebu
 			throw new Error('Unable to extract page content.');
 		}
 	} catch (error) {
-		console.error('Error refreshing fields:', error);
+		if (error instanceof Error && 'code' in error && error.code === 'formula-preservation') {
+			console.warn('[Paper Clipper] Extraction stopped:', error.message);
+		} else console.error('Error refreshing fields:', error);
 		const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
 		showError(errorMessage);
 	}

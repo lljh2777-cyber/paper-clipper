@@ -72,6 +72,8 @@ jobs:
             /tmp/paper-directory-qa-*/duplicate-*.png
             /tmp/paper-library-qa-*/archives-*.png
             /tmp/paper-attachments-qa-*/attachments-*.png
+            /tmp/paper-math-qa-*/error-*.png
+            /tmp/paper-math-qa-*/formulas-*.png
 
   core:
     name: Core / ${{ matrix.os }} / Node ${{ matrix.node }}

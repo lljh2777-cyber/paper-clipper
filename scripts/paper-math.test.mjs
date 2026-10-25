@@ -5,6 +5,7 @@ import { parseHTML } from 'linkedom';
 import { mathInventory, prepareMath, checkMathPreservation } from '../src/utils/paper-math.mjs';
 import { assessPaper } from './paper-validation.mjs';
 import { mathHtml, container, token } from './fixtures/mathjax.mjs';
+import { runtimeMathHtml } from './fixtures/mathjax-runtime.mjs';
 
 const parse = html => parseHTML(html).document;
 const expected = document => mathInventory(document).map(({ latex, block }) => block ? `\n$$\n${latex}\n$$\n` : `$${latex}$`).join('\n\n');
@@ -83,4 +84,11 @@ test('formula loss is a source-preservation failure, not proof of incomplete sou
 test('the built CLI retains synthetic formulas through the shared extraction pipeline', () => {
 	const markdown = execFileSync(process.execPath, ['dist/cli.cjs', 'https://example.org/paper', '--html', '-', '-t', 'src/utils/fixtures/templates/minimal.json'], { input: mathHtml, encoding: 'utf8' });
 	assert.equal(checkMathPreservation(parse(mathHtml), markdown).status, 'passed');
+});
+
+test('the built CLI retains lazy-source snapshots, rich captions, norm bars and aligned rows', () => {
+	const markdown = execFileSync(process.execPath, ['dist/cli.cjs', 'https://pmc.ncbi.nlm.nih.gov/articles/synthetic/', '--html', '-', '-t', 'src/utils/fixtures/templates/minimal.json'], { input: runtimeMathHtml, encoding: 'utf8' });
+	assert.equal(checkMathPreservation(parse(runtimeMathHtml), markdown).matched, 5);
+	assert.match(markdown, /bold caption text/);
+	assert.match(markdown, /\\begin\{aligned\}/);
 });

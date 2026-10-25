@@ -96,7 +96,7 @@ export class PaperTaskTab {
 				const signature = probe?.ready ? `${probe.url}:${probe.size}` : '';
 				stable = signature && signature === prior ? stable + 1 : 0; prior = signature;
 				if (stable >= 3) {
-					const result = (await browser.scripting.executeScript({ target: { tabId: id, frameIds: [0] }, func: capturePageHtml }))[0]?.result as { snapshot?: PageHtmlSnapshot; error?: string } | undefined;
+					const result = (await browser.scripting.executeScript({ target: { tabId: id, frameIds: [0] }, world: 'MAIN', func: capturePageHtml }))[0]?.result as { snapshot?: PageHtmlSnapshot; error?: string } | undefined;
 					if (!result?.snapshot) throw new Error(result?.error ?? 'Snapshot failed.');
 					if (result.snapshot.url !== probe?.url) throw new Error('Page navigated during capture.');
 					this.owned.capturedUrl = result.snapshot.url;

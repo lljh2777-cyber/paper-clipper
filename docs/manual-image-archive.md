@@ -163,6 +163,9 @@ were not modified; these counts do not establish universal publisher coverage.
 
 ## Limits
 
+See [MathJax capture and formula preservation](mathjax-preservation.md) for lazy
+formulas, rich captions and numbered-equation handling.
+
 - PNG, JPEG, GIF, WebP and AVIF with matching response type and file signature.
 - Maximum 200 distinct images, 20 MiB per response, 100 MiB saved image data,
   5 MiB Markdown characters, and 15 seconds per candidate request (at most two

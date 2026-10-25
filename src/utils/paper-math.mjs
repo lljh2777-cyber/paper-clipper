@@ -128,8 +128,20 @@ export function mathInventory(document) {
 	return Array.from(document.querySelectorAll('mjx-container')).filter(el => !el.closest(excluded)).map((element, index) => {
 		const id = element.closest('.display-formula')?.id || `mathjax-${index + 1}`;
 		try {
-			const sourceMath = element.querySelector('math');
-			const annotation = element.querySelector('annotation[encoding="application/x-tex"]');
+			let sourceMath = element.querySelector('math');
+			const savedMath = element.getAttribute('data-paper-mathml');
+			if (savedMath) {
+				if (savedMath.length > 200000) fail('MathML source exceeds snapshot limit');
+				const template = document.createElement('template');
+				template.innerHTML = savedMath;
+				const root = template.content.firstElementChild;
+				const allowed = new Set(['math', 'semantics', 'annotation', 'mrow', 'mi', 'mn', 'mo', 'mtext', 'ms', 'mspace', 'msub', 'msup', 'msubsup', 'munder', 'mover', 'munderover', 'mfrac', 'msqrt', 'mroot', 'mtable', 'mtr', 'mtd', 'mlabeledtr', 'mfenced', 'mstyle', 'mpadded', 'mphantom', 'menclose', 'mmultiscripts', 'mprescripts', 'none']);
+				if (!root || name(root) !== 'math' || template.content.children.length !== 1 ||
+					[root, ...root.querySelectorAll('*')].some(node => !allowed.has(name(node)) ||
+						Array.from(node.attributes).some(attr => /^on|href|src/i.test(attr.name)))) fail('Invalid captured MathML source');
+				sourceMath = root;
+			}
+			const annotation = sourceMath?.querySelector('annotation[encoding="application/x-tex"]') || element.querySelector('annotation[encoding="application/x-tex"]');
 			const sibling = element.nextElementSibling;
 			const script = sibling?.matches('script[type="math/tex"], script[type="math/tex; mode=display"]') ? sibling : null;
 			const explicit = element.getAttribute('data-latex') || element.getAttribute('data-tex') ||
@@ -150,6 +162,11 @@ export function mathInventory(document) {
 			if (!latex?.trim()) fail('Empty formula conversion');
 			const block = element.getAttribute('display') === 'true' || sourceMath?.getAttribute('display') === 'block' ||
 				script?.getAttribute('type') === 'math/tex; mode=display' || !!element.closest('.display-formula, .MathJax_Display');
+			// Defuddle represents an unfenced display MathML table as an aligned
+			// equation. Normalize the source the same way, retaining every cell,
+			// row and token; fenced matrices and nested environments stay intact.
+			const rows = block && latex.match(/^\\begin\{matrix\}([\s\S]*?)\\end\{matrix\}$/);
+			if (rows && !/\\begin\{/.test(rows[1])) latex = `\\begin{aligned}\n${rows[1].trim()}\n\\end{aligned}`;
 			return { element, id, math, latex, block, script };
 		} catch (error) { return { element, id, error: error.message }; }
 	});
@@ -168,7 +185,9 @@ export function retainMathForSnapshot(document) {
 export function prepareMath(document) {
 	const inventory = mathInventory(document);
 	const unsupported = inventory.filter(item => item.error);
-	if (unsupported.length) throw Object.assign(new Error(`Paper Clipper: ${unsupported.length} formula(s) could not be safely converted (${unsupported.map(item => `${item.id}: ${item.error}`).join('; ')}). Keep/export the source HTML for review.`), { code: 'formula-preservation' });
+	if (unsupported.length) throw Object.assign(new Error(`Paper Clipper: ${unsupported.length} formula(s) could not be safely converted. Keep/export the source HTML for review.`), {
+		code: 'formula-preservation', formulaPreservation: checkMathPreservation(document, '')
+	});
 	for (const { element, math, latex, block, script } of inventory) {
 		math.setAttribute('xmlns', 'http://www.w3.org/1998/Math/MathML');
 		math.setAttribute('data-latex', latex);
@@ -178,6 +197,32 @@ export function prepareMath(document) {
 		if (element.id) math.id = element.id;
 		element.replaceWith(math);
 		script?.remove();
+	}
+	// Figure reconstruction otherwise flattens rich caption math into plain
+	// text. Preserve only affected captions beside their figure on this copy.
+	for (const caption of Array.from(document.querySelectorAll('figure figcaption'))) {
+		if (!caption.querySelector('math[data-latex]')) continue;
+		const content = document.createElement('div');
+		content.setAttribute('data-defuddle', 'true');
+		content.append(...Array.from(caption.childNodes));
+		caption.closest('figure').after(content);
+		caption.remove();
+	}
+	// PMC uses a one-row table solely to align an equation and its number.
+	// A Markdown table escapes TeX norm bars and breaks multi-line equations.
+	// Unwrap only this exact layout; genuine data tables remain unchanged.
+	for (const table of Array.from(document.querySelectorAll('table.disp-formula'))) {
+		const cells = Array.from(table.querySelectorAll('td'));
+		if (table.querySelectorAll('tr').length !== 1 || table.querySelector('th, table') || cells.length !== 2 ||
+			!cells[0].matches('.formula') || !cells[1].matches('.label') || !/^\(\d+[a-z]?\)$/.test(cells[1].textContent.trim()) ||
+			cells[0].children.length !== 1 || !cells[0].firstElementChild.matches('math[display="block"]') ||
+			Array.from(cells[0].childNodes).some(node => node.nodeType === 3 && node.textContent.trim())) continue;
+		const wrapper = document.createElement('div');
+		if (table.id) wrapper.id = table.id;
+		const label = document.createElement('p');
+		label.textContent = cells[1].textContent.trim();
+		wrapper.append(cells[0].firstElementChild, label);
+		table.replaceWith(wrapper);
 	}
 }
 

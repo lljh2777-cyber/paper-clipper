@@ -5,7 +5,8 @@ import { createMarkdownContent } from 'defuddle/full';
 import { clip } from '../api';
 import { parseForClip } from './clip-utils';
 import { prepareDocumentForExtraction } from './publisher-figures';
-import { checkMathPreservation, retainMathForSnapshot } from './paper-math.mjs';
+import { checkMathPreservation, retainMathForSnapshot, prepareMath } from './paper-math.mjs';
+import { runtimeMathHtml } from '../../scripts/fixtures/mathjax-runtime.mjs';
 import { mathHtml } from '../../scripts/fixtures/mathjax.mjs';
 
 const url = 'https://www.cell.com/cell/fulltext/synthetic-math';
@@ -61,4 +62,32 @@ test('manual save and API use the same math protection', async () => {
 	} });
 	expect(checkMathPreservation(source, manual).status).toBe('passed');
 	expect(checkMathPreservation(source, result.content).status).toBe('passed');
+});
+
+test('lazy-source normalization preserves caption occurrences, numbered equations and actual data tables', async () => {
+	const source = new DOMParser().parseFromString(runtimeMathHtml, 'text/html');
+	const before = source.documentElement.outerHTML;
+	const markdown = createMarkdownContent(parseForClip(source).content, url);
+	expect(checkMathPreservation(source, markdown)).toMatchObject({ status: 'passed', expected: 5, matched: 5 });
+	expect(source.documentElement.outerHTML).toBe(before);
+	expect(checkMathPreservation(source, markdown.replace('$\\mathbf{Q}_{i}$', ''))).toMatchObject({ status: 'failed', matched: 4 });
+	expect(checkMathPreservation(source, markdown.replace('\\left\\|x\\right\\|', 'x')).status).toBe('failed');
+	expect(checkMathPreservation(source, markdown.replace('\\begin{aligned}', '\\begin{matrix}')).status).toBe('failed');
+	const result = await clip({ html: runtimeMathHtml, url, documentParser: new DOMParser(), template: {
+		id: 'math', name: 'Math', behavior: 'create', noteNameFormat: '{{title}}', path: '', noteContentFormat: '{{content}}', properties: []
+	} });
+	expect(checkMathPreservation(source, result.content).status).toBe('passed');
+	const data = new DOMParser().parseFromString('<table class="disp-formula"><tr><td class="formula"><math display="block"><mi>x</mi></math>extra data</td><td class="label">(1)</td></tr></table>', 'text/html');
+	const table = data.querySelector('table')!.outerHTML;
+	prepareMath(data);
+	expect(data.querySelector('table')!.outerHTML).toBe(table);
+});
+
+test('unsupported input has a bounded message and complete structured diagnostics', () => {
+	const source = new DOMParser().parseFromString('<mjx-container><mjx-lazy></mjx-lazy></mjx-container>'.repeat(101), 'text/html');
+	try { prepareMath(source); throw new Error('expected rejection'); } catch (error: any) {
+		expect(error.message).toContain('101 formula(s)');
+		expect(error.message.length).toBeLessThan(200);
+		expect(error.formulaPreservation.unsupported).toHaveLength(101);
+	}
 });

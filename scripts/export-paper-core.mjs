@@ -26,7 +26,7 @@ export const coreFiles = [
 	...modules.flatMap(name => [`scripts/${name}.mjs`, `scripts/${name}.test.mjs`]),
 	...extras.map(name => `scripts/${name}.mjs`),
 	'scripts/clip-vault.test.mjs', 'scripts/fixtures/paper-acceptance.json', 'scripts/fixtures/nature-review.mjs',
-	'scripts/paper-math.test.mjs', 'scripts/fixtures/mathjax.mjs',
+	'scripts/paper-math.test.mjs', 'scripts/fixtures/mathjax.mjs', 'scripts/fixtures/mathjax-runtime.mjs',
 	...documents.map(name => `docs/${name}.md`),
 	'skills/paper-clipper/SKILL.md', 'skills/paper-clipper/agents/openai.yaml',
 ];
