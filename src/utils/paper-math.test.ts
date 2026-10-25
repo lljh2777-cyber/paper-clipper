@@ -5,7 +5,7 @@ import { createMarkdownContent } from 'defuddle/full';
 import { clip } from '../api';
 import { parseForClip } from './clip-utils';
 import { prepareDocumentForExtraction } from './publisher-figures';
-import { checkMathPreservation, retainMathForSnapshot, prepareMath } from './paper-math.mjs';
+import { checkMathPreservation, retainMathForSnapshot, prepareMath, mathInventory } from './paper-math.mjs';
 import { runtimeMathHtml } from '../../scripts/fixtures/mathjax-runtime.mjs';
 import { mathHtml } from '../../scripts/fixtures/mathjax.mjs';
 
@@ -70,7 +70,9 @@ test('lazy-source normalization preserves caption occurrences, numbered equation
 	const markdown = createMarkdownContent(parseForClip(source).content, url);
 	expect(checkMathPreservation(source, markdown)).toMatchObject({ status: 'passed', expected: 5, matched: 5 });
 	expect(source.documentElement.outerHTML).toBe(before);
-	expect(checkMathPreservation(source, markdown.replace('$\\mathbf{Q}_{i}$', ''))).toMatchObject({ status: 'failed', matched: 4 });
+	expect(checkMathPreservation(source, markdown.replace(`$${mathInventory(source)[0].latex}$`, ''))).toMatchObject({ status: 'failed', matched: 4 });
+	expect(markdown).toContain('\\text{sample} \\_ \\text{ctrl}');
+	expect(markdown).not.toContain('\\underline');
 	expect(checkMathPreservation(source, markdown.replace('\\left\\|x\\right\\|', 'x')).status).toBe('failed');
 	expect(checkMathPreservation(source, markdown.replace('\\begin{aligned}', '\\begin{matrix}')).status).toBe('failed');
 	const result = await clip({ html: runtimeMathHtml, url, documentParser: new DOMParser(), template: {

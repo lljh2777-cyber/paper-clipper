@@ -24,6 +24,8 @@ Two source-backed layout corrections prevent loss during extraction:
 Unfenced display MathML tables use the same `aligned` representation as the
 existing converter. Fenced matrices, row/cell contents, fonts, occurrence counts
 and inline/display distinctions continue to be checked.
+Literal underscore operators in identifiers are escaped as `\_`; they are not
+the `\underline` accent command. Actual under/over accents retain their role.
 
 ## Verification boundaries
 

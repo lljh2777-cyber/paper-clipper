@@ -8,8 +8,23 @@ const variants = new Set(['normal', 'italic', 'bold', 'bold-italic', 'double-str
 const name = node => node.localName.toLowerCase();
 const children = node => Array.from(node.children);
 const fail = detail => { throw new Error(detail); };
-const toLatex = math => MathMLToLaTeX.convert(math)
-	.replace(/\\mathbf\{\\mathit\{([^{}]*)\}\}/g, '\\boldsymbol{$1}');
+function toLatex(math) {
+	// mathml-to-latex maps a literal underscore operator to the accent command
+	// \underline without an argument. Protect literal tokens, while leaving
+	// actual under/over accents untouched.
+	if (/PCUNDERSCORE/.test(math.textContent ?? '')) fail('Reserved formula token in source');
+	const copy = math.cloneNode(true);
+	for (const operator of copy.querySelectorAll('mo')) {
+		if (operator.textContent !== '_' || (['munder', 'mover', 'munderover'].includes(name(operator.parentElement)) &&
+			operator !== operator.parentElement.firstElementChild)) continue;
+		const token = math.ownerDocument.createElement('mi');
+		token.textContent = 'PCUNDERSCORE';
+		operator.replaceWith(token);
+	}
+	return MathMLToLaTeX.convert(copy.outerHTML)
+		.replaceAll('PCUNDERSCORE', '\\_')
+		.replace(/\\mathbf\{\\mathit\{([^{}]*)\}\}/g, '\\boldsymbol{$1}');
+}
 
 function reconstruct(root) {
 	const doc = root.ownerDocument;
@@ -109,10 +124,10 @@ function reconstruct(root) {
 		const wrapper = element('math', [base.cloneNode(true)]);
 		const token = element('mi');
 		token.textContent = `PCGROUP${grouped.length}END`;
-		grouped.push(`{${toLatex(wrapper.outerHTML)}}`);
+		grouped.push(`{${toLatex(wrapper)}}`);
 		base.replaceWith(token);
 	}
-	let latex = toLatex(forLatex.outerHTML);
+	let latex = toLatex(forLatex);
 	for (const [index, tex] of [...grouped.entries()].reverse()) latex = latex.replaceAll(`PCGROUP${index}END`, tex);
 	for (const [index, space] of spaces.entries()) latex = latex.replaceAll(`PCSPACE${index}END`, space.latex);
 	for (const token of math.querySelectorAll('[data-paper-space]')) {
@@ -153,7 +168,7 @@ export function mathInventory(document) {
 				if (!math.textContent) math.textContent = latex;
 			} else if (sourceMath) {
 				math = sourceMath.cloneNode(true);
-				latex = toLatex(math.outerHTML);
+				latex = toLatex(math);
 			} else {
 				const roots = children(element).filter(el => name(el) === 'mjx-math');
 				if (roots.length !== 1) fail('No recoverable MathML, TeX or supported CHTML tree');

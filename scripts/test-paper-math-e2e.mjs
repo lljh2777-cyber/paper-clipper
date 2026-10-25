@@ -118,6 +118,12 @@ try {
 	const lazyChecks = JSON.parse(strFromU8(lazyArchive[Object.keys(lazyArchive).find(key => key.endsWith('/checks.json'))]));
 	for (const stage of ['extraction', 'template', 'output']) assert.equal(lazyChecks.stages[stage].math.matched, 5);
 	assert.equal(checkMathPreservation(parseHTML(runtimeMathHtml).document, strFromU8(lazyArchive[Object.keys(lazyArchive).find(key => key.endsWith('/paper.md'))])).matched, 5);
+	const lazyFormulas = mathInventory(parseHTML(runtimeMathHtml).document);
+	await preview.setContent('<!doctype html><title>Lazy formula preview</title><style>body{font:18px Georgia;margin:24px}section{margin:24px 0}</style><h1>Retained formula input</h1>' + lazyFormulas.map(item =>
+		`<section>${temml.renderToString(item.latex, { displayMode: item.block, throwOnError: true })}</section>`).join(''));
+	assert.equal(await preview.locator('math').count(), 5);
+	assert.equal(await preview.locator('merror').count(), 0);
+	await preview.screenshot({ path: path.join(directory, 'formulas-lazy.png'), fullPage: true });
 	assert.deepEqual(errors, []);
 	assert.deepEqual(consoleErrors, []);
 	console.log(JSON.stringify({ passed: true, directory, sourceFormulas: mathInventory(source).length,

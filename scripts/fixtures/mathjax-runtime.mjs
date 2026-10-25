@@ -1,7 +1,7 @@
 // Synthetic examples of MathJax's retained input and lazy rendering. No paper text.
 const mml = (body, display = false) => `<mjx-container display="${display}" data-paper-mathml="${(`<math display="${display ? 'block' : 'inline'}">${body}</math>`).replaceAll('&', '&amp;').replaceAll('"', '&quot;')}"><mjx-lazy></mjx-lazy></mjx-container>`;
 const norm = '<mo>∥</mo><mi>x</mi><mo>∥</mo>';
-const variable = '<msub><mi mathvariant="bold">Q</mi><mi>i</mi></msub>';
+const variable = '<msub><mi mathvariant="bold">Q</mi><mrow><mtext>sample</mtext><mo>_</mo><mtext>ctrl</mtext></mrow></msub>';
 const prose = 'This synthetic experiment documents independent observations and repeatable measurements of a mathematical model. '.repeat(35);
 export const runtimeMathHtml = `<html><head><title>Synthetic lazy formulas</title></head><body><article><h1>Synthetic lazy formulas</h1>
 <h2>Results</h2><p>${prose}</p><p>The observed score ${mml(variable)} is retained inline.</p>
