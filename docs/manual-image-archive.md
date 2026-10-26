@@ -181,3 +181,18 @@ formulas, rich captions and numbered-equation handling.
   remain unchanged; the error does not print signed URLs or credentials.
 - No private publisher captures are included in tests. Synthetic Chromium
   coverage does not establish compatibility with every publisher or browser.
+
+## PMC article headers and figure titles
+
+On `pmc.ncbi.nlm.nih.gov`, the duplicate top-of-article byline is removed from
+the extraction copy only when every displayed name is already present in
+`citation_author` metadata. Metadata, author notes, affiliations, copyright
+information, scientific prose and bibliography are not removed by this rule.
+If the metadata does not cover the byline, the original byline remains.
+
+PMC figure headings (`figure.fig > .obj_head`) are preserved before their image,
+and panel paragraphs retain their rich text and links after the image. This
+applies to manual clipping, ZIP/directory exports and the shared CLI/API
+converter. It does not rewrite existing archives or translations. Regression
+fixtures are synthetic; an actual publisher page still needs source-specific
+acceptance when its structure differs.

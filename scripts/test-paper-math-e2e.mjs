@@ -7,8 +7,10 @@ import { chromium } from 'playwright';
 import { parseHTML } from 'linkedom';
 import { unzipSync, strFromU8 } from 'fflate';
 import temml from 'temml';
+import { marked } from 'marked';
 import { mathHtml } from './fixtures/mathjax.mjs';
 import { runtimeMathHtml, installSyntheticMathJax } from './fixtures/mathjax-runtime.mjs';
+import { pmcHtml, pmcUrl } from './fixtures/pmc.mjs';
 import { checkMathPreservation, mathInventory } from '../src/utils/paper-math.mjs';
 import { authorizedDownloadExtension, configureZipDownloads, openSavePage, readCompletedZip } from './fixtures/manual-save.mjs';
 
@@ -28,7 +30,8 @@ const context = await chromium.launchPersistentContext(path.join(directory, 'pro
 });
 try {
 	await context.route('https://**', route => route.fulfill({ contentType: 'application/json', body: '{}' }));
-	await context.route('https://images.example.org/math-figure.png', route => route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jGZkAAAAASUVORK5CYII=', 'base64') }));
+	await context.route(pmcUrl, route => route.fulfill({ contentType: 'text/html', body: pmcHtml }));
+	await context.route(/^https:\/\/images\.example\.org\/(?:math-figure|figure)\.png$/, route => route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jGZkAAAAASUVORK5CYII=', 'base64') }));
 	const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
 	const origin = `chrome-extension://${new URL(worker.url()).hostname}`;
 	await worker.evaluate(() => chrome.storage.local.set({ language: 'en' }));
@@ -124,10 +127,47 @@ try {
 	assert.equal(await preview.locator('math').count(), 5);
 	assert.equal(await preview.locator('merror').count(), 0);
 	await preview.screenshot({ path: path.join(directory, 'formulas-lazy.png'), fullPage: true });
+	// Use the real publisher URL but fulfill it only with the synthetic fixture.
+	await lazyPopup.close();
+	await article.goto(pmcUrl);
+	await article.bringToFront();
+	const pmcOpening = context.waitForEvent('page');
+	await worker.evaluate(url => chrome.tabs.create({ url, active: false }), `${origin}/popup.html`);
+	const pmcPopup = await pmcOpening;
+	observeConsole(pmcPopup);
+	pmcPopup.on('pageerror', error => errors.push(error.message));
+	await pmcPopup.waitForFunction(() => document.querySelector('#note-content-field')?.value.includes('Figure 1. Synthetic experimental workflow.'));
+	const pmcMarkdown = await pmcPopup.locator('#note-content-field').inputValue();
+	assert.equal(pmcMarkdown.split('Figure 1. Synthetic experimental workflow.').length, 2);
+	assert.doesNotMatch(pmcMarkdown, /\/author\/|Find articles by|Open in a new tab/);
+	assert.match(pmcMarkdown, /Ada Example is also mentioned/);
+	assert.equal(await article.locator('.cg').count(), 1);
+	assert.equal(await article.locator('figure > .obj_head').count(), 1);
+	await pmcPopup.locator('#more-btn').click();
+	const pmcSave = await openSavePage(context, () => pmcPopup.locator('#save-image-archive').click());
+	const pmcArchive = unzipSync((await readCompletedZip(worker, pmcSave, downloads)).bytes);
+	const pmcSaved = strFromU8(pmcArchive[Object.keys(pmcArchive).find(key => key.endsWith('/paper.md'))]);
+	assert.equal(pmcSaved.split('Figure 1. Synthetic experimental workflow.').length, 2);
+	assert.match(pmcSaved, /!\[Figure 1\.\]\(images\//);
+	assert.match(pmcSaved, /Ada Example/); // Metadata/body mentions survive.
+	assert.doesNotMatch(pmcSaved, /\/author\/|Find articles by/);
+	// Show the relevant exported passage, without the long synthetic prose.
+	const imagePath = pmcSaved.match(/!\[Figure 1\.\]\((images\/[^)]+)\)/)[1];
+	const imageKey = Object.keys(pmcArchive).find(key => key.endsWith(`/${imagePath}`));
+	const passage = pmcSaved.slice(pmcSaved.indexOf('Figure 1. Synthetic experimental workflow.'), pmcSaved.indexOf('After figure marker.'))
+		.replace(imagePath, `data:image/png;base64,${Buffer.from(pmcArchive[imageKey]).toString('base64')}`);
+	await preview.setContent('<!doctype html><title>PMC exported figure</title><style>body{font:18px Georgia;margin:24px;line-height:1.6}img{width:240px;height:100px;background:#e0f0ed}</style>' + marked.parse(passage));
+	for (const [label, width, height] of [['desktop', 1100, 900], ['mobile', 390, 844]]) {
+		await preview.setViewportSize({ width, height });
+		assert.equal(await preview.locator('p').filter({ hasText: 'Figure 1. Synthetic experimental workflow.' }).count(), 1);
+		assert.equal(await preview.locator('sub').textContent(), '2');
+		assert.equal(await preview.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+		await preview.screenshot({ path: path.join(directory, `pmc-${label}.png`) });
+	}
 	assert.deepEqual(errors, []);
 	assert.deepEqual(consoleErrors, []);
 	console.log(JSON.stringify({ passed: true, directory, sourceFormulas: mathInventory(source).length,
-		checks: ['extension-popup', 'zip-roundtrip', 'tex-rendering', 'matrix-rows-and-columns', 'desktop-and-mobile', 'no-runtime-errors', 'unsupported-error-visible', 'main-world-lazy-source', 'caption-occurrences', 'numbered-equations'] }));
+		checks: ['extension-popup', 'zip-roundtrip', 'tex-rendering', 'matrix-rows-and-columns', 'desktop-and-mobile', 'no-runtime-errors', 'unsupported-error-visible', 'main-world-lazy-source', 'caption-occurrences', 'numbered-equations', 'pmc-metadata-and-figure-title'] }));
 } finally {
 	await context.close();
 	server.closeAllConnections();

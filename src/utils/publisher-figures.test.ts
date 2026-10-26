@@ -6,6 +6,7 @@ import { clip } from '../api';
 import { parseForClip } from './clip-utils';
 import { prepareDocumentForExtraction } from './publisher-figures';
 import type { Template } from '../types/types';
+import { pmcHtml, pmcUrl } from '../../scripts/fixtures/pmc.mjs';
 
 const url = 'https://www.nature.com/articles/figure-fixture';
 const paragraph = 'This scientific article describes cells, spatial domains and the experimental method. '.repeat(100);
@@ -16,6 +17,53 @@ const figure = `<figure><figcaption><b id="Fig1">Fig. 1: Model overview.</b></fi
 const html = `<!doctype html><html><head><title>Figure fixture</title></head><body><article><h1>Figure fixture</h1><h2>Results</h2><p>${paragraph}</p>${figure}<p>After figure marker.</p><h2>Methods</h2><p>${paragraph}</p></article></body></html>`;
 const template: Template = { id: 'test', name: 'Test', behavior: 'create', noteNameFormat: '{{title}}', path: '', noteContentFormat: '{{content}}', properties: [] };
 const makeDocument = () => new DOMParser().parseFromString(html, 'text/html');
+
+describe('PMC header and figure preservation', () => {
+	test('only deduplicates mapped header names on PMC and preserves source, notes and prose', () => {
+		const source = new DOMParser().parseFromString(pmcHtml, 'text/html');
+		const before = source.documentElement.outerHTML;
+		const prepared = prepareDocumentForExtraction(source, pmcUrl);
+		expect(source.documentElement.outerHTML).toBe(before);
+		expect(prepared.querySelector('.cg')).toBeNull();
+		expect(prepared.querySelectorAll('meta[name="citation_author"]')).toHaveLength(2);
+		expect(prepared.body.textContent).toContain('Author contributions must remain.');
+		expect(prepared.body.textContent).toContain('Open access attribution must remain.');
+		expect(prepared.body.textContent).toContain('Ada Example is also mentioned');
+		expect(prepared.body.textContent).toContain('Ada Example. Synthetic reference.');
+		expect(prepareDocumentForExtraction(prepared, pmcUrl)).toBe(prepared);
+		for (const host of ['https://example.org/', 'https://pmc.ncbi.nlm.nih.gov.example.org/']) {
+			expect(prepareDocumentForExtraction(source, host)).toBe(source);
+		}
+		const missing = new DOMParser().parseFromString(pmcHtml.replace('name="citation_author" content="Ben Sample"', 'name="other" content="Ben Sample"'), 'text/html');
+		expect(prepareDocumentForExtraction(missing, pmcUrl).querySelector('.cg')).not.toBeNull();
+		const unknown = new DOMParser().parseFromString(pmcHtml.replace('<sup>2</sup></div>', '<sup>2</sup>, Unmapped contributor</div>'), 'text/html');
+		expect(prepareDocumentForExtraction(unknown, pmcUrl).querySelector('.cg')).not.toBeNull();
+	});
+	test('retains figure titles and rich panels through sync, async, manual and API conversion', async () => {
+		const source = new DOMParser().parseFromString(pmcHtml, 'text/html');
+		Object.defineProperty(source, 'URL', { value: pmcUrl });
+		const manual = parseForClip(source);
+		expect(manual.author).toContain('Ada Example');
+		expect(manual.author).toContain('Ben Sample');
+		const output = [createMarkdownContent(manual.content, pmcUrl),
+			(await clip({ html: pmcHtml, url: pmcUrl, template, documentParser: new DOMParser() })).content];
+		for (const asyncMode of [false, true]) {
+			const parser = new Defuddle(prepareDocumentForExtraction(source, pmcUrl), { url: pmcUrl });
+			output.push(createMarkdownContent((asyncMode ? await parser.parseAsync() : parser.parse()).content, pmcUrl));
+		}
+		for (const md of output) {
+			expect(md.match(/Figure 1\. Synthetic experimental workflow\./g)).toHaveLength(1);
+			expect(md.indexOf('Figure 1. Synthetic experimental workflow.')).toBeLessThan(md.indexOf('![Figure 1.]'));
+			expect(md.indexOf('(A) Synthetic workflow.')).toBeGreaterThan(md.indexOf('![Figure 1.]'));
+			expect(md.indexOf('(B) Measured')).toBeLessThan(md.indexOf('After figure marker.'));
+			expect(md).toMatch(/\[Figure S1\]\((?:https:\/\/pmc\.ncbi\.nlm\.nih\.gov\/articles\/PMC1234567\/)?#SD1\)/);
+			expect(md).not.toContain('/author/');
+			expect(md).not.toContain('Find articles by');
+			expect(md).not.toContain('Open in a new tab');
+			expect(md).toContain('Ada Example is also mentioned');
+		}
+	});
+});
 
 function expectLegend(markdown: string) {
 	expect(markdown).toContain('**a**, Detailed panel description');

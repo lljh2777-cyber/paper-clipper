@@ -6,6 +6,46 @@ const cellLegendSelector = 'figure.graphic figcaption .figure__caption__text__co
 const bibliographySelector = '.biblioentry .citations[id]';
 const extendedImageSelector = '.c-article-supplementary__item h3 a[data-supp-info-image]';
 
+function preparePmc(document: Document): void {
+	// Only remove the header byline when every displayed name is already in
+	// citation metadata. Do not remove affiliations, author notes or body prose.
+	const normalize = (value: string) => value.normalize('NFKC').replace(/\s+/g, ' ').trim();
+	const authors = new Set(Array.from(document.querySelectorAll('meta[name="citation_author"]'))
+		.map(meta => normalize(meta.getAttribute('content') ?? '')).filter(Boolean));
+	for (const group of Array.from(document.querySelectorAll('article > section[aria-label="Article citation and metadata"] .front-matter .ameta > .cg'))) {
+		const names = Array.from(group.querySelectorAll(':scope > a > .name, :scope > .name')).map(name => normalize(name.textContent ?? ''));
+		const remainder = group.cloneNode(true) as Element;
+		remainder.querySelectorAll('a:has(.name), .name, sup, [hidden]').forEach(node => node.remove());
+		if (names.length && names.every(name => authors.has(name)) && /^[\s,;]*$/.test(remainder.textContent ?? '')) group.remove();
+	}
+	for (const figure of Array.from(document.querySelectorAll('article figure.fig'))) {
+		const titles = Array.from(figure.children).filter(el => el.matches('h2.obj_head, h3.obj_head, h4.obj_head, h5.obj_head, h6.obj_head'));
+		if (titles.length !== 1 || !figure.querySelector('img') || !titles[0].textContent?.trim()) continue;
+		// PMC puts the title outside figcaption. Defuddle rebuilds the figure
+		// from its image and caption, so preserve this title as an adjacent block.
+		const title = document.createElement('p');
+		title.setAttribute('data-defuddle', 'true');
+		if (titles[0].id) title.id = titles[0].id;
+		title.append(...Array.from(titles[0].childNodes));
+		figure.before(title);
+		titles[0].remove();
+		for (const control of Array.from(figure.children).filter(el => el.matches('.p.text-right'))) {
+			const link = control.firstElementChild;
+			if (control.children.length === 1 && link?.matches('a') && control.textContent?.trim() === 'Open in a new tab' &&
+				figure.id && link.getAttribute('href') === `figure/${figure.id}/`) control.remove();
+		}
+		// Keep panel paragraphs, sub/superscripts and links as rich content.
+		const caption = Array.from(figure.children).find(el => el.matches('figcaption'));
+		if (caption) {
+			const content = document.createElement('div');
+			content.setAttribute('data-defuddle', 'true');
+			content.append(...Array.from(caption.childNodes));
+			figure.after(content);
+			caption.remove();
+		}
+	}
+}
+
 function prepareCellFigures(document: Document): void {
 	for (const legend of Array.from(document.querySelectorAll(cellLegendSelector))) {
 		const figure = legend.closest('figure');
@@ -95,6 +135,12 @@ export function prepareDocumentForExtraction(document: Document, url: string): D
 	try {
 		hostname = new URL(url).hostname;
 	} catch { return document; }
+	if (hostname === 'pmc.ncbi.nlm.nih.gov') {
+		if (!document.querySelector('article .front-matter .ameta > .cg, article figure.fig .obj_head')) return document;
+		const prepared = document.cloneNode(true) as Document;
+		preparePmc(prepared);
+		return prepared;
+	}
 	if (/(^|\.)cell\.com$/.test(hostname)) {
 		if (!document.querySelector([citationSelector, cellLegendSelector, `${bibliographySelector} .citation-content`].join(', '))) return document;
 		const prepared = document.cloneNode(true) as Document;

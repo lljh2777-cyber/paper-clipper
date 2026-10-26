@@ -2,6 +2,16 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { execFileSync } from 'node:child_process';
 import { checkFigureCaptions } from './paper-captions.mjs';
+import { pmcHtml, pmcUrl } from './fixtures/pmc.mjs';
+
+test('PMC CLI preserves figure titles, rich panels and metadata while removing only the duplicated byline', () => {
+	const output = execFileSync(process.execPath, ['dist/cli.cjs', pmcUrl, '--html', '-', '-t', 'src/utils/fixtures/templates/minimal.json'], { input: pmcHtml, encoding: 'utf8' });
+	assert.equal(output.split('Figure 1. Synthetic experimental workflow.').length, 2);
+	assert.ok(output.indexOf('Figure 1. Synthetic experimental workflow.') < output.indexOf('![Figure 1.]'));
+	assert.match(output, /\[Figure S1\]\((?:https:\/\/pmc\.ncbi\.nlm\.nih\.gov\/articles\/PMC1234567\/)?#SD1\)/);
+	assert.doesNotMatch(output, /\/author\/|Find articles by|Open in a new tab/);
+	assert.match(output, /Ada Example is also mentioned/);
+});
 
 const url = 'https://www.nature.com/articles/fixture';
 const html = '<html><body><figure><figcaption>Fig. 1: Overview.</figcaption><img src="/figure.png"><div class="c-article-section__figure-description" id="figure-1-desc"><p><b>a</b>, Full legend with <a href="/data">data</a>.</p><p><b>b</b>, Second panel.</p></div></figure></body></html>';
