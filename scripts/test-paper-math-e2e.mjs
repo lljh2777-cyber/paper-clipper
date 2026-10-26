@@ -8,6 +8,7 @@ import { parseHTML } from 'linkedom';
 import { unzipSync, strFromU8 } from 'fflate';
 import temml from 'temml';
 import { marked } from 'marked';
+import { fromMarkdown } from 'mdast-util-from-markdown';
 import { mathHtml } from './fixtures/mathjax.mjs';
 import { runtimeMathHtml, installSyntheticMathJax } from './fixtures/mathjax-runtime.mjs';
 import { pmcHtml, pmcUrl } from './fixtures/pmc.mjs';
@@ -148,11 +149,14 @@ try {
 	const pmcArchive = unzipSync((await readCompletedZip(worker, pmcSave, downloads)).bytes);
 	const pmcSaved = strFromU8(pmcArchive[Object.keys(pmcArchive).find(key => key.endsWith('/paper.md'))]);
 	assert.equal(pmcSaved.split('Figure 1. Synthetic experimental workflow.').length, 2);
-	assert.match(pmcSaved, /!\[Figure 1\.\]\(images\//);
+	const savedImages = fromMarkdown(pmcSaved).children.flatMap(block => block.children ?? []).filter(node => node.type === 'image');
+	assert.equal(savedImages.length, 1);
+	assert.equal(savedImages[0].alt, 'Figure 1.');
+	assert.match(savedImages[0].url, /^images\//);
 	assert.match(pmcSaved, /Ada Example/); // Metadata/body mentions survive.
 	assert.doesNotMatch(pmcSaved, /\/author\/|Find articles by/);
 	// Show the relevant exported passage, without the long synthetic prose.
-	const imagePath = pmcSaved.match(/!\[Figure 1\.\]\((images\/[^)]+)\)/)[1];
+	const imagePath = savedImages[0].url;
 	const imageKey = Object.keys(pmcArchive).find(key => key.endsWith(`/${imagePath}`));
 	const passage = pmcSaved.slice(pmcSaved.indexOf('Figure 1. Synthetic experimental workflow.'), pmcSaved.indexOf('After figure marker.'))
 		.replace(imagePath, `data:image/png;base64,${Buffer.from(pmcArchive[imageKey]).toString('base64')}`);
