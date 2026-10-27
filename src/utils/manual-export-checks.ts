@@ -1,6 +1,7 @@
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import type { Root, RootContent, Definition } from 'mdast';
 import { checkMathPreservation } from './paper-math.mjs';
+import { cellCitation, cellCaptionForCheck } from './cell-citations.mjs';
 import { ManualCheck as Check, ManualChecks as Checks, ManualExportChecks, ManualExportCheckContext,
 	manualCheckLimitations, markdownSha256, unassessedManualExportChecks } from './manual-export-report';
 
@@ -65,12 +66,13 @@ function checked(scope: string, results: { id: string; reason?: string; notCover
 function sourceLinks(element: Element, url: string): string[] {
 	return Array.from(element.querySelectorAll('a[href]')).map(link => absolute(link.getAttribute('href')!, url));
 }
-function hasLinks(element: Element, block: ReturnType<typeof markdownView>['blocks'][number], view: ReturnType<typeof markdownView>, url: string): boolean {
+function hasLinks(element: Element, block: ReturnType<typeof markdownView>['blocks'][number], view: ReturnType<typeof markdownView>, url: string, references = new Map<string, string>()): boolean {
 	return sourceLinks(element, url).every(href => {
 		if (!href) return false;
 		if (block.links.includes(href)) return true;
 		const target = new URL(href), article = new URL(url);
-		const number = target.origin === article.origin && target.pathname === article.pathname ? target.hash.match(/^#ref-CR(\d+)$/)?.[1] : undefined;
+		const number = target.origin === article.origin && target.pathname === article.pathname
+			? target.hash.match(/^#ref-CR(\d+)$/)?.[1] ?? references.get(target.hash.slice(1)) : undefined;
 		return !!number && block.raw.includes(`[^${number}]`) && view.footnotes.get(number)?.length === 1 && !!view.footnotes.get(number)![0].text;
 	});
 }
@@ -80,6 +82,36 @@ function inspect(snapshot: ManualExportSnapshot, markdown: string): Checks {
 	const host = new URL(source).hostname;
 	const cell = /(^|\.)cell\.com$/.test(host), nature = /(^|\.)nature\.com$/.test(host);
 	const view = markdownView(markdown, source);
+	// Tables with merged cells remain HTML. Read only visible table citations,
+	// not arbitrary HTML/code that could hide a missing prose reference.
+	const tableUses: string[] = [], tableText: string[] = [];
+	for (const block of view.blocks.filter(block => block.type === 'html')) {
+		const fragment = document.createElement('template');
+		fragment.innerHTML = block.raw;
+		const table = fragment.content.firstElementChild;
+		if (fragment.content.children.length !== 1 || !table?.matches('table') || table.matches('[hidden], [aria-hidden="true"], [style]') ||
+			Array.from(fragment.content.childNodes).some(node => node.nodeType === 3 && node.textContent?.trim())) continue;
+		table.querySelectorAll('pre, code, script, style, template, [hidden], [aria-hidden="true"], [style]').forEach(node => node.remove());
+		for (const link of Array.from(table.querySelectorAll('sup > a[href]'))) {
+			const number = link.getAttribute('href')?.match(/^#fn:(\d+)$/)?.[1];
+			if (number && link.textContent?.trim() === number) {
+				tableUses.push(number);
+				link.replaceWith(document.createTextNode(`[^${number}]`));
+			}
+		}
+		tableText.push(table.textContent ?? '');
+	}
+	const entries = cell ? Array.from(document.querySelectorAll('.biblioentry .citations[id]')).filter(entry => /^bib\d+$/.test(entry.id)) : [];
+	const referenceNumbers = new Map<string, string>();
+	for (const entry of entries) {
+		const copy = entry.cloneNode(true) as Element;
+		copy.querySelector('.citation-content > .label')?.remove();
+		if (!copy.querySelector('.citation-content')) continue;
+		const expected = canonical(copy.textContent ?? '');
+		const matches = [...view.footnotes.entries()].filter(([, definitions]) => definitions.length === 1 && definitions[0].text === expected &&
+			sourceLinks(copy, source).every(link => definitions[0].links.includes(link)));
+		if (expected && matches.length === 1) referenceNumbers.set(entry.id, matches[0][0]);
+	}
 	const captionScope = 'cell-nature-caption-paragraphs-links-order-v1';
 	const captions = cell || nature ? checked(captionScope, Array.from(document.querySelectorAll(cell
 		? 'figure.graphic figcaption .figure__caption__text__content' : 'figure .c-article-section__figure-description')).map((legend, i) => {
@@ -92,28 +124,49 @@ function inspect(snapshot: ManualExportSnapshot, markdown: string): Checks {
 		if (titles.length !== 1) return { id, reason: 'missing-or-ambiguous-caption-title' };
 		const intact = paragraphs.every((paragraph, index) => {
 			const block = view.blocks[titles[0] + index + 1];
-			const expected = canonical(paragraph.textContent ?? '');
-			return !!expected && block?.type === 'paragraph' && block.text === expected && hasLinks(paragraph, block, view, source);
+			const scientific = cell ? cellCaptionForCheck(paragraph, referenceNumbers) : paragraph;
+			const expected = canonical(scientific.textContent ?? '');
+			return !!expected && block?.type === 'paragraph' && block.text === expected && hasLinks(scientific, block, view, source, referenceNumbers);
 		});
 		return { id, ...(!intact && { reason: 'caption-text-link-or-order-differs' }) };
 	})) : uncovered(captionScope, 'unsupported-publisher');
 
-	const referenceScope = 'cell-full-bibliography-and-inline-counts-v1';
-	const references = cell ? checked(referenceScope, Array.from(document.querySelectorAll('.biblioentry .citations[id]')).filter(entry => /^bib\d+$/.test(entry.id)).map((entry, i) => {
+	const referenceScope = 'cell-bibliography-labels-and-inline-counts-v2';
+	const references = cell ? checked(referenceScope, entries.map((entry, i) => {
 		const id = `reference-${i + 1}`;
 		const copy = entry.cloneNode(true) as Element;
 		copy.querySelector('.citation-content > .label')?.remove();
 		if (!copy.querySelector('.citation-content')) return { id, reason: 'unsupported-bibliography-structure', notCovered: true };
-		const expected = canonical(copy.textContent ?? '');
-		const matches = [...view.footnotes.entries()].filter(([, definitions]) => definitions.length === 1 && definitions[0].text === expected &&
-			sourceLinks(copy, source).every(link => definitions[0].links.includes(link)));
-		if (!expected || matches.length !== 1) return { id, reason: 'missing-changed-or-duplicate-definition' };
-		const number = matches[0][0];
-		const expectedUses = Array.from(document.querySelectorAll('.reference-citations a.reference-citations__ctrl[data-xml-rid]')).filter(link => link.getAttribute('data-xml-rid') === entry.id).length;
+		const number = referenceNumbers.get(entry.id);
+		if (!number) return { id, reason: 'missing-changed-or-duplicate-definition' };
+		const controls = Array.from(document.querySelectorAll('.reference-citations a.reference-citations__ctrl[data-xml-rid]')).filter(link => link.getAttribute('data-xml-rid') === entry.id);
+		const expectedTableUses = controls.filter(link => link.closest('table')).length;
 		// Use Markdown text (not canonical text, which normalizes citation markers).
 		const actualUses = view.blocks.filter(block => !/^\[\^\d+\]:/.test(block.raw) && !['code', 'html'].includes(block.type))
 			.reduce((sum, block) => sum + (text(block.node).match(new RegExp(`\\[\\^${number}\\]`, 'g'))?.length ?? 0), 0);
-		return { id, ...(actualUses !== expectedUses && { reason: 'inline-citation-count-differs' }) };
+		const actualTableUses = tableUses.filter(value => value === number).length;
+		// Simple tables use Markdown; merged tables use HTML. Both contribute
+		// to the total, but HTML cannot supply extra citations absent in source tables.
+		if (actualUses + actualTableUses !== controls.length || actualTableUses > expectedTableUses) return { id, reason: 'inline-citation-count-differs' };
+		const labels = new Map<string, number>();
+		for (const wrapper of Array.from(document.querySelectorAll('.reference-citations'))) {
+			const citation = cellCitation(wrapper);
+			if (citation?.target === entry.id && citation.authorYear) {
+				const label = citation.label.replace(/\s+/g, '');
+				labels.set(label, (labels.get(label) ?? 0) + 1);
+			}
+		}
+		const prose = [...view.blocks.filter(block => !/^\[\^\d+\]:/.test(block.raw) && !['code', 'html'].includes(block.type))
+			.map(block => text(block.node)), ...tableText].map(value => value.replace(/\s+/g, '')).join('\n');
+		// Consume longer labels first: a year-only citation must not also count
+		// the year suffix of "Author, 2025" referencing the same paper.
+		let remaining = prose;
+		const intact = [...labels].sort((a, b) => b[0].length - a[0].length).every(([label, count]) => {
+			const parts = remaining.split(`${label}[^${number}]`);
+			remaining = parts.join('\n');
+			return parts.length - 1 === count;
+		});
+		return { id, ...(!intact && { reason: 'author-year-citation-label-differs' }) };
 	})) : uncovered(referenceScope, 'unsupported-publisher');
 
 	const extendedScope = 'nature-declared-extended-images-v1';

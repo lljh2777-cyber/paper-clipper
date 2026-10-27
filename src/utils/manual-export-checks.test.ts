@@ -8,6 +8,7 @@ import { prepareDocumentForExtraction } from './publisher-figures';
 import { checkManualExport, ManualExportSnapshot, prepareManualExportChecks } from './manual-export-checks';
 import { markdownSha256 } from './manual-export-report';
 import { createImageArchive, prepareImageFiles } from './image-archive';
+import { cellAuthorYearHtml, cellAuthorYearUrl } from '../../scripts/fixtures/cell-author-year.mjs';
 
 const cell = 'https://www.cell.com/cell/fulltext/synthetic-checks';
 const nature = 'https://www.nature.com/articles/synthetic-checks';
@@ -28,6 +29,37 @@ beforeEach(() => vi.stubGlobal('crypto', webcrypto));
 afterEach(() => vi.unstubAllGlobals());
 
 describe('manual export preservation reports', () => {
+	function authorSnapshot(html = cellAuthorYearHtml): ManualExportSnapshot {
+		const document = new DOMParser().parseFromString(html, 'text/html');
+		const markdown = createMarkdownContent(new Defuddle(prepareDocumentForExtraction(document, cellAuthorYearUrl), { url: cellAuthorYearUrl }).parse().content, cellAuthorYearUrl);
+		return { document, source: cellAuthorYearUrl, extractedMarkdown: markdown, templateMarkdown: markdown };
+	}
+	it('checks author-year labels, caption citations and both HTML/Markdown table citations without changing source', () => {
+		for (const html of [cellAuthorYearHtml, cellAuthorYearHtml.replace('<tr><td colspan="3">Synthetic resources</td></tr>', '')]) {
+			const capture = authorSnapshot(html), before = capture.document.documentElement.outerHTML;
+			const report = checkManualExport(capture, capture.templateMarkdown);
+			for (const stage of ['extraction', 'template', 'output'] as const) {
+				expect(report.stages[stage].references).toMatchObject({ status: 'passed', expected: 2, matched: 2 });
+				expect(report.stages[stage].captions).toMatchObject({ status: 'passed', expected: 2, matched: 2 });
+			}
+			expect(capture.document.documentElement.outerHTML).toBe(before);
+		}
+	});
+	it.each([
+		(md: string) => md.replace('Núñez et al., 2024', 'Another author, 2024'),
+		(md: string) => md.replace('Chen (2025)', 'Chen (2023)'),
+		(md: string) => md.replace('<sup><a href="#fn:2">2</a></sup>', ''),
+		(md: string) => md.replace('href="#fn:2"', 'href="#fn:1"'),
+		(md: string) => md.replace('<table>', '<table hidden>'),
+		(md: string) => md.replace('Synthetic study 1.', 'Changed reference.'),
+		(md: string) => md.replace('[Source 1](https://example.org/ref-1)', 'Source 1'),
+		(md: string) => md.replace('[^1]', '') + '\n\n<table><tr><td>Núñez et al., 2024 <sup><a href="#fn:1">1</a></sup></td></tr></table>',
+	])('rejects changed labels, missing/wrong/hidden references and fake HTML compensation', edit => {
+		const capture = authorSnapshot();
+		const report = checkManualExport(capture, edit(capture.templateMarkdown));
+		expect(report.stages.extraction.references.status).toBe('passed');
+		expect(report.stages.output.references.status).toBe('failed');
+	});
 	it('checks actual converted collapsed Cell captions, complete references and formulas, without mutating the source', () => {
 		const capture = snapshot();
 		const before = capture.document.documentElement.outerHTML;

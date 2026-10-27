@@ -1,4 +1,5 @@
 import { prepareMath } from './paper-math.mjs';
+import { cellCitation } from './cell-citations.mjs';
 
 const descriptionSelector = 'figure .c-article-section__figure-description';
 const citationSelector = '.reference-citations a.reference-citations__ctrl[data-xml-rid]';
@@ -105,21 +106,25 @@ function prepareNatureExtendedImages(document: Document, url: string): void {
 
 function prepareCellCitations(document: Document): void {
 	for (const wrapper of Array.from(document.querySelectorAll('.reference-citations'))) {
-		const controls = Array.from(wrapper.children).filter(child => child.matches('a.reference-citations__ctrl'));
-		const holders = Array.from(wrapper.children).filter(child => child.matches('.dropBlock__holder'));
-		if (controls.length !== 1 || holders.length !== 1) continue;
-		const control = controls[0], holder = holders[0];
-		const target = control.getAttribute('data-xml-rid');
-		if (!target || !/^bib\d+$/.test(target) || !/^\d+$/.test(control.textContent?.trim() ?? '') ||
-			!holder.id || (control.getAttribute('aria-controls') !== holder.id && control.getAttribute('data-db-target-for') !== holder.id) ||
-			!holder.querySelector('.citation-content')) continue;
+		const citation = cellCitation(wrapper);
+		if (!citation) continue;
+		const { control, holder, target, authorYear } = citation;
 
 		// Cell stores a duplicate reference preview beside each inline marker.
 		// Restore its bibliography link before Defuddle sees the hidden block content.
 		const link = document.createElement('a');
 		link.setAttribute('href', `#${target}`);
 		if (control.id) link.id = control.id;
-		link.append(...Array.from(control.childNodes));
+		if (authorYear) {
+			// Retain the author's label, adding a numeric marker for Defuddle's
+			// existing footnote conversion. Do not expand the hidden preview.
+			const label = document.createElement('span');
+			label.append(...Array.from(control.childNodes));
+			control.before(label);
+			const marker = document.createElement('sup');
+			marker.textContent = target.slice(3);
+			link.append(marker);
+		} else link.append(...Array.from(control.childNodes));
 		control.replaceWith(link);
 		holder.remove();
 		wrapper.replaceWith(...Array.from(wrapper.childNodes));

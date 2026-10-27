@@ -75,6 +75,7 @@ jobs:
             /tmp/paper-math-qa-*/error-*.png
             /tmp/paper-math-qa-*/formulas-*.png
             /tmp/paper-math-qa-*/pmc-*.png
+            /tmp/paper-math-qa-*/cell-*.png
 
   core:
     name: Core / ${{ matrix.os }} / Node ${{ matrix.node }}

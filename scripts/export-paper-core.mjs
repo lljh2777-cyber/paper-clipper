@@ -10,6 +10,7 @@ const converter = [
 	'utils/string-utils.ts', 'utils/shared.ts', 'utils/resolver.ts', 'utils/storage-utils.ts',
 	'utils/template-compiler.ts', 'utils/publisher-figures.ts', 'utils/image-sources.mjs', 'utils/image-sources.d.mts', 'utils/variables/selector.ts',
 	'utils/paper-math.mjs', 'utils/paper-math.d.mts',
+	'utils/cell-citations.mjs', 'utils/cell-citations.d.mts',
 	'utils/variables/simple.ts', 'utils/variables/schema.ts', 'utils/variables/prompt.ts',
 	'utils/variables/model.ts', 'utils/fixtures/templates/minimal.json',
 ];
@@ -27,6 +28,7 @@ export const coreFiles = [
 	...extras.map(name => `scripts/${name}.mjs`),
 	'scripts/clip-vault.test.mjs', 'scripts/fixtures/paper-acceptance.json', 'scripts/fixtures/nature-review.mjs',
 	'scripts/paper-math.test.mjs', 'scripts/fixtures/mathjax.mjs', 'scripts/fixtures/mathjax-runtime.mjs', 'scripts/fixtures/pmc.mjs',
+	'scripts/fixtures/cell-author-year.mjs',
 	...documents.map(name => `docs/${name}.md`),
 	'skills/paper-clipper/SKILL.md', 'skills/paper-clipper/agents/openai.yaml',
 ];

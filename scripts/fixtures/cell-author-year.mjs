@@ -1,0 +1,14 @@
+// Public synthetic citation/legend/table structures. No article text.
+export const cellAuthorYearUrl = 'https://www.cell.com/cell/fulltext/synthetic-author-year';
+const citation = (target, label, id) => `<span class="reference-citations"><a id="body-${id}" class="reference-citations__ctrl" href="#" data-xml-rid="${target}" aria-controls="${id}">${label}</a><div class="dropBlock__holder" id="${id}"><div class="citation-content"><div>Preview-only synthetic content.</div><strong>Hidden reference preview.</strong></div></div></span>`;
+const reference = (id, number, author, year) => `<div class="biblioentry"><div class="citations" id="${id}"><div class="citation-content"><div class="label">${number}.</div><div>${author}.</div><div><strong>Synthetic study ${number}.</strong></div><div><em>Example Journal.</em> ${year}.</div></div><div class="external-links"><a href="https://example.org/ref-${number}">Source ${number}</a></div></div></div>`;
+const figure = (number, panel) => `<figure class="graphic" id="fig${number}"><img src="https://images.example.org/figure.png"><figcaption><div class="figure__title">Figure ${number} Synthetic citation panels.</div><div class="accordion" hidden><div class="figure__caption__text__content"><div role="paragraph">${panel}</div><div role="paragraph">Shared summary from the source.</div></div></div></figcaption></figure>`;
+const prose = 'This synthetic experiment records independent observations and reproducible measurements in several conditions. '.repeat(30);
+export const cellAuthorYearHtml = `<html><head><title>Synthetic author-year citations</title></head><body><article><h1>Synthetic author-year citations</h1>
+<h2>Results</h2><p>${prose}</p><div role="paragraph">Finding (${citation('bib7', 'Núñez et al., 2024', 'ref-a')}; ${citation('bib12', 'Chen (2025)', 'ref-b')}). Subsequent observation ${citation('bib7', 'Núñez et al. [2024]', 'ref-c')} and year ${citation('bib12', '2025', 'ref-d')}.</div>
+${figure(1, `(A) Agreement with ${citation('bib7', 'Núñez et al., 2024', 'ref-e')}.`)}
+${figure(2, '(A) Independent panel measurements.')}
+<h2>Methods</h2><p>${prose}</p>
+<h3>Key resources table</h3><table><thead><tr><th>Resource</th><th>Source</th><th>Identifier</th></tr></thead><tbody><tr><td colspan="3">Synthetic resources</td></tr><tr><td>Experimental cell line</td><td>${citation('bib12', 'Chen, 2025', 'ref-f')}</td><td>Example-001</td></tr><tr><td>Experimental antibody</td><td>Example supplier</td><td>Example-002</td></tr><tr><td>Measurement kit</td><td>Example supplier</td><td>Example-003</td></tr><tr><td>Analysis software</td><td>Example laboratory</td><td>Version 2</td></tr></tbody></table>
+<h3>Experimental procedure</h3><p>${prose}</p><section id="references"><h2>References</h2><div role="doc-bibliography"><div class="bibliolist">${reference('bib7', 1, 'A. Núñez', 2024)}${reference('bib12', 2, 'B. Chen', 2025)}</div></div></section>
+</article></body></html>`;

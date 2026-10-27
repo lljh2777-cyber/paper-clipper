@@ -1,5 +1,6 @@
 import { Marked } from 'marked';
 import { parseHTML } from 'linkedom';
+import { cellCaptionForCheck } from '../src/utils/cell-citations.mjs';
 
 const marked = new Marked({ gfm: true });
 const bodyOnly = value => value.replace(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, '');
@@ -50,10 +51,34 @@ function auditSourceLegends(html, markdown, url, publisher) {
 	const figures = [];
 	const blocks = [];
 	const descriptions = [...source.querySelectorAll(legendSelector(publisher))];
+	const referenceNumbers = new Map();
+	if (publisher === 'cell') {
+		const footnotes = tokens.filter(token => token.type === 'paragraph').flatMap(token =>
+			[...token.raw.matchAll(/^\[\^(\d+)\]:([^\n]*(?:\n(?: {4}|\t)[^\n]*)*)/gm)].map(match => ({
+				number: match[1], document: rendered(match[2].replace(/\n(?: {4}|\t)/g, '\n').trim())
+			})));
+		for (const entry of source.querySelectorAll('.biblioentry .citations[id]')) {
+			const copy = entry.cloneNode(true);
+			copy.querySelector('.citation-content > .label')?.remove();
+			if (!/^bib\d+$/.test(entry.id) || !copy.querySelector('.citation-content')) continue;
+			const expected = canonicalText(copy.textContent);
+			const matches = footnotes.filter(note => canonicalText(note.document.body.textContent) === expected &&
+				[...copy.querySelectorAll('a[href]')].every(link => [...note.document.querySelectorAll('a[href]')]
+					.some(actual => new URL(actual.getAttribute('href'), url).href === new URL(link.getAttribute('href'), url).href)));
+			if (expected && matches.length === 1) referenceNumbers.set(entry.id, matches[0].number);
+		}
+	}
+	const paragraphsFor = description => [...description.querySelectorAll(publisher === 'cell' ? 'p, [role="paragraph"]' : 'p')]
+		.map(paragraph => publisher === 'cell' ? cellCaptionForCheck(paragraph, referenceNumbers) : paragraph);
+	const sourceCounts = new Map();
+	for (const paragraph of descriptions.flatMap(paragraphsFor)) {
+		const value = canonicalText(paragraph.textContent);
+		sourceCounts.set(value, (sourceCounts.get(value) ?? 0) + 1);
+	}
 	for (const description of descriptions) {
 		const title = description.closest('figure').querySelector(publisher === 'cell' ? '.figure__title' : 'figcaption')?.textContent?.trim();
 		const titles = tokens.map((token, index) => token.type === 'paragraph' && token.text === canonicalText(title ?? '') ? index : -1).filter(index => index >= 0);
-		const paragraphs = [...description.querySelectorAll(publisher === 'cell' ? 'p, [role="paragraph"]' : 'p')];
+		const paragraphs = paragraphsFor(description);
 		const id = description.id || description.closest('figure').id;
 		const item = { id, title, paragraphs: paragraphs.length, passed: false, errors: [] };
 		if (!title || titles.length !== 1 || !paragraphs.length) item.errors.push('Expected one figure title and nonempty source paragraphs.');
@@ -64,13 +89,13 @@ function auditSourceLegends(html, markdown, url, publisher) {
 				item.errors.push(`Paragraph ${index + 1} missing, changed or not directly after its figure.`);
 				continue;
 			}
-			if (tokens.filter(entry => entry.type === 'paragraph' && entry.text === expected).length !== 1) item.errors.push(`Paragraph ${index + 1} duplicated.`);
+			if (tokens.filter(entry => entry.type === 'paragraph' && entry.text === expected).length !== sourceCounts.get(expected)) item.errors.push(`Paragraph ${index + 1} occurrence count differs from source.`);
 			const links = [...token.document.querySelectorAll('a[href]')].map(link => new URL(link.getAttribute('href'), url).href);
 			for (const link of paragraph.querySelectorAll('a[href]')) {
 				const target = new URL(link.getAttribute('href'), url);
 				const citation = target.origin === article.origin && target.pathname === article.pathname
-					? target.hash.match(/^#ref-CR(\d+)$/)?.[1] : undefined;
-				const footnote = citation && link.textContent.trim() === citation && definitions.has(citation) && token.raw.includes(`[^${citation}]`);
+					? target.hash.match(/^#ref-CR(\d+)$/)?.[1] ?? referenceNumbers.get(target.hash.slice(1)) : undefined;
+				const footnote = citation && (link.textContent.trim() === citation || referenceNumbers.has(target.hash.slice(1))) && definitions.has(citation) && token.raw.includes(`[^${citation}]`);
 				if (!footnote && !links.includes(target.href)) item.errors.push(`Paragraph ${index + 1} lost a link or citation.`);
 			}
 			blocks.push({ id: description.id, title, text: expected, raw: token.raw, start: token.start, end: token.end });

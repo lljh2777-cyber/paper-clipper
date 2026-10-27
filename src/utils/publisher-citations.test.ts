@@ -6,6 +6,7 @@ import { clip } from '../api';
 import { parseForClip } from './clip-utils';
 import { prepareDocumentForExtraction } from './publisher-figures';
 import type { Template } from '../types/types';
+import { cellAuthorYearHtml, cellAuthorYearUrl } from '../../scripts/fixtures/cell-author-year.mjs';
 
 const url = 'https://www.cell.com/cell/fulltext/synthetic-citations';
 const paragraph = 'This synthetic study compares tissue neighborhoods and reports experimental observations. '.repeat(30);
@@ -50,6 +51,23 @@ function expectCleanCitations(markdown: string) {
 }
 
 describe('Cell inline citation previews', () => {
+	test('preserves author-year labels and separators, removing only bound previews through manual/API extraction', async () => {
+		const source = makeDocument(cellAuthorYearHtml), before = source.documentElement.outerHTML;
+		Object.defineProperty(source, 'URL', { value: cellAuthorYearUrl });
+		const manual = createMarkdownContent(parseForClip(source).content, cellAuthorYearUrl);
+		const result = await clip({ html: cellAuthorYearHtml, url: cellAuthorYearUrl, template, documentParser: new DOMParser() });
+		for (const markdown of [manual, result.content]) {
+			expect(markdown).toMatch(/Finding \(Núñez et al\., 2024\s*\[\^1\]; Chen \(2025\)\s*\[\^2\]\)/);
+			expect(markdown).toContain('Núñez et al. \\[2024\\]');
+			expect(markdown).toMatch(/year 2025\s*\[\^2\]/);
+			expect(markdown).not.toMatch(/Preview-only|Hidden reference preview/);
+			for (const number of [1, 2]) expect(markdown.match(new RegExp(`Synthetic study ${number}\\.`, 'g'))).toHaveLength(1);
+			expect(markdown).toContain('href="#fn:2"');
+		}
+		expect(source.documentElement.outerHTML).toBe(before);
+		const prepared = prepareDocumentForExtraction(source, cellAuthorYearUrl);
+		expect(prepareDocumentForExtraction(prepared, cellAuthorYearUrl)).toBe(prepared);
+	});
 	test('removes only linked previews in a copy, preserving markers, separators and the bibliography', () => {
 		const source = makeDocument();
 		const before = source.documentElement.outerHTML;

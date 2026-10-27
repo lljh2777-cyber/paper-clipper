@@ -103,6 +103,12 @@ including authors, title, journal and available links; inline citation previews
 are still removed from the body. These rules are shared by manual clipping,
 HTML imports and the API/CLI conversion paths.
 
+Author–year controls retain their original author/year labels alongside the
+numeric footnote links. Preview removal requires a control bound to its own
+reference panel; unrelated popovers remain untouched. Caption checks resolve
+those links against complete bibliography definitions and allow repeated
+paragraphs only at their source occurrence count.
+
 Content absent from the captured HTML cannot be recovered by these rules. Reload
 the extension and refresh the paper before exporting again. Existing notes and
 translations are not repaired or overwritten automatically.
@@ -126,12 +132,15 @@ generic script/style cleanup, so spacing encoded in CHTML styles is not lost fro
 the later check baseline. The original page and formula comparison rules are unchanged.
 
 Implemented scopes are Cell/Nature main caption paragraphs, order and links;
-Cell full bibliography text/links and per-reference inline citation counts;
+Cell full bibliography text/links, author–year labels and per-reference inline
+citation counts (including visible footnote links in retained HTML tables);
 Nature explicitly declared Extended Data image URLs under their headings; and
 the existing MathJax formula-preservation check. Numeric footnotes use the
 converter's paragraph/indented-continuation format. This does not verify citation
 semantics, every alternative Markdown dialect, extended captions, all ordinary
-paragraphs, tables, non-MathJax equations, or content absent from the capture.
+paragraphs, complete table contents, non-MathJax equations, or content absent from
+the capture. HTML table citations cannot replace citations missing from prose;
+hidden, styled and code-contained table markers do not count as visible evidence.
 
 - `completeness` remains `not-assessed`: these checks cannot prove full-text access.
 - `preservation` is `passed-within-scope`, `attention-required`, or `not-assessed`.
@@ -160,6 +169,10 @@ binding, ZIP/file consistency and save-page handoff. A read-only local replay on
 2026-10-15 matched Cell's 5 captions, 112 references and 29 formulas, plus DeepMet's
 5 main captions and 10 extended images. Private captures are not CI fixtures and
 were not modified; these counts do not establish universal publisher coverage.
+A separate read-only Cell replay on 2026-10-27 matched 15 captions, 74 references
+and 9 formulas. Public synthetic author–year fixtures cover prose, captions and
+merged-cell tables, including negative checks for changed labels, missing links,
+hidden table citations and extra repeated caption text.
 
 ## Limits
 

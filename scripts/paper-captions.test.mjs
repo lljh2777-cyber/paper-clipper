@@ -3,6 +3,20 @@ import { test } from 'node:test';
 import { execFileSync } from 'node:child_process';
 import { checkFigureCaptions } from './paper-captions.mjs';
 import { pmcHtml, pmcUrl } from './fixtures/pmc.mjs';
+import { cellAuthorYearHtml, cellAuthorYearUrl } from './fixtures/cell-author-year.mjs';
+
+test('author-year caption references retain their label and definition, allowing only source-declared repeated paragraphs', () => {
+	const output = execFileSync(process.execPath, ['dist/cli.cjs', cellAuthorYearUrl, '--html', '-', '-t', 'src/utils/fixtures/templates/minimal.json'], { input: cellAuthorYearHtml, encoding: 'utf8' });
+	const check = value => checkFigureCaptions(cellAuthorYearHtml, value, cellAuthorYearUrl);
+	assert.equal(check(output).matched, 2);
+	assert.doesNotMatch(output, /Preview-only|Hidden reference preview/);
+	for (const edited of [output.replace('(A) Agreement with Núñez', '(A) Agreement with Another'),
+		output.replace(/(\(A\) Agreement[^\n]*)\[\^1\]/, '$1[^2]'),
+		output.replace('Shared summary from the source.', ''),
+		output + '\n\nShared summary from the source.',
+		output.replace('Synthetic study 1.', 'Changed reference.'),
+		output.replace('[Source 1](https://example.org/ref-1)', 'Source 1')]) assert.equal(check(edited).status, 'failed');
+});
 
 test('PMC CLI preserves figure titles, rich panels and metadata while removing only the duplicated byline', () => {
 	const output = execFileSync(process.execPath, ['dist/cli.cjs', pmcUrl, '--html', '-', '-t', 'src/utils/fixtures/templates/minimal.json'], { input: pmcHtml, encoding: 'utf8' });

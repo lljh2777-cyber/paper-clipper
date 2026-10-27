@@ -12,6 +12,7 @@ import { fromMarkdown } from 'mdast-util-from-markdown';
 import { mathHtml } from './fixtures/mathjax.mjs';
 import { runtimeMathHtml, installSyntheticMathJax } from './fixtures/mathjax-runtime.mjs';
 import { pmcHtml, pmcUrl } from './fixtures/pmc.mjs';
+import { cellAuthorYearHtml, cellAuthorYearUrl } from './fixtures/cell-author-year.mjs';
 import { checkMathPreservation, mathInventory } from '../src/utils/paper-math.mjs';
 import { authorizedDownloadExtension, configureZipDownloads, openSavePage, readCompletedZip } from './fixtures/manual-save.mjs';
 
@@ -32,6 +33,7 @@ const context = await chromium.launchPersistentContext(path.join(directory, 'pro
 try {
 	await context.route('https://**', route => route.fulfill({ contentType: 'application/json', body: '{}' }));
 	await context.route(pmcUrl, route => route.fulfill({ contentType: 'text/html', body: pmcHtml }));
+	await context.route(cellAuthorYearUrl, route => route.fulfill({ contentType: 'text/html', body: cellAuthorYearHtml }));
 	await context.route(/^https:\/\/images\.example\.org\/(?:math-figure|figure)\.png$/, route => route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jGZkAAAAASUVORK5CYII=', 'base64') }));
 	const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
 	const origin = `chrome-extension://${new URL(worker.url()).hostname}`;
@@ -169,6 +171,42 @@ try {
 		assert.equal(await preview.locator('sub').textContent(), '2');
 		assert.equal(await preview.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
 		await preview.screenshot({ path: path.join(directory, `pmc-${label}.png`) });
+	}
+	await pmcPopup.close();
+	await article.goto(cellAuthorYearUrl);
+	await article.bringToFront();
+	assert.equal(await article.title(), 'Synthetic author-year citations');
+	const cellOpening = context.waitForEvent('page');
+	await worker.evaluate(url => chrome.tabs.create({ url, active: false }), `${origin}/popup.html`);
+	const cellPopup = await cellOpening;
+	observeConsole(cellPopup);
+	cellPopup.on('pageerror', error => errors.push(error.message));
+	await cellPopup.waitForFunction(() => document.querySelector('#note-content-field')?.value.includes('Núñez et al., 2024'));
+	const cellMarkdown = await cellPopup.locator('#note-content-field').inputValue();
+	assert.doesNotMatch(cellMarkdown, /Preview-only|Hidden reference preview/);
+	assert.match(cellMarkdown, /Núñez et al\., 2024\s*\[\^1\]/);
+	assert.equal(await article.locator('.reference-citations').count(), 6);
+	await cellPopup.locator('#more-btn').click();
+	const cellSave = await openSavePage(context, () => cellPopup.locator('#save-image-archive').click());
+	const cellArchive = unzipSync((await readCompletedZip(worker, cellSave, downloads)).bytes);
+	const cellChecks = JSON.parse(strFromU8(cellArchive[Object.keys(cellArchive).find(key => key.endsWith('/checks.json'))]));
+	for (const stage of ['extraction', 'template', 'output']) {
+		assert.equal(cellChecks.stages[stage].references.matched, 2);
+		assert.equal(cellChecks.stages[stage].references.status, 'passed');
+		assert.equal(cellChecks.stages[stage].captions.matched, 2);
+		assert.equal(cellChecks.stages[stage].captions.status, 'passed');
+	}
+	assert.equal(cellChecks.preservation, 'passed-within-scope');
+	assert.equal(cellChecks.completeness, 'not-assessed');
+	const cellSaved = strFromU8(cellArchive[Object.keys(cellArchive).find(key => key.endsWith('/paper.md'))]);
+	assert.match(cellSaved, /Chen, 2025 <sup><a href="#fn:2">2<\/a><\/sup>/);
+	assert.equal((cellSaved.match(/^\[\^\d+\]:/gm) ?? []).length, 2);
+	await cellPopup.locator('#image-archive-status').filter({ hasText: 'ZIP saved:' }).waitFor();
+	assert.equal(await worker.evaluate(async () => (await chrome.storage.session.get('paperSaveLastResult')).paperSaveLastResult.state), 'saved');
+	for (const [label, width, height] of [['desktop', 1100, 900], ['mobile', 390, 844]]) {
+		await cellPopup.setViewportSize({ width, height });
+		assert.equal(await cellPopup.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+		await cellPopup.screenshot({ path: path.join(directory, `cell-author-year-${label}.png`) });
 	}
 	assert.deepEqual(errors, []);
 	assert.deepEqual(consoleErrors, []);
