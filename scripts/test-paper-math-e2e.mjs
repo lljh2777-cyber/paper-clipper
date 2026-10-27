@@ -33,7 +33,7 @@ const context = await chromium.launchPersistentContext(path.join(directory, 'pro
 try {
 	await context.route('https://**', route => route.fulfill({ contentType: 'application/json', body: '{}' }));
 	await context.route(pmcUrl, route => route.fulfill({ contentType: 'text/html', body: pmcHtml }));
-	await context.route(cellAuthorYearUrl, route => route.fulfill({ contentType: 'text/html', body: cellAuthorYearHtml }));
+	await context.route(cellAuthorYearUrl, route => route.fulfill({ contentType: 'text/html; charset=utf-8', body: cellAuthorYearHtml }));
 	await context.route(/^https:\/\/images\.example\.org\/(?:math-figure|figure)\.png$/, route => route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jGZkAAAAASUVORK5CYII=', 'base64') }));
 	const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
 	const origin = `chrome-extension://${new URL(worker.url()).hostname}`;
@@ -176,12 +176,21 @@ try {
 	await article.goto(cellAuthorYearUrl);
 	await article.bringToFront();
 	assert.equal(await article.title(), 'Synthetic author-year citations');
+	assert.equal(await article.evaluate(() => document.characterSet), 'UTF-8');
+	assert.equal(await article.locator('#body-ref-a').textContent(), 'Núñez et al., 2024');
 	const cellOpening = context.waitForEvent('page');
 	await worker.evaluate(url => chrome.tabs.create({ url, active: false }), `${origin}/popup.html`);
 	const cellPopup = await cellOpening;
 	observeConsole(cellPopup);
 	cellPopup.on('pageerror', error => errors.push(error.message));
-	await cellPopup.waitForFunction(() => document.querySelector('#note-content-field')?.value.includes('Núñez et al., 2024'));
+	try {
+		await cellPopup.waitForFunction(() => document.querySelector('#note-content-field')?.value.includes('Núñez et al., 2024'));
+	} catch (error) {
+		await cellPopup.screenshot({ path: path.join(directory, 'cell-extraction-error.png') });
+		console.error(JSON.stringify({ errors, consoleErrors, popup: (await cellPopup.locator('body').innerText()).slice(0, 1500),
+			markdown: await cellPopup.locator('#note-content-field').inputValue().catch(() => null) }));
+		throw error;
+	}
 	const cellMarkdown = await cellPopup.locator('#note-content-field').inputValue();
 	assert.doesNotMatch(cellMarkdown, /Preview-only|Hidden reference preview/);
 	assert.match(cellMarkdown, /Núñez et al\., 2024\s*\[\^1\]/);
