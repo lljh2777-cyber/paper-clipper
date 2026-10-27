@@ -52,6 +52,22 @@ test('unknown or unloaded math fails explicitly, without mutating the input', ()
 	}
 });
 
+test('MathML accessibility descriptions are not formula source, while explicitly typed TeX wins', () => {
+	for (const alttext of ['No alternative text available', 'the score variable', 'x squared']) {
+		const doc = parse(`<html><body><mjx-container><math alttext="${alttext}"><mi>q</mi></math></mjx-container></body></html>`);
+		assert.equal(mathInventory(doc)[0].latex, 'q');
+		assert.equal(checkMathPreservation(doc, '$q$').matched, 1);
+		assert.equal(checkMathPreservation(doc, `$${alttext}$`).status, 'failed');
+	}
+	const annotated = parse('<mjx-container><math alttext="No alternative text available"><semantics><mi>q</mi><annotation encoding="application/x-tex">q_{i}</annotation></semantics></math></mjx-container>');
+	assert.equal(mathInventory(annotated)[0].latex, 'q_{i}');
+	annotated.querySelector('mjx-container').setAttribute('data-latex', 'q_j');
+	assert.equal(mathInventory(annotated)[0].latex, 'q_j');
+	const empty = parse('<mjx-container><math alttext="No alternative text available"></math></mjx-container>');
+	assert.equal(checkMathPreservation(empty, '$No alternative text available$').status, 'failed');
+	assert.throws(() => prepareMath(empty), /could not be safely converted/);
+});
+
 test('preservation checks formulas, duplicates, display mode, font and matrix structure', () => {
 	const doc = parse(mathHtml), md = expected(doc);
 	assert.equal(checkMathPreservation(doc, md).matched, 8);

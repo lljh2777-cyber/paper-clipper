@@ -159,8 +159,11 @@ export function mathInventory(document) {
 			const annotation = sourceMath?.querySelector('annotation[encoding="application/x-tex"]') || element.querySelector('annotation[encoding="application/x-tex"]');
 			const sibling = element.nextElementSibling;
 			const script = sibling?.matches('script[type="math/tex"], script[type="math/tex; mode=display"]') ? sibling : null;
+			// MathML alttext is an accessibility description, not typed TeX. Some
+			// publishers set every formula to "No alternative text available".
+			// Prefer explicit TeX sources; otherwise convert the MathML structure.
 			const explicit = element.getAttribute('data-latex') || element.getAttribute('data-tex') ||
-				sourceMath?.getAttribute('data-latex') || sourceMath?.getAttribute('alttext') || annotation?.textContent || script?.textContent;
+				sourceMath?.getAttribute('data-latex') || annotation?.textContent || script?.textContent;
 			let math, latex;
 			if (explicit?.trim()) {
 				latex = explicit.trim();

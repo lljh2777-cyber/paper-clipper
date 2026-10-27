@@ -73,6 +73,7 @@ test('lazy-source normalization preserves caption occurrences, numbered equation
 	expect(checkMathPreservation(source, markdown.replace(`$${mathInventory(source)[0].latex}$`, ''))).toMatchObject({ status: 'failed', matched: 4 });
 	expect(markdown).toContain('\\text{sample} \\_ \\text{ctrl}');
 	expect(markdown).not.toContain('\\underline');
+	expect(markdown).not.toContain('No alternative text available');
 	expect(checkMathPreservation(source, markdown.replace('\\left\\|x\\right\\|', 'x')).status).toBe('failed');
 	expect(checkMathPreservation(source, markdown.replace('\\begin{aligned}', '\\begin{matrix}')).status).toBe('failed');
 	const result = await clip({ html: runtimeMathHtml, url, documentParser: new DOMParser(), template: {
@@ -83,6 +84,23 @@ test('lazy-source normalization preserves caption occurrences, numbered equation
 	const table = data.querySelector('table')!.outerHTML;
 	prepareMath(data);
 	expect(data.querySelector('table')!.outerHTML).toBe(table);
+});
+
+test('a described simple MathML variable survives manual and API extraction as math, not prose', async () => {
+	const html = mathHtml.replace('</article>', '<p>The additional score <mjx-container><mjx-assistive-mml><math alttext="No alternative text available"><mi>q</mi></math></mjx-assistive-mml></mjx-container> remains inline.</p></article>');
+	const source = new DOMParser().parseFromString(html, 'text/html');
+	const before = source.documentElement.outerHTML;
+	const manual = createMarkdownContent(parseForClip(source).content, url);
+	const result = await clip({ html, url, documentParser: new DOMParser(), template: {
+		id: 'math', name: 'Math', behavior: 'create', noteNameFormat: '{{title}}', path: '', noteContentFormat: '{{content}}', properties: []
+	} });
+	for (const markdown of [manual, result.content]) {
+		expect(markdown).toContain('additional score $q$ remains inline');
+		expect(markdown).not.toContain('No alternative text available');
+		expect(checkMathPreservation(source, markdown)).toMatchObject({ status: 'passed', expected: 9, matched: 9 });
+		expect(checkMathPreservation(source, markdown.replace('$q$', '$No alternative text available$')).status).toBe('failed');
+	}
+	expect(source.documentElement.outerHTML).toBe(before);
 });
 
 test('unsupported input has a bounded message and complete structured diagnostics', () => {

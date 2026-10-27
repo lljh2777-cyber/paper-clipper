@@ -121,8 +121,10 @@ try {
 	const lazyArchive = unzipSync((await readCompletedZip(worker, lazySave, downloads)).bytes);
 	const lazyChecks = JSON.parse(strFromU8(lazyArchive[Object.keys(lazyArchive).find(key => key.endsWith('/checks.json'))]));
 	for (const stage of ['extraction', 'template', 'output']) assert.equal(lazyChecks.stages[stage].math.matched, 5);
-	assert.equal(checkMathPreservation(parseHTML(runtimeMathHtml).document, strFromU8(lazyArchive[Object.keys(lazyArchive).find(key => key.endsWith('/paper.md'))])).matched, 5);
-	const lazyFormulas = mathInventory(parseHTML(runtimeMathHtml).document);
+	const lazySaved = strFromU8(lazyArchive[Object.keys(lazyArchive).find(key => key.endsWith('/paper.md'))]);
+	assert.equal(checkMathPreservation(parseHTML(runtimeMathHtml).document, lazySaved).matched, 5);
+	assert.doesNotMatch(lazySaved, /No alternative text available/);
+	const lazyFormulas = Array.from(lazySaved.matchAll(/\$\$([\s\S]*?)\$\$|\$([^$\n]+)\$/g), match => ({ latex: match[1] ?? match[2], block: match[1] !== undefined }));
 	await preview.setContent('<!doctype html><title>Lazy formula preview</title><style>body{font:18px Georgia;margin:24px}section{margin:24px 0}</style><h1>Retained formula input</h1>' + lazyFormulas.map(item =>
 		`<section>${temml.renderToString(item.latex, { displayMode: item.block, throwOnError: true })}</section>`).join(''));
 	assert.equal(await preview.locator('math').count(), 5);

@@ -1,5 +1,7 @@
 // Synthetic examples of MathJax's retained input and lazy rendering. No paper text.
-const mml = (body, display = false) => `<mjx-container display="${display}" data-paper-mathml="${(`<math display="${display ? 'block' : 'inline'}">${body}</math>`).replaceAll('&', '&amp;').replaceAll('"', '&quot;')}"><mjx-lazy></mjx-lazy></mjx-container>`;
+// A publisher may attach this same accessibility placeholder to every formula.
+// It must never replace the structural MathML, including after MAIN-world capture.
+const mml = (body, display = false) => `<mjx-container display="${display}" data-paper-mathml="${(`<math alttext="No alternative text available" display="${display ? 'block' : 'inline'}">${body}</math>`).replaceAll('&', '&amp;').replaceAll('"', '&quot;')}"><mjx-lazy></mjx-lazy></mjx-container>`;
 const norm = '<mo>∥</mo><mi>x</mi><mo>∥</mo>';
 const variable = '<msub><mi mathvariant="bold">Q</mi><mrow><mtext>sample</mtext><mo>_</mo><mtext>ctrl</mtext></mrow></msub>';
 const prose = 'This synthetic experiment documents independent observations and repeatable measurements of a mathematical model. '.repeat(35);
