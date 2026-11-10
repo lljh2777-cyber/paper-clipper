@@ -29,6 +29,7 @@ export const coreFiles = [
 	'scripts/clip-vault.test.mjs', 'scripts/fixtures/paper-acceptance.json', 'scripts/fixtures/nature-review.mjs',
 	'scripts/paper-math.test.mjs', 'scripts/fixtures/mathjax.mjs', 'scripts/fixtures/mathjax-runtime.mjs', 'scripts/fixtures/pmc.mjs',
 	'scripts/fixtures/cell-author-year.mjs',
+	'scripts/fixtures/nature-figures.mjs',
 	...documents.map(name => `docs/${name}.md`),
 	'skills/paper-clipper/SKILL.md', 'skills/paper-clipper/agents/openai.yaml',
 ];

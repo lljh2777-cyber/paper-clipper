@@ -7,6 +7,8 @@ import { parseForClip } from './clip-utils';
 import { prepareDocumentForExtraction } from './publisher-figures';
 import type { Template } from '../types/types';
 import { pmcHtml, pmcUrl } from '../../scripts/fixtures/pmc.mjs';
+import { natureFiguresHtml, natureFiguresUrl } from '../../scripts/fixtures/nature-figures.mjs';
+import { marked } from 'marked';
 
 const url = 'https://www.nature.com/articles/figure-fixture';
 const paragraph = 'This scientific article describes cells, spatial domains and the experimental method. '.repeat(100);
@@ -76,6 +78,24 @@ function expectLegend(markdown: string) {
 }
 
 describe('Nature full figure legends', () => {
+	test('keeps caption punctuation outside emphasis while retaining labels, values and an immutable source', async () => {
+		const source = new DOMParser().parseFromString(natureFiguresHtml, 'text/html');
+		const before = source.documentElement.outerHTML;
+		const prepared = prepareDocumentForExtraction(source, natureFiguresUrl);
+		expect(prepared.querySelector('#figure-6-desc')?.textContent).toBe(source.querySelector('#figure-6-desc')?.textContent);
+		expect(source.documentElement.outerHTML).toBe(before);
+		expect(prepareDocumentForExtraction(prepared, natureFiguresUrl)).toBe(prepared);
+		Object.defineProperty(source, 'URL', { value: natureFiguresUrl });
+		const outputs = [createMarkdownContent(parseForClip(source).content, natureFiguresUrl),
+			(await clip({ html: natureFiguresHtml, url: natureFiguresUrl, template, documentParser: new DOMParser() })).content];
+		for (const md of outputs) {
+			const rendered = new DOMParser().parseFromString(marked.parse(md) as string, 'text/html');
+			expect(rendered.body.textContent).toContain('BETA n = 7, GAMMA n = 9');
+			expect(rendered.body.textContent).toContain('x = 3; y = 4');
+			expect(rendered.body.textContent).not.toContain('*');
+			expect(Array.from(rendered.querySelectorAll('em')).map(el => el.textContent)).toEqual(expect.arrayContaining(['ALPHA', 'BETA', 'GAMMA', 'DELTA', 'n', 'P', 'x', 'y']));
+		}
+	});
 	test('prepares a copy without changing the live DOM, and is idempotent', () => {
 		const source = makeDocument();
 		const before = source.documentElement.outerHTML;

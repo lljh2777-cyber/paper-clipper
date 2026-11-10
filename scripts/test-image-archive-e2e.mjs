@@ -7,6 +7,7 @@ import { chromium } from 'playwright';
 import { unzipSync, strFromU8 } from 'fflate';
 import { marked } from 'marked';
 import { authorizedDownloadExtension, configureZipDownloads, openSavePage, readCompletedZip } from './fixtures/manual-save.mjs';
+import { natureFiguresHtml, natureFiguresUrl } from './fixtures/nature-figures.mjs';
 
 // Browser plugin not available: exercise the built extension in isolated Playwright.
 const directory = await mkdtemp(path.join(tmpdir(), 'paper-image-zip-qa-'));
@@ -202,6 +203,56 @@ try {
 	const reopened = await reopening;
 	await reopened.locator('#image-archive-status').filter({ hasText: 'Last save result: ZIP saved:' }).waitFor();
 	await reopened.close();
+	// The real popup must associate its responsive image with the source figure
+	// ID and keep the comma outside italic labels before background ZIP export.
+	await context.route(natureFiguresUrl, route => route.fulfill({ contentType: 'text/html; charset=utf-8', body: natureFiguresHtml }));
+	await context.route('https://media.springernature.com/**', route => route.fulfill({ contentType: 'image/png', body: largePng }));
+	await article.goto(natureFiguresUrl);
+	await article.bringToFront();
+	const natureOpening = context.waitForEvent('page');
+	await worker.evaluate(url => chrome.tabs.create({ url, active: false }), `${origin}/popup.html`);
+	const naturePopup = await natureOpening;
+	naturePopup.on('pageerror', error => errors.push(error.message));
+	await naturePopup.waitForFunction(() => document.querySelector('#note-content-field')?.value.includes('GAMMA'));
+	await naturePopup.locator('#more-btn').click();
+	const natureSave = await openSavePage(context, () => naturePopup.locator('#save-image-archive').click());
+	const natureDownload = await readCompletedZip(worker, natureSave, downloads);
+	const natureZip = unzipSync(natureDownload.bytes);
+	const natureRoot = natureDownload.fileName.slice(0, -4);
+	const natureMd = strFromU8(natureZip[`${natureRoot}/paper.md`]);
+	const natureChecks = JSON.parse(strFromU8(natureZip[`${natureRoot}/checks.json`]));
+	assert.equal(natureChecks.preservation, 'passed-within-scope');
+	assert.equal(natureChecks.stages.output.captions.matched, 1);
+	assert.equal(natureChecks.images.downloaded, 2);
+	assert.match(natureMd, /\[6b\]\(<images\/image-1.png>\)/);
+	assert.match(natureMd, /\[1a\]\(<images\/image-2.png>\)/);
+	assert.match(natureMd, /7, \*GAMMA\* \*n\* = 9/);
+	const natureDirectory = path.join(directory, 'nature-offline');
+	for (const [name, bytes] of Object.entries(natureZip)) {
+		const target = path.join(natureDirectory, name);
+		if (name.endsWith('/')) { await mkdir(target, { recursive: true }); continue; }
+		await mkdir(path.dirname(target), { recursive: true });
+		await writeFile(target, bytes);
+	}
+	const naturePreview = path.join(natureDirectory, natureRoot, 'preview.html');
+	await writeFile(naturePreview, '<!doctype html><meta charset="utf-8"><title>Synthetic offline figure test</title><style>body{font:18px/1.7 sans-serif;max-width:900px;margin:40px auto;padding:0 20px}img{max-width:100%}</style>' + marked.parse(natureMd.replace(/^---\n[\s\S]*?\n---\n/, '')));
+	const natureOffline = await context.newPage();
+	await natureOffline.route('http://**', route => route.abort());
+	await natureOffline.route('https://**', route => route.abort());
+	await natureOffline.goto(pathToFileURL(naturePreview).href);
+	await natureOffline.waitForFunction(() => [...document.images].length === 2 && [...document.images].every(img => img.complete && img.naturalWidth > 0));
+	assert.equal(await natureOffline.locator('em').filter({ hasText: /^GAMMA$/ }).count(), 1);
+	assert.doesNotMatch(await natureOffline.locator('body').innerText(), /\*/);
+	await natureOffline.locator('p').filter({ hasText: 'Measured ALPHA' }).scrollIntoViewIfNeeded();
+	await natureOffline.screenshot({ path: path.join(directory, 'nature-offline-caption.png') });
+	for (const [label, file] of [['6b', 'image-1.png'], ['1a', 'image-2.png']]) {
+		await natureOffline.getByRole('link', { name: label, exact: true }).click();
+		await natureOffline.waitForURL(pathToFileURL(path.join(natureDirectory, natureRoot, 'images', file)).href);
+		await natureOffline.waitForFunction(() => document.images[0]?.naturalWidth > 0);
+		await natureOffline.goBack();
+	}
+	await natureOffline.close();
+	await naturePopup.close();
 	assert.deepEqual(errors, []);
-	console.log(JSON.stringify({ passed: true, screenshots: directory, checks: ['real-menu-background-download', 'local-images', 'deduplication', 'editor-preserved', 'cell-high-resolution-128px', 'reported-original-fallback', 'popup-close-during-zip-save', 'no-activation-or-overwrite', 'failed-image-no-zip', 'safe-retry-after-popup-close', 'last-result-restored', 'mobile-layout'] }));
+	console.log(JSON.stringify({ passed: true, screenshots: directory, checks: ['real-menu-background-download', 'local-images', 'deduplication', 'editor-preserved', 'cell-high-resolution-128px', 'reported-original-fallback', 'popup-close-during-zip-save', 'no-activation-or-overwrite', 'failed-image-no-zip', 'safe-retry-after-popup-close', 'last-result-restored', 'mobile-layout', 'nature-caption-emphasis', 'responsive-and-extended-figure-local-navigation-offline'] }));
 } finally { await context.close(); }

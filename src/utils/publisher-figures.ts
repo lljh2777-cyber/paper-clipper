@@ -161,6 +161,17 @@ export function prepareDocumentForExtraction(document: Document, url: string): D
 	for (const description of Array.from(prepared.querySelectorAll(descriptionSelector))) {
 		const figure = description.closest('figure');
 		if (!figure?.querySelector('img') || description.closest('figcaption') || !description.textContent?.trim()) continue;
+		// A separator inside emphasis after a number produces invalid CommonMark
+		// (7<i>, GENE</i> becomes 7*, GENE*). Keep the separator outside the
+		// italic label on our copy, without changing text or the scientific value.
+		for (const emphasis of Array.from(description.querySelectorAll('i, em'))) {
+			const first = emphasis.firstChild;
+			if (first?.nodeType !== 3) continue;
+			const prefix = first.textContent?.match(/^[,;:]\s+/)?.[0];
+			if (!prefix || !emphasis.textContent?.slice(prefix.length).trim()) continue;
+			emphasis.before(prepared.createTextNode(prefix));
+			first.textContent = first.textContent!.slice(prefix.length);
+		}
 		// Defuddle replaces grouped citation superscripts with adjacent footnotes,
 		// dropping separators. Keep the original separators between single refs.
 		for (const sup of Array.from(description.querySelectorAll('sup'))) {

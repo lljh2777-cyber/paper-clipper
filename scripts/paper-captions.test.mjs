@@ -4,6 +4,14 @@ import { execFileSync } from 'node:child_process';
 import { checkFigureCaptions } from './paper-captions.mjs';
 import { pmcHtml, pmcUrl } from './fixtures/pmc.mjs';
 import { cellAuthorYearHtml, cellAuthorYearUrl } from './fixtures/cell-author-year.mjs';
+import { natureFiguresHtml, natureFiguresUrl } from './fixtures/nature-figures.mjs';
+
+test('Nature CLI retains italic labels beside numeric values without relaxing caption preservation', () => {
+	const output = execFileSync(process.execPath, ['dist/cli.cjs', natureFiguresUrl, '--html', '-', '-t', 'src/utils/fixtures/templates/minimal.json'], { input: natureFiguresHtml, encoding: 'utf8' });
+	assert.match(output, /7, \*GAMMA\* \*n\* = 9/);
+	assert.equal(checkFigureCaptions(natureFiguresHtml, output, natureFiguresUrl).status, 'passed');
+	assert.equal(checkFigureCaptions(natureFiguresHtml, output.replace('GAMMA', 'CHANGED'), natureFiguresUrl).status, 'failed');
+});
 
 test('author-year caption references retain their label and definition, allowing only source-declared repeated paragraphs', () => {
 	const output = execFileSync(process.execPath, ['dist/cli.cjs', cellAuthorYearUrl, '--html', '-', '-t', 'src/utils/fixtures/templates/minimal.json'], { input: cellAuthorYearHtml, encoding: 'utf8' });

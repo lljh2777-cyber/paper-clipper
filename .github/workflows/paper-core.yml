@@ -69,6 +69,7 @@ jobs:
           if-no-files-found: ignore
           path: |
             /tmp/paper-image-zip-qa-*/review-*.png
+            /tmp/paper-image-zip-qa-*/nature-*.png
             /tmp/paper-directory-qa-*/duplicate-*.png
             /tmp/paper-library-qa-*/archives-*.png
             /tmp/paper-attachments-qa-*/attachments-*.png

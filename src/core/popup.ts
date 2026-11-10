@@ -1378,7 +1378,7 @@ async function handleManualSave(format: 'directory' | 'zip') {
 		const identity = paperIdentity(page?.data.metaTags ?? [], properties, source, page?.data.published);
 		const imageSources = page ? collectImageSources(page.snapshot.document, source) : {};
 		const checkContext = await prepareManualExportChecks(page?.snapshot, frontmatter + markdown);
-		const figureLinks = page ? collectFigureLinks(page.snapshot.document, source) : {};
+		const figureLinks = page ? collectFigureLinks(page.snapshot.document, source, frontmatter + markdown) : {};
 		const input = { format, markdown: frontmatter + markdown, title, source, identity, imageSources, checkContext, figureLinks, attachments };
 		let receivedStatus = false;
 		const job = await openPaperDirectorySave(input, update => {

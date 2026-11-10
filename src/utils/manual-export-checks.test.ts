@@ -9,6 +9,8 @@ import { checkManualExport, ManualExportSnapshot, prepareManualExportChecks } fr
 import { markdownSha256 } from './manual-export-report';
 import { createImageArchive, prepareImageFiles } from './image-archive';
 import { cellAuthorYearHtml, cellAuthorYearUrl } from '../../scripts/fixtures/cell-author-year.mjs';
+import { natureFiguresHtml, natureFiguresUrl } from '../../scripts/fixtures/nature-figures.mjs';
+import { collectFigureLinks } from './figure-links';
 
 const cell = 'https://www.cell.com/cell/fulltext/synthetic-checks';
 const nature = 'https://www.nature.com/articles/synthetic-checks';
@@ -29,6 +31,26 @@ beforeEach(() => vi.stubGlobal('crypto', webcrypto));
 afterEach(() => vi.unstubAllGlobals());
 
 describe('manual export preservation reports', () => {
+	it('passes unchanged caption checks and localizes responsive/extended figures in both directory files and ZIP', async () => {
+		const document = new DOMParser().parseFromString(natureFiguresHtml, 'text/html');
+		const source = natureFiguresUrl;
+		const md = createMarkdownContent(new Defuddle(prepareDocumentForExtraction(document, source), { url: source }).parse().content, source);
+		const capture = { document, source, extractedMarkdown: md, templateMarkdown: md };
+		const checks = await prepareManualExportChecks(capture, md);
+		for (const stage of ['extraction', 'template', 'output'] as const) expect(checks.report.stages[stage].captions).toMatchObject({ status: 'passed', expected: 1, matched: 1 });
+		expect(checkManualExport(capture, md.replace('GAMMA', 'CHANGED')).stages.output.captions.status).toBe('failed');
+		vi.stubGlobal('fetch', vi.fn(async () => new Response(new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1]), { headers: { 'Content-Type': 'image/png' } })));
+		const links = collectFigureLinks(document, source, md);
+		expect(Object.keys(links)).toEqual(expect.arrayContaining([`${source}#Fig6`, `${source}#Fig7`, `${source}/figures/7`]));
+		const prepared = await prepareImageFiles(md, source, undefined, {}, checks, links);
+		const zip = await createImageArchive(md, 'Synthetic figure study', source, undefined, {}, checks, undefined, links);
+		const files = unzipSync(zip.bytes), zippedMd = files[`${zip.fileName.slice(0, -4)}/paper.md`];
+		expect(strFromU8(zippedMd)).toBe(strFromU8(prepared.files['paper.md']));
+		expect(strFromU8(zippedMd)).toContain('[6b](<images/image-1.png>)');
+		expect(strFromU8(zippedMd)).toContain('[1a](<images/image-2.png>)');
+		expect(strFromU8(zippedMd)).toContain('[Extended Data Fig. 1 Synthetic validation.](<images/image-2.png>)');
+		expect(prepared.checks.preservation).toBe('passed-within-scope');
+	});
 	function authorSnapshot(html = cellAuthorYearHtml): ManualExportSnapshot {
 		const document = new DOMParser().parseFromString(html, 'text/html');
 		const markdown = createMarkdownContent(new Defuddle(prepareDocumentForExtraction(document, cellAuthorYearUrl), { url: cellAuthorYearUrl }).parse().content, cellAuthorYearUrl);

@@ -61,6 +61,11 @@ image locally (including panel labels such as Fig. 1b). Unknown, ambiguous or
 unarchived targets and unrelated hyperlinks stay unchanged; figure order is
 never used to guess a destination. This applies to ZIP and default-directory
 saves, not the unsaved editor preview or previously exported notes.
+Responsive `picture`/`srcset` and lazy image candidates are matched against the
+actual Markdown image, rather than only the original `img.src`. Nature Extended
+Data IDs and declared figure-page links also resolve to their archived images.
+Duplicate IDs and multiple matching image variants stay remote rather than
+choosing an uncertain destination.
 It does not prove article completeness or replace the Core's DOI, preservation
 and Vault checks. Existing Add to Obsidian and plain Markdown downloads are
 unchanged and still retain remote images.
@@ -94,6 +99,10 @@ the supplied HTML, but unauthenticated requests returned 403 in the local test
 environment; actual availability there still depends on the publisher/browser.
 
 ## Captions and references
+
+Nature captions keep comma/semicolon separators outside adjacent italic labels
+when needed for valid Markdown (for example, `7, *GENE*`). Scientific text,
+numbers and italic labels are retained; source-caption checks remain unchanged.
 
 On supported Cell pages, full figure captions already present inside a collapsed
 caption panel are retained without clicking **Show full caption**. Only the
