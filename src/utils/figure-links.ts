@@ -1,5 +1,6 @@
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import type { RootContent } from 'mdast';
+import { collectImageSources } from './image-sources.mjs';
 
 function absolute(value: string | null, source: string): string {
 	if (!value) return '';
@@ -57,6 +58,7 @@ export function collectFigureLinks(document: Document, source: string, markdown:
 	const page = absolute(source, source);
 	if (!page) return {};
 	const images = markdownImages(markdown, source);
+	const preferredImages = collectImageSources(document, source);
 	const idCounts = new Map<string, number>();
 	for (const element of Array.from(document.querySelectorAll('[id]'))) idCounts.set(element.id, (idCounts.get(element.id) ?? 0) + 1);
 	const candidates = new Map<string, Set<string>>();
@@ -69,6 +71,9 @@ export function collectFigureLinks(document: Document, source: string, markdown:
 	for (const figure of Array.from(document.querySelectorAll(selector))) {
 		if (figure.querySelectorAll('img').length > 1) continue;
 		const declared = declaredImages(figure, source);
+		for (const original of [...declared]) {
+			if (Object.prototype.hasOwnProperty.call(preferredImages, original)) declared.add(preferredImages[original]);
+		}
 		const extended = nature ? figure.querySelector('h3 a[data-supp-info-image]') : null;
 		if (extended) declared.add(absolute(extended.getAttribute('data-supp-info-image'), source));
 		const matches = [...declared].filter(url => images.has(url));

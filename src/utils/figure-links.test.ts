@@ -2,6 +2,19 @@
 import { expect, it } from 'vitest';
 import { collectFigureLinks } from './figure-links';
 
+it('matches Cell declared high-resolution assets with different IDs, rejecting unrelated targets', () => {
+	const source = 'https://www.cell.com/cell/fulltext/synthetic';
+	const small = '/cms/10.1234/test/asset/preview/main.assets/gr1.jpg';
+	const large = '/cms/10.1234/test/asset/original/main.assets/gr1_lrg.jpg';
+	document.body.innerHTML = `<figure id="fig1"><img loading="lazy" src="${small}" data-viewer-src="${large}"></figure>`;
+	expect(collectFigureLinks(document, source, `![figure](${large})`)).toEqual({ [`${source}#fig1`]: `https://www.cell.com${large}` });
+	expect(collectFigureLinks(document, source, `![figure](${small})`)).toEqual({ [`${source}#fig1`]: `https://www.cell.com${small}` });
+	for (const bad of [large.replace('gr1_', 'gr2_'), `https://other.example${large}`]) {
+		document.querySelector('img')!.setAttribute('data-viewer-src', bad);
+		expect(collectFigureLinks(document, source, `![figure](${bad})`)).toEqual({});
+	}
+});
+
 it('maps explicit Nature and Cell figure IDs without mutating the snapshot', () => {
 	document.body.innerHTML = '<figure><figcaption id="Fig1">Fig. 1</figcaption><img src="/one.png"></figure><figure id="fig2"><img src="/two.png"></figure>';
 	const before = document.body.innerHTML;
