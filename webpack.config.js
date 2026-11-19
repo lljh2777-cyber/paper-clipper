@@ -183,6 +183,7 @@ module.exports = (env, argv) => {
 			}]),
 			new webpack.DefinePlugin({
 				'process.env.NODE_ENV': JSON.stringify(argv.mode),
+				'PAPER_CLIPPER_BUILD': JSON.stringify(package.version + '/' + new Date().toISOString()),
 				'DEBUG_MODE': JSON.stringify(!isProduction)
 			}),
 			...(isProduction ? [

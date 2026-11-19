@@ -16,6 +16,8 @@ import { updateSidebarWidth, addResizeHandle, cleanupResizeHandlers } from './ut
 import { parseForClip } from './utils/clip-utils';
 import { captureDocumentWithMath } from './utils/page-html-export';
 
+declare const PAPER_CLIPPER_BUILD: string;
+
 declare global {
 	interface Window {
 		obsidianClipperGeneration?: number;
@@ -91,6 +93,7 @@ declare global {
 	browser.runtime.sendMessage({ action: "contentScriptLoaded" });
 
 	interface ContentResponse {
+		sourceUrl: string;
 		content: string;
 		selectedHtml: string;
 		extractedContent: { [key: string]: string };
@@ -202,6 +205,8 @@ declare global {
 		}
 
 		if (request.action === "getPageContent") {
+			const sourceUrl = document.URL;
+			const captureStartedAt = new Date().toISOString();
 			// Flatten shadow DOM before extraction (async, needs main world)
 			const flattenTimeout = new Promise<void>(resolve => setTimeout(resolve, 3000));
 			Promise.race([flattenShadowDom(document), flattenTimeout]).then(async () => {
@@ -273,7 +278,9 @@ declare global {
 				// Get the modified HTML without scripts, styles, and style attributes
 				const cleanedHtml = doc.documentElement.outerHTML;
 
+				if (document.URL !== sourceUrl) throw new Error("htmlExportPageChanged");
 				const response: ContentResponse = {
+					sourceUrl,
 					author: defuddled.author,
 					content: defuddled.content,
 					description: defuddled.description,
@@ -300,7 +307,8 @@ declare global {
 				sendResponse(response);
 			}).catch((error: unknown) => {
 				if (error instanceof Error && 'code' in error && error.code === 'formula-preservation') {
-					console.warn('[Paper Clipper] Extraction stopped:', error.message);
+					console.warn('[Paper Clipper] Extraction stopped:', error.message, { captureStartedAt, build: PAPER_CLIPPER_BUILD,
+						formulaPreservation: 'formulaPreservation' in error ? error.formulaPreservation : undefined });
 				} else console.error('[Paper Clipper] getPageContent error:', error);
 				sendResponse({ success: false, error: error instanceof Error ? error.message : String(error),
 					formulaPreservation: error instanceof Error && 'formulaPreservation' in error ? error.formulaPreservation : undefined,

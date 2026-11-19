@@ -97,7 +97,7 @@ try {
 	const rejected = await opening;
 	observeConsole(rejected);
 	await rejected.locator('.error-message').filter({ hasText: 'formula(s) could not be safely converted' }).waitFor();
-	assert.match(await rejected.locator('.error-message').textContent(), /101 formula/);
+	assert.match(await rejected.locator('.error-message').textContent(), /101 formula.*#1 \(mathjax-1\).*mjx-msqrt/);
 	assert.ok((await rejected.locator('.error-message').textContent()).length < 200);
 	for (const [label, width, height] of [['desktop', 1100, 900], ['mobile', 390, 844]]) {
 		await rejected.setViewportSize({ width, height });

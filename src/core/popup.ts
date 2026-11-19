@@ -18,7 +18,6 @@ import { adjustNoteNameHeight } from '../utils/ui-utils';
 import { debugLog, isDebugMode } from '../utils/debug';
 import { showVariables, initializeVariablesPanel, updateVariablesPanel } from '../managers/inspect-variables';
 import { isBlankPage, isValidUrl, isRestrictedUrl } from '../utils/active-tab-manager';
-import { memoizeWithExpiration } from '../utils/memoize';
 import { debounce } from '../utils/debounce';
 import { sanitizeFileName } from '../utils/string-utils';
 import { saveFile } from '../utils/file-utils';
@@ -31,6 +30,7 @@ import { translatePage, getMessage, setupLanguageAndDirection } from '../utils/i
 import { formatPropertyValue } from '../utils/shared';
 import { exportPageHtml } from '../utils/page-html-export';
 import { notifySidePanelState, requestEmbeddedPanelToggle } from '../utils/side-panel-lifecycle';
+import type { FormulaReport } from '../utils/paper-math.mjs';
 import { ManualExportSnapshot, prepareManualExportChecks } from '../utils/manual-export-checks';
 
 interface ReaderModeResponse {
@@ -43,33 +43,15 @@ let currentTemplate: Template | null = null;
 let templates: Template[] = [];
 let currentVariables: { [key: string]: string } = {};
 let currentTabId: number | undefined;
+let editorWindowId: number | undefined;
+let refreshController: AbortController | undefined;
 type ExportPage = { data: NonNullable<Awaited<ReturnType<typeof extractPageContent>>>; source: string };
-let manualExportPage: { data: ExportPage['data']; snapshot: ManualExportSnapshot } | undefined;
+let manualExportPage: { tabId: number; data: ExportPage['data']; snapshot: ManualExportSnapshot } | undefined;
 let lastSelectedVault: string | null = null;
 
 const isSidePanel = window.location.pathname.includes('side-panel.html');
 const urlParams = new URLSearchParams(window.location.search);
 const isIframe = urlParams.get('context') === 'iframe';
-
-// Memoize compileTemplate with a short expiration and URL-sensitive key
-const memoizedCompileTemplate = memoizeWithExpiration(
-	async (tabId: number, template: string, variables: { [key: string]: string }, currentUrl: string) => {
-		return compileTemplate(tabId, template, variables, currentUrl);
-	},
-	{
-		expirationMs: 5000,
-		keyFn: (tabId: number, template: string, variables: { [key: string]: string }, currentUrl: string) =>
-			`${tabId}-${template}-${currentUrl}`
-	}
-);
-
-// Memoize generateFrontmatter with a longer expiration
-const memoizedGenerateFrontmatter = memoizeWithExpiration(
-	async (properties: Property[]) => {
-		return generateFrontmatter(properties);
-	},
-	{ expirationMs: 5000 }
-);
 
 function getPropertiesFromDOM(): Property[] {
 	return Array.from(document.querySelectorAll('.metadata-property input')).map(input => {
@@ -83,8 +65,9 @@ function getPropertiesFromDOM(): Property[] {
 }
 
 // Helper function to get tab info from background script
-async function getTabInfo(tabId: number): Promise<{ id: number; url: string }> {
-	const response = await browser.runtime.sendMessage({ action: "getTabInfo", tabId }) as { success?: boolean; tab?: { id: number; url: string }; error?: string };
+type EditorTab = { id: number; url: string; windowId: number; active: boolean };
+async function getTabInfo(tabId: number): Promise<EditorTab> {
+	const response = await browser.runtime.sendMessage({ action: "getTabInfo", tabId }) as { success?: boolean; tab?: EditorTab; error?: string };
 	if (!response || !response.success || !response.tab) {
 		throw new Error((response && response.error) || 'Failed to get tab info');
 	}
@@ -109,7 +92,8 @@ async function getCurrentTabInfo(): Promise<{ url: string; title?: string }> {
 	try {
 		const tab = await getTabInfo(currentTabId);
 		// Try to get the title from the extracted content if available
-		const extractedData = await memoizedExtractPageContent(currentTabId);
+		const page = manualExportPage;
+		const extractedData = page?.tabId === tab.id && page.snapshot.source === tab.url ? page.data : undefined;
 		return { 
 			url: tab.url, 
 			title: extractedData?.title || document.title 
@@ -119,21 +103,6 @@ async function getCurrentTabInfo(): Promise<{ url: string; title?: string }> {
 		return { url: '' };
 	}
 }
-
-// Memoize extractPageContent with URL-sensitive key
-const memoizedExtractPageContent = memoizeWithExpiration(
-	async (tabId: number) => {
-		await getTabInfo(tabId);
-		return extractPageContent(tabId);
-	},
-	{
-		expirationMs: 5000,
-		keyFn: async (tabId: number) => {
-			const tab = await getTabInfo(tabId);
-			return `${tabId}-${tab.url}`;
-		}
-	}
-);
 
 // Width is used to update the note name field height
 let previousWidth = window.innerWidth;
@@ -212,20 +181,6 @@ async function initializeExtension(tabId: number) {
 		}
 		debugLog('Vaults', 'Last selected vault:', lastSelectedVault);
 
-		const tab = await getTabInfo(tabId);
-		if (!tab.url || isBlankPage(tab.url)) {
-			showError('pageCannotBeClipped');
-			return;
-		}
-		if (!isValidUrl(tab.url)) {
-			showError('onlyHttpSupported');
-			return;
-		}
-		if (isRestrictedUrl(tab.url)) {
-			showError('pageCannotBeClipped');
-			return;
-		}
-
 		// Setup message listeners
 		setupMessageListeners();
 		setupStorageListeners();
@@ -242,9 +197,8 @@ async function initializeExtension(tabId: number) {
 
 const debouncedHighlightRefresh = debounce(() => {
 	if (currentTabId !== undefined) {
-		memoizedExtractPageContent.clear();
-		memoizedCompileTemplate.clear();
-		refreshFields(currentTabId, { checkTemplateTriggers: false, rebuildSkeleton: false });
+		const reuseTemplate = manualExportPage?.tabId === currentTabId;
+		void refreshFields(currentTabId, { checkTemplateTriggers: !reuseTemplate, rebuildSkeleton: !reuseTemplate });
 	}
 }, 300);
 
@@ -257,6 +211,19 @@ function setupStorageListeners() {
 }
 
 function setupMessageListeners() {
+	// A native panel belongs to one window and can outlive its article tab.
+	if (isSidePanel && !isIframe) {
+		browser.tabs.onActivated.addListener(({ tabId, windowId }) => {
+			if (windowId !== editorWindowId) return;
+			currentTabId = tabId;
+			void refreshFields(tabId);
+		});
+		browser.tabs.onUpdated.addListener((tabId, change) => {
+			if (tabId !== currentTabId) return;
+			if (change.status === 'loading') invalidateEditor();
+			else if (change.url || change.status === 'complete') void refreshFields(tabId);
+		});
+	}
 	browser.runtime.onMessage.addListener((request: any, sender: browser.Runtime.MessageSender, sendResponse: (response?: any) => void) => {
 		if (request.action === "triggerQuickClip") {
 			handleClipObsidian().then(() => {
@@ -273,8 +240,9 @@ function setupMessageListeners() {
 				}
 			}
 		} else if (request.action === "activeTabChanged") {
-			// Only handle active tab changes if we're in side panel mode, not iframe mode
-			if (!isIframe) {
+			// The native panel listens to its own window. Embedded editors stay bound to their host tab.
+			if (!isSidePanel && !isIframe && request.windowId === editorWindowId) {
+				invalidateEditor();
 				currentTabId = request.tabId;
 				if (request.isRestrictedUrl) {
 					showError('pageCannotBeClipped');
@@ -309,11 +277,11 @@ document.addEventListener('DOMContentLoaded', async function() {
 		document.documentElement.classList.add('is-embedded');
 	}
 
-	const isSidePanel = document.documentElement.classList.contains('is-side-panel');
-
 	try {
-		// Get the active tab via background script to handle Firefox compatibility
-		const response = await browser.runtime.sendMessage({ action: "getActiveTab" }) as { tabId?: number; error?: string };
+		// Resolve a native panel in its own window; embedded editors resolve through their sender tab.
+		const response: { tabId?: number; error?: string } = isSidePanel && !isIframe
+			? { tabId: (await browser.tabs.query({ currentWindow: true, active: true }))[0]?.id }
+			: await browser.runtime.sendMessage({ action: "getActiveTab" }) as { tabId?: number; error?: string };
 		if (!response || response.error || !response.tabId) {
 			showError(getMessage('pleaseReload'));
 			return;
@@ -322,6 +290,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 		currentTabId = response.tabId;
 		if (exportButton) exportButton.disabled = false;
 		const tab = await getTabInfo(currentTabId);
+		editorWindowId = tab.windowId;
 		const currentBrowser = await detectBrowser();
 		const isMobile = currentBrowser === 'mobile-safari';
 
@@ -414,7 +383,12 @@ document.addEventListener('DOMContentLoaded', async function() {
 					});
 				}
 
-				// Initial content load
+				// An activation during startup may precede listener registration.
+				if (isSidePanel && !isIframe) {
+					const initial = refreshController;
+					const [active] = await browser.tabs.query({ active: true, windowId: editorWindowId });
+					if (refreshController === initial && active?.id !== undefined) currentTabId = active.id;
+				}
 				await refreshFields(currentTabId);
 			} catch (error) {
 				console.error('Error initializing popup:', error);
@@ -494,8 +468,9 @@ function setupEventListeners(tabId: number) {
 			const properties = getPropertiesFromDOM();
 
 			const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
+			const content = noteContentField.value;
 			const frontmatter = await generateFrontmatter(properties);
-			const fileContent = frontmatter + noteContentField.value;
+			const fileContent = frontmatter + content;
 			
 			await copyToClipboard(fileContent);
 		});
@@ -632,12 +607,12 @@ async function initializeUI() {
 	}
 }
 
-function showError(messageKey: string): void {
+function showError(messageKey: string, message = getMessage(messageKey)): void {
 	const errorMessage = document.querySelector('.error-message') as HTMLElement;
 	const clipper = document.querySelector('.clipper') as HTMLElement;
 
 	if (errorMessage && clipper) {
-		errorMessage.textContent = getMessage(messageKey);
+		errorMessage.textContent = message;
 		errorMessage.style.display = 'flex';
 		clipper.style.display = 'none';
 
@@ -650,7 +625,7 @@ function clearError(): void {
 
 	if (errorMessage && clipper) {
 		errorMessage.style.display = 'none';
-		clipper.style.display = 'block';
+		clipper.style.removeProperty('display');
 
 		document.body.classList.remove('has-error');
 	}
@@ -661,9 +636,10 @@ function logError(message: string, error?: any): void {
 	showError(message);
 }
 
-async function waitForInterpreter(interpretBtn: HTMLButtonElement): Promise<void> {
+async function waitForInterpreter(interpretBtn: HTMLButtonElement, signal: AbortSignal): Promise<void> {
 	return new Promise((resolve, reject) => {
 		const checkProcessing = () => {
+			if (signal.aborted) { resolve(); return; }
 			if (!interpretBtn.classList.contains('processing')) {
 				if (interpretBtn.classList.contains('done')) {
 					resolve();
@@ -680,9 +656,18 @@ async function waitForInterpreter(interpretBtn: HTMLButtonElement): Promise<void
 	});
 }
 
-async function refreshFields(tabId: number, { checkTemplateTriggers = true, rebuildSkeleton = true }: { checkTemplateTriggers?: boolean; rebuildSkeleton?: boolean } = {}) {
+function invalidateEditor() {
+	refreshController?.abort();
 	manualExportPage = undefined;
 	resetAttachmentPicker();
+	const editor = document.querySelector<HTMLElement>('.clipper');
+	if (editor) editor.inert = true;
+}
+
+async function refreshFields(tabId: number, { checkTemplateTriggers = true, rebuildSkeleton = true }: { checkTemplateTriggers?: boolean; rebuildSkeleton?: boolean } = {}) {
+	invalidateEditor();
+	refreshController = new AbortController();
+	const { signal } = refreshController;
 	if (templates.length === 0) {
 		console.warn('No templates available');
 		showError('noTemplates');
@@ -691,6 +676,7 @@ async function refreshFields(tabId: number, { checkTemplateTriggers = true, rebu
 
 	try {
 		const tab = await getTabInfo(tabId);
+		if (signal.aborted) return;
 		if (!tab.url || isBlankPage(tab.url)) {
 			showError('pageCannotBeClipped');
 			return;
@@ -704,74 +690,60 @@ async function refreshFields(tabId: number, { checkTemplateTriggers = true, rebu
 			return;
 		}
 
-		// Start content extraction (don't await yet)
-		const extractionPromise = memoizedExtractPageContent(tabId);
+		const extractedData = await extractPageContent(tabId);
+		if (signal.aborted) return;
+		if (extractedData?.sourceUrl !== tab.url) throw new Error('paperEditorChanged');
 
-		// Match URL/regex triggers immediately (schema triggers will await extraction)
-		if (checkTemplateTriggers) {
-			const getSchemaOrgData = async () => {
-				const data = await extractionPromise;
-				return data?.schemaOrgData;
-			};
-
-			const matchedTemplate = await findMatchingTemplate(tab.url, getSchemaOrgData);
-			if (matchedTemplate) {
-				console.log('Matched template:', matchedTemplate);
-				currentTemplate = matchedTemplate;
-				updateTemplateDropdown();
-			}
-		}
-
-		if (rebuildSkeleton) {
-			buildTemplateFieldsSkeleton(currentTemplate);
-			setupMetadataToggle();
-		}
-
-		const extractedData = await extractionPromise;
-		if (extractedData) {
-			const currentUrl = tab.url;
-
-			const initializedContent = await initializePageContent(
-				extractedData.content,
-				extractedData.selectedHtml,
-				extractedData.extractedContent,
-				currentUrl,
-				extractedData.schemaOrgData,
-				extractedData.fullHtml,
-				extractedData.highlights || [],
-				extractedData.title,
-				extractedData.author,
-				extractedData.description,
-				extractedData.favicon,
-				extractedData.image,
-				extractedData.published,
-				extractedData.site,
-				extractedData.wordCount,
-				extractedData.language || '',
-				extractedData.metaTags
-			);
-			if (initializedContent) {
-				currentVariables = initializedContent.currentVariables;
-				console.log('Updated currentVariables:', currentVariables);
-				await fillTemplateFieldValues(
-					tabId,
-					currentTemplate,
-					initializedContent.currentVariables,
-					extractedData.schemaOrgData,
-					{ data: extractedData, source: currentUrl }
-				);
-
-				// Update variables panel if it's open
-				updateVariablesPanel(currentTemplate, currentVariables);
-			} else {
-				throw new Error('Unable to initialize page content.');
-			}
-		} else {
-			throw new Error('Unable to extract page content.');
-		}
+		const matched = checkTemplateTriggers
+			? await findMatchingTemplate(tab.url, async () => extractedData.schemaOrgData)
+			: undefined;
+		if (signal.aborted) return;
+		const template = matched ?? currentTemplate;
+		if (!template) throw new Error('noTemplates');
+		const currentUrl = tab.url;
+		const initializedContent = await initializePageContent(
+			extractedData.content,
+			extractedData.selectedHtml,
+			extractedData.extractedContent,
+			currentUrl,
+			extractedData.schemaOrgData,
+			extractedData.fullHtml,
+			extractedData.highlights || [],
+			extractedData.title,
+			extractedData.author,
+			extractedData.description,
+			extractedData.favicon,
+			extractedData.image,
+			extractedData.published,
+			extractedData.site,
+			extractedData.wordCount,
+			extractedData.language || '',
+			extractedData.metaTags
+		);
+		if (signal.aborted) return;
+		if (!initializedContent) throw new Error('Unable to initialize page content.');
+		await fillTemplateFieldValues(tabId, template, initializedContent.currentVariables,
+			{ data: extractedData, source: currentUrl }, signal, rebuildSkeleton);
+		if (!signal.aborted) updateVariablesPanel(template, currentVariables);
 	} catch (error) {
+		if (signal.aborted) return;
+		invalidateEditor();
 		if (error instanceof Error && 'code' in error && error.code === 'formula-preservation') {
 			console.warn('[Paper Clipper] Extraction stopped:', error.message);
+			const report = (error as Error & { formulaPreservation?: FormulaReport }).formulaPreservation;
+			const first = report?.unsupported[0];
+			if (first) {
+				const reasons: Record<string, string> = {
+					'Lazy placeholder has no MathML or TeX source': 'paperMathLazy',
+					'Invalid MathML XML': 'paperMathXml',
+					'Unsupported MathML structure or namespace': 'paperMathStructure',
+					'MathJax input exceeds snapshot limit': 'paperMathLimit',
+				};
+				const reason = reasons[first.reason] ? getMessage(reasons[first.reason]) : first.reason.slice(0, 100);
+				showError('paperMathStopped', getMessage('paperMathStopped', [String(report.unsupported.length),
+					String(first.position), first.id.slice(0, 48), reason]));
+			} else showError('', error.message);
+			return;
 		} else console.error('Error refreshing fields:', error);
 		const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
 		showError(errorMessage);
@@ -913,27 +885,32 @@ function buildTemplateFieldsSkeleton(template: Template | null) {
 	}
 }
 
-async function fillTemplateFieldValues(currentTabId: number, template: Template | null, variables: { [key: string]: string }, schemaOrgData?: any, exportPage?: ExportPage) {
-	if (!template) return;
+async function fillTemplateFieldValues(currentTabId: number, template: Template, variables: { [key: string]: string }, exportPage: ExportPage, signal: AbortSignal, rebuildSkeleton: boolean) {
 
-	const currentUrl = currentTabId ? (await getTabInfo(currentTabId)).url || '' : '';
+	const currentUrl = exportPage.source;
 
-	currentVariables = variables;
-
-	if (!Array.isArray(template.properties)) return;
+	if (!Array.isArray(template.properties)) throw new Error('failedToExtractContent');
 
 	// Compile all templates in parallel
 	const [compiledPropertyValues, formattedNoteName, formattedPath, formattedContent] = await Promise.all([
 		Promise.all(template.properties.map(property =>
-			memoizedCompileTemplate(currentTabId!, unescapeValue(property.value), variables, currentUrl)
+			compileTemplate(currentTabId!, unescapeValue(property.value), variables, currentUrl)
 		)),
-		memoizedCompileTemplate(currentTabId!, template.noteNameFormat, variables, currentUrl),
-		memoizedCompileTemplate(currentTabId!, template.path, variables, currentUrl),
+		compileTemplate(currentTabId!, template.noteNameFormat, variables, currentUrl),
+		compileTemplate(currentTabId!, template.path, variables, currentUrl),
 		template.noteContentFormat
-			? memoizedCompileTemplate(currentTabId!, template.noteContentFormat, variables, currentUrl)
+			? compileTemplate(currentTabId!, template.noteContentFormat, variables, currentUrl)
 			: Promise.resolve('')
 	]);
 
+	if (signal.aborted) return;
+	currentVariables = variables;
+	currentTemplate = template;
+	updateTemplateDropdown();
+	if (rebuildSkeleton) {
+		buildTemplateFieldsSkeleton(template);
+		setupMetadataToggle();
+	}
 	// Fill property values into existing DOM elements
 	for (let i = 0; i < template.properties.length; i++) {
 		const property = template.properties[i];
@@ -969,15 +946,18 @@ async function fillTemplateFieldValues(currentTabId: number, template: Template 
 		noteContentField.value = template.noteContentFormat ? formattedContent : '';
 		// Bind checks, identity and image hints to the same capture that filled the
 		// editor. A later save must not silently re-extract a changed page.
-		manualExportPage = exportPage ? { data: exportPage.data, snapshot: {
+		manualExportPage = { tabId: currentTabId, data: exportPage.data, snapshot: {
 			document: new DOMParser().parseFromString(exportPage.data.fullHtml, 'text/html'), source: exportPage.source,
 			extractedMarkdown: createMarkdownContent(exportPage.data.content, exportPage.source), templateMarkdown: noteContentField.value,
-		} } : undefined;
-		resetAttachmentPicker(manualExportPage?.snapshot);
+		} };
+		resetAttachmentPicker(manualExportPage.snapshot);
+		clearError();
+		document.querySelector<HTMLElement>('.clipper')!.inert = false;
 	}
 
 	if (generalSettings.interpreterEnabled) {
-		await initializeInterpreter(template, variables, currentTabId!, currentUrl);
+		await initializeInterpreter(template, variables, currentTabId!, currentUrl, signal);
+		if (signal.aborted) return;
 
 		const promptVariables = collectPromptVariables(template);
 
@@ -990,13 +970,15 @@ async function fillTemplateFieldValues(currentTabId: number, template: Template 
 				if (!modelConfig) {
 					throw new Error(`Model configuration not found for ${selectedModelId}`);
 				}
-				await handleInterpreterUI(template, variables, currentTabId!, currentUrl, modelConfig);
+				await handleInterpreterUI(template, variables, currentTabId!, currentUrl, modelConfig, signal);
+				if (signal.aborted) return;
 
 				if (interpretBtn) {
 					interpretBtn.classList.add('done');
 					interpretBtn.disabled = true;
 				}
 			} catch (error) {
+				if (signal.aborted) return;
 				console.error('Error auto-processing with interpreter:', error);
 				const interpretBtn = document.getElementById('interpret-btn') as HTMLButtonElement;
 				if (interpretBtn) {
@@ -1319,8 +1301,9 @@ async function handleSaveToDownloads() {
 		const properties = getPropertiesFromDOM();
 
 		const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
+		const content = noteContentField.value;
 		const frontmatter = await generateFrontmatter(properties);
-		const fileContent = frontmatter + noteContentField.value;
+		const fileContent = frontmatter + content;
 
 		await saveFile({
 			content: fileContent,
@@ -1372,14 +1355,23 @@ async function handleManualSave(format: 'directory' | 'zip') {
 		const title = (document.getElementById('note-name-field') as HTMLInputElement).value;
 		const properties = getPropertiesFromDOM();
 		const page = manualExportPage;
+		if (!page) {
+			status.textContent = getMessage('paperEditorChanged');
+			return;
+		}
 		const attachments = selectedPaperAttachments();
 		const frontmatter = await generateFrontmatter(properties);
-		const source = page?.snapshot.source ?? '';
-		const identity = paperIdentity(page?.data.metaTags ?? [], properties, source, page?.data.published);
-		const imageSources = page ? collectImageSources(page.snapshot.document, source) : {};
-		const checkContext = await prepareManualExportChecks(page?.snapshot, frontmatter + markdown);
-		const figureLinks = page ? collectFigureLinks(page.snapshot.document, source, frontmatter + markdown) : {};
+		const source = page.snapshot.source;
+		const identity = paperIdentity(page.data.metaTags, properties, source, page.data.published);
+		const imageSources = collectImageSources(page.snapshot.document, source);
+		const checkContext = await prepareManualExportChecks(page.snapshot, frontmatter + markdown);
+		const figureLinks = collectFigureLinks(page.snapshot.document, source, frontmatter + markdown);
 		const input = { format, markdown: frontmatter + markdown, title, source, identity, imageSources, checkContext, figureLinks, attachments };
+		const tab = await getTabInfo(page.tabId);
+		if (page !== manualExportPage || currentTabId !== page.tabId || tab.url !== source || (isSidePanel && !isIframe && (!tab.active || tab.windowId !== editorWindowId))) {
+			status.textContent = getMessage('paperEditorChanged');
+			return;
+		}
 		let receivedStatus = false;
 		const job = await openPaperDirectorySave(input, update => {
 			receivedStatus = true;
@@ -1437,7 +1429,8 @@ function determineMainAction() {
 }
 
 async function handleClipObsidian(): Promise<void> {
-	if (!currentTemplate) return;
+	const signal = refreshController?.signal;
+	if (!currentTemplate || !manualExportPage || !signal || signal.aborted) return;
 
 	const vaultDropdown = document.getElementById('vault-select') as HTMLSelectElement;
 	const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
@@ -1454,17 +1447,19 @@ async function handleClipObsidian(): Promise<void> {
 		// Handle interpreter if needed
 		if (generalSettings.interpreterEnabled && interpretBtn && collectPromptVariables(currentTemplate).length > 0) {
 			if (interpretBtn.classList.contains('processing')) {
-				await waitForInterpreter(interpretBtn);
+				await waitForInterpreter(interpretBtn, signal);
 			} else if (!interpretBtn.classList.contains('done')) {
 				interpretBtn.click();
-				await waitForInterpreter(interpretBtn);
+				await waitForInterpreter(interpretBtn, signal);
 			}
 		}
 
+		if (signal.aborted) return;
 		// Gather content
 		const properties = getPropertiesFromDOM();
 
 		const frontmatter = await generateFrontmatter(properties);
+		if (signal.aborted) return;
 		const fileContent = frontmatter + noteContentField.value;
 
 		// Save to Obsidian

@@ -359,6 +359,7 @@ async function setupReaderPageMessageHandler(articleUrl: string, defuddleResult:
 	const myTabId = currentTab?.id;
 
 	const cachedContent = {
+		sourceUrl: articleUrl,
 		content: defuddleResult.content || '',
 		title: defuddleResult.title || '',
 		author: defuddleResult.author || '',

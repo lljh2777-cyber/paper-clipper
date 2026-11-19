@@ -1,4 +1,10 @@
 {
+	"paperMathStopped": { "message": "$1 formula(s) could not be safely converted. Formula #$2 ($3): $4." },
+	"paperMathLazy": { "message": "Only a lazy placeholder remains; no MathML or TeX source is available" },
+	"paperMathXml": { "message": "The MathML source is invalid XML" },
+	"paperMathStructure": { "message": "The MathML structure or namespace is unsupported" },
+	"paperMathLimit": { "message": "The formula source exceeds the capture size limit" },
+	"paperEditorChanged": { "message": "Wait for the current article to load, then save again. If the editor still shows the previous article, reopen it." },
 	"paperAttachmentsSelection": { "message": "Supplementary files (ZIP / directory): $1 / $2 selected" },
 	"paperAttachmentsProgress": { "message": "Preparing $1 selected supplementary files..." },
 	"paperAttachmentsSaved": { "message": "Supplementary files saved: $1. Content safety has not been assessed." },

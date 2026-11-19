@@ -46,6 +46,7 @@ function normalizeText(html: string): string {
 }
 
 interface ContentResponse {
+	sourceUrl: string;
 	content: string;
 	selectedHtml: string;
 	extractedContent: ExtractedContent;
@@ -107,7 +108,7 @@ export async function extractPageContent(tabId: number): Promise<ContentResponse
 	try {
 		return await sendExtractRequest(tabId);
 	} catch (firstError) {
-		if (firstError instanceof Error && 'code' in firstError && firstError.code === 'formula-preservation') throw firstError;
+		if (firstError instanceof Error && 'code' in firstError && (firstError.code === 'formula-preservation' || firstError.code === 'paper-page-changed')) throw firstError;
 		// First attempt failed — this commonly happens on Safari after an
 		// extension update when a zombie content script (runtime invalidated)
 		// responded to ping, preventing re-injection. Force a fresh injection

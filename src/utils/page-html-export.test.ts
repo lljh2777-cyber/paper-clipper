@@ -40,19 +40,19 @@ afterEach(() => {
 	document.body.replaceChildren();
 });
 
-function snapshot(): PageHtmlSnapshot {
-	const result = capturePageHtml();
+async function snapshot(): Promise<PageHtmlSnapshot> {
+	const result = await capturePageHtml();
 	if ('error' in result) throw new Error(result.error);
 	return result.snapshot;
 }
 
 describe('current-page HTML snapshot', () => {
-	it('preserves the rendered article, metadata, figures and tables without mutating the page', () => {
+	it('preserves the rendered article, metadata, figures and tables without mutating the page', async () => {
 		const before = document.documentElement.outerHTML;
 		const dynamic = document.createElement('p');
 		dynamic.textContent = 'Loaded after login';
 		document.querySelector('article')!.append(dynamic);
-		const result = snapshot();
+		const result = await snapshot();
 		expect(result.html).toContain('Loaded after login');
 		expect(result.html).toContain('application/ld+json');
 		expect(result.html).toContain('Figure 1 caption');
@@ -66,8 +66,8 @@ describe('current-page HTML snapshot', () => {
 		expect(document.documentElement.outerHTML).toBe(before);
 	});
 
-	it('excludes form values, executable code, nested frames and extension controls', () => {
-		const { html } = snapshot();
+	it('excludes form values, executable code, nested frames and extension controls', async () => {
+		const { html } = await snapshot();
 		for (const secret of ['password-secret', 'csrf-secret', 'private draft', 'session-script', 'private frame', 'Extension UI']) {
 			expect(html).not.toContain(secret);
 		}
@@ -95,7 +95,7 @@ describe('current-page HTML snapshot', () => {
 
 describe('HTML export downloads', () => {
 	it('captures only the selected top frame and downloads a matching UTF-8 HTML/JSON pair', async () => {
-		const captured = snapshot();
+		const captured = await snapshot();
 		vi.mocked(browser.scripting.executeScript).mockResolvedValue([{ frameId: 0, result: { snapshot: captured } }]);
 		await exportPageHtml(42, url);
 		expect(browser.scripting.executeScript).toHaveBeenCalledWith({ target: { tabId: 42, frameIds: [0] }, world: 'MAIN', func: capturePageHtml });
@@ -112,13 +112,13 @@ describe('HTML export downloads', () => {
 	});
 
 	it('refuses a navigation race instead of pairing one page with another URL', async () => {
-		vi.mocked(browser.scripting.executeScript).mockResolvedValue([{ frameId: 0, result: { snapshot: { ...snapshot(), url: url + '/different' } } }]);
+		vi.mocked(browser.scripting.executeScript).mockResolvedValue([{ frameId: 0, result: { snapshot: { ...await snapshot(), url: url + '/different' } } }]);
 		await expect(exportPageHtml(42, url)).rejects.toThrow('htmlExportPageChanged');
 		expect(saveFile).not.toHaveBeenCalled();
 	});
 
 	it('allows an in-page anchor change', async () => {
-		vi.mocked(browser.scripting.executeScript).mockResolvedValue([{ frameId: 0, result: { snapshot: { ...snapshot(), url: url + '#Methods' } } }]);
+		vi.mocked(browser.scripting.executeScript).mockResolvedValue([{ frameId: 0, result: { snapshot: { ...await snapshot(), url: url + '#Methods' } } }]);
 		await exportPageHtml(42, url);
 		expect(saveFile).toHaveBeenCalledTimes(2);
 	});
@@ -136,7 +136,7 @@ describe('HTML export downloads', () => {
 	});
 
 	it('propagates saveFile errors instead of reporting success or requesting another download', async () => {
-		vi.mocked(browser.scripting.executeScript).mockResolvedValue([{ frameId: 0, result: { snapshot: snapshot() } }]);
+		vi.mocked(browser.scripting.executeScript).mockResolvedValue([{ frameId: 0, result: { snapshot: await snapshot() } }]);
 		vi.mocked(saveFile).mockImplementation(async options => { options.onError!(new Error('Download failed')); });
 		await expect(exportPageHtml(42, url)).rejects.toThrow('Download failed');
 		expect(saveFile).toHaveBeenCalledTimes(1);
@@ -144,7 +144,7 @@ describe('HTML export downloads', () => {
 });
 
 describe('retained MathJax input capture', () => {
-	it('captures lazy MathML and TeX by DOM identity without scrolling or changing the live page', () => {
+	it('captures lazy MathML and TeX by DOM identity without scrolling or changing the live page', async () => {
 		document.documentElement.innerHTML = runtimeMathHtml;
 		installSyntheticMathJax();
 		const before = document.documentElement.outerHTML;
@@ -174,16 +174,16 @@ describe('retained MathJax input capture', () => {
 		expect(target.hasAttribute('data-paper-mathml')).toBe(false);
 	});
 
-	it('does not recursively decode escaped entity text', () => {
+	it('does not recursively decode escaped entity text', async () => {
 		document.body.innerHTML = '<mjx-container><mjx-lazy></mjx-lazy></mjx-container>';
 		(window as any).MathJax = { startup: { document: { math: [{ typesetRoot: document.querySelector('mjx-container'),
 			math: '<math><mtext>&amp;nbsp;</mtext></math>', display: false, inputJax: { name: 'MathML' } }] } } };
-		const captured = new DOMParser().parseFromString(snapshot().html, 'text/html');
+		const captured = new DOMParser().parseFromString((await snapshot()).html, 'text/html');
 		const retained = captured.querySelector('mjx-container')!.getAttribute('data-paper-mathml')!;
 		expect(new DOMParser().parseFromString(retained, 'application/xml').querySelector('mtext')?.textContent).toBe('&nbsp;');
 	});
 
-	it('ignores detached, mismatched, oversized and unsafe runtime inputs', () => {
+	it('ignores detached, mismatched, oversized and unsafe runtime inputs', async () => {
 		document.body.innerHTML = '<mjx-container><mjx-lazy></mjx-lazy></mjx-container>';
 		const target = document.querySelector('mjx-container')!;
 		const bad = [
@@ -199,16 +199,80 @@ describe('retained MathJax input capture', () => {
 		];
 		for (const item of bad) {
 			(window as any).MathJax = { startup: { document: { math: [{ display: false, inputJax: { name: 'MathML' }, ...item }] } } };
-			const captured = new DOMParser().parseFromString(snapshot().html, 'text/html');
+			const captured = new DOMParser().parseFromString((await snapshot()).html, 'text/html');
 			expect(captured.querySelector('[data-paper-mathml], [data-latex]')).toBeNull();
 			expect(checkMathPreservation(captured, '').status).toBe('failed');
 		}
 	});
 
+	it.each(['available', 'delayed', 'missing'] as const)('extracts against actual retained inputs when the second formula is %s', async mode => {
+		document.querySelector('article')!.insertAdjacentHTML('beforeend',
+			'<mjx-container data-latex="a"></mjx-container><span class="display-formula" id="eq-B"><mjx-container><mjx-lazy></mjx-lazy></mjx-container></span>');
+		const root = document.querySelector('#eq-B mjx-container')!;
+		const input = { typesetRoot: root, math: 'b^2', display: false, inputJax: { name: 'TeX' } };
+		const inputs = mode === 'available' ? [input] : [];
+		let ready!: () => void;
+		const reads = vi.fn(() => inputs);
+		const startup = { promise: new Promise<void>(resolve => { ready = resolve; }), document: { get math() { return reads(); } } };
+		(window as any).MathJax = { startup };
+		// executeScript ships this function alone to the page's MAIN world.
+		const inject = new Function('return (' + capturePageHtml.toString() + ')()');
+		const pending = inject();
+		expect(reads).toHaveBeenCalledTimes(1);
+		if (mode === 'available') expect(pending.snapshot).toBeDefined(); // no wait even if startup never settles
+		else {
+			if (mode === 'delayed') inputs.push(input);
+			ready();
+		}
+		const captured = new DOMParser().parseFromString((await pending).snapshot.html, 'text/html');
+		expect(reads).toHaveBeenCalledTimes(mode === 'available' ? 1 : 2);
+		if (mode === 'missing') {
+			expect(() => parseForClip(captured)).toThrow(/#2 \(eq-B\): Lazy placeholder has no MathML or TeX source/);
+		} else {
+			const markdown = createMarkdownContent(parseForClip(captured).content, url);
+			expect(checkMathPreservation(captured, markdown)).toMatchObject({ status: 'passed', expected: 2, matched: 2 });
+		}
+		expect(root.hasAttribute('data-latex')).toBe(false);
+	});
+
+	it('reports malformed retained MathML immediately even if startup is pending', () => {
+		document.body.innerHTML = '<mjx-container><mjx-lazy></mjx-lazy></mjx-container>';
+		(window as any).MathJax = { startup: { promise: new Promise(() => {}), document: { math: [{
+			typesetRoot: document.querySelector('mjx-container'), inputJax: { name: 'MathML' }, display: false,
+			math: '<math><mi>x</math>',
+		}] } } };
+		const result = capturePageHtml();
+		expect(result).not.toBeInstanceOf(Promise);
+		if (!('snapshot' in result)) throw new Error('Expected immediate diagnostic snapshot');
+		const captured = new DOMParser().parseFromString(result.snapshot.html, 'text/html');
+		expect(() => parseForClip(captured)).toThrow(/#1 \(mathjax-1\): Invalid MathML XML/);
+	});
+
+	it('bounds startup waits and never recaptures on late settlement or navigation', async () => {
+		vi.useFakeTimers();
+		try {
+			document.body.innerHTML = '<mjx-container><mjx-lazy></mjx-lazy></mjx-container>';
+			let ready!: () => void;
+			const reads = vi.fn(() => []);
+			const startup = { promise: new Promise<void>(r => { ready = r; }), document: { get math() { return reads(); } } };
+			(window as any).MathJax = { startup };
+			const first = snapshot();
+			await vi.advanceTimersByTimeAsync(5000);
+			expect((await first).html).toContain('mjx-lazy');
+			ready();
+			await Promise.resolve();
+			expect(reads).toHaveBeenCalledTimes(1);
+			const second = capturePageHtml();
+			history.replaceState(null, '', '/different-article');
+			await expect(second).resolves.toEqual({ error: 'htmlExportPageChanged' });
+			expect(reads).toHaveBeenCalledTimes(2);
+		} finally { history.replaceState(null, '', url); vi.useRealTimers(); }
+	});
+
 	it('uses a same-page captured document and fails closed on snapshot errors or navigation', async () => {
 		document.documentElement.innerHTML = runtimeMathHtml;
 		installSyntheticMathJax();
-		const captured = snapshot();
+		const captured = await snapshot();
 		vi.mocked(browser.runtime.sendMessage).mockResolvedValue({ snapshot: captured });
 		const copy = await captureDocumentWithMath(document);
 		expect(copy).not.toBe(document);
@@ -216,6 +280,8 @@ describe('retained MathJax input capture', () => {
 		expect(mathInventory(copy).every(item => !item.error)).toBe(true);
 		vi.mocked(browser.runtime.sendMessage).mockResolvedValue({ snapshot: { ...captured, url: url + 'different' } });
 		expect(await captureDocumentWithMath(document)).toBe(document);
+		vi.mocked(browser.runtime.sendMessage).mockResolvedValue({ error: 'htmlExportPageChanged' });
+		await expect(captureDocumentWithMath(document)).rejects.toMatchObject({ code: 'paper-page-changed' });
 		vi.mocked(browser.runtime.sendMessage).mockRejectedValue(new Error('Unsupported browser'));
 		expect(await captureDocumentWithMath(document)).toBe(document);
 		expect(checkMathPreservation(document, '').status).toBe('failed');

@@ -14,7 +14,7 @@ let lastRequestTime = 0;
 // Store event listeners for cleanup
 const eventListeners = new WeakMap<HTMLElement, { [key: string]: EventListener }>();
 
-export async function sendToLLM(promptContext: string, content: string, promptVariables: PromptVariable[], model: ModelConfig): Promise<{ promptResponses: any[] }> {
+export async function sendToLLM(promptContext: string, content: string, promptVariables: PromptVariable[], model: ModelConfig, signal?: AbortSignal): Promise<{ promptResponses: any[] }> {
 	debugLog('Interpreter', 'Sending request to LLM...');
 	
 	// Find the provider for this model
@@ -201,6 +201,7 @@ export async function sendToLLM(promptContext: string, content: string, promptVa
 		debugLog('Interpreter', `Sending request to ${provider.name} API:`, requestBody);
 
 		const response = await fetch(requestUrl, {
+			signal,
 			method: 'POST',
 			headers: headers,
 			body: JSON.stringify(requestBody)
@@ -464,7 +465,7 @@ export function collectPromptVariables(template: Template | null): PromptVariabl
 	return Array.from(promptMap.values());
 }
 
-export async function initializeInterpreter(template: Template, variables: { [key: string]: string }, tabId: number, currentUrl: string) {
+export async function initializeInterpreter(template: Template, variables: { [key: string]: string }, tabId: number, currentUrl: string, signal: AbortSignal) {
 	const interpreterContainer = document.getElementById('interpreter');
 	const interpretBtn = document.getElementById('interpret-btn');
 	const promptContextTextarea = document.getElementById('prompt-context') as HTMLTextAreaElement;
@@ -504,6 +505,7 @@ export async function initializeInterpreter(template: Template, variables: { [ke
 		const tokenCounter = document.getElementById('token-counter');
 		
 		const inputListener = () => {
+			if (signal.aborted) return;
 			template.context = promptContextTextarea.value;
 			if (tokenCounter) {
 				updateTokenCount(promptContextTextarea.value, tokenCounter);
@@ -517,6 +519,7 @@ export async function initializeInterpreter(template: Template, variables: { [ke
 			|| generalSettings.defaultPromptContext
 			|| '{{fullHtml|remove_html:("#navbar,.footer,#footer,header,footer,style,script")|strip_tags:("script,h1,h2,h3,h4,h5,h6,meta,a,ol,ul,li,p,em,strong,i,b,s,strike,u,sup,sub,img,video,audio,math,table,cite,td,th,tr,caption")|strip_attr:("alt,src,href,id,content,property,name,datetime,title")}}';
 		promptToDisplay = await compileTemplate(tabId, promptToDisplay, variables, currentUrl);
+		if (signal.aborted) return;
 		promptContextTextarea.value = promptToDisplay;
 		
 		// Initial token count
@@ -534,7 +537,7 @@ export async function initializeInterpreter(template: Template, variables: { [ke
 				if (!modelConfig) {
 					throw new Error(`Model configuration not found for ${selectedModelId}`);
 				}
-				await handleInterpreterUI(template, variables, tabId, currentUrl, modelConfig);
+				await handleInterpreterUI(template, variables, tabId, currentUrl, modelConfig, signal);
 			};
 			storeListener(interpretBtn, 'click', clickListener);
 		}
@@ -568,6 +571,7 @@ export async function initializeInterpreter(template: Template, variables: { [ke
 			if (!lastSelectedModel && enabledModels.length > 0) {
 				generalSettings.interpreterModel = enabledModels[0].id;
 				await saveSettings();
+				if (signal.aborted) return;
 				modelSelect.value = generalSettings.interpreterModel;
 			}
 		}
@@ -579,8 +583,10 @@ export async function handleInterpreterUI(
 	variables: { [key: string]: string },
 	tabId: number,
 	currentUrl: string,
-	modelConfig: ModelConfig
+	modelConfig: ModelConfig,
+	signal: AbortSignal
 ): Promise<void> {
+	if (signal.aborted) return;
 	const interpreterContainer = document.getElementById('interpreter');
 	const interpretBtn = document.getElementById('interpret-btn') as HTMLButtonElement;
 	const interpreterErrorMessage = document.getElementById('interpreter-error') as HTMLDivElement;
@@ -589,6 +595,17 @@ export async function handleInterpreterUI(
 	const moreButton = document.getElementById('more-btn') as HTMLButtonElement;
 	const promptContextTextarea = document.getElementById('prompt-context') as HTMLTextAreaElement;
 
+	let timerInterval: number | undefined;
+	const reset = () => {
+		clearInterval(timerInterval);
+		responseTimer.style.display = 'none';
+		interpretBtn.textContent = getMessage('interpret');
+		interpretBtn.classList.remove('processing', 'done', 'error');
+		interpretBtn.disabled = clipButton.disabled = moreButton.disabled = false;
+		interpreterContainer?.classList.remove('done', 'error');
+		interpreterErrorMessage.style.display = 'none';
+	};
+	signal.addEventListener('abort', reset, { once: true });
 	try {
 		// Hide any previous error message
 		interpreterErrorMessage.style.display = 'none';
@@ -619,7 +636,6 @@ export async function handleInterpreterUI(
 
 		// Start the timer
 		const startTime = performance.now();
-		let timerInterval: number;
 
 		// Change button text and add class
 		interpretBtn.textContent = getMessage('thinking');
@@ -639,7 +655,8 @@ export async function handleInterpreterUI(
 			responseTimer.textContent = formatDuration(elapsedTime);
 		}, 10);
 
-		const { promptResponses } = await sendToLLM(contextToUse, contentToProcess, promptVariables, modelConfig);
+		const { promptResponses } = await sendToLLM(contextToUse, contentToProcess, promptVariables, modelConfig, signal);
+		if (signal.aborted) return;
 		debugLog('Interpreter', 'LLM response:', { promptResponses });
 
 		// Stop the timer and update UI
@@ -674,6 +691,8 @@ export async function handleInterpreterUI(
 		}
 
 	} catch (error) {
+		clearInterval(timerInterval);
+		if (signal.aborted) return;
 		console.error('Error processing LLM:', error);
 		
 		// Revert button text and remove class in case of error

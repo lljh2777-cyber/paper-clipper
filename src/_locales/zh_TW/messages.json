@@ -1,4 +1,10 @@
 {
+	"paperMathStopped": { "message": "有 $1 個公式無法可靠轉換。第 $2 個公式（$3）：$4。" },
+	"paperMathLazy": { "message": "頁面僅提供延遲載入的佔位符，未取得 MathML 或 TeX 原文" },
+	"paperMathXml": { "message": "MathML 原文不是有效的 XML" },
+	"paperMathStructure": { "message": "MathML 含有不支援的結構或命名空間" },
+	"paperMathLimit": { "message": "公式原文超過擷取大小限制" },
+	"paperEditorChanged": { "message": "請等候目前論文載入完成後再儲存。如果編輯器仍顯示上一篇論文，請重新開啟擴充功能。" },
 	"manualChecksAttention": { "message": "發現內容差異，請複核 checks.json。未判定全文完整性。" },
 	"manualChecksScoped": { "message": "已涵蓋的檢查通過，詳見 checks.json。未判定全文完整性。" },
 	"manualChecksUnassessed": { "message": "尚未驗證來源內容保留情況，詳見 checks.json。" },

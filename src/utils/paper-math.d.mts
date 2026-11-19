@@ -4,7 +4,7 @@ export interface FormulaReport {
 	expected: number;
 	matched: number;
 	missing: string[];
-	unsupported: { id: string; reason: string }[];
+	unsupported: { id: string; position: number; reason: string }[];
 }
 export function mathInventory(document: Document): { element: Element; id: string; math?: Element; latex?: string; block?: boolean; error?: string }[];
 export function prepareMath(document: Document): void;

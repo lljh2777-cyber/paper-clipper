@@ -7,9 +7,14 @@ runs in the selected top frame, pairs each input with its exact rendered DOM
 element, and adds it only to a sanitized snapshot. It does not change the page,
 read cookies, fetch another article, or force MathJax to render.
 
+When input is missing and MathJax exposes its startup promise, the capture waits
+up to five seconds. On readiness it captures the same document and URL once more.
+Available inputs are used immediately. A timeout or rejected promise retains
+the first snapshot for diagnosis.
+
 The existing Clipper/Defuddle pipeline and formula checks remain in place.
 Unavailable or unsupported source still stops conversion. The error message is
-short; the complete per-formula report is carried as `formulaPreservation` on the
+bounded and identifies the first failing formula and reason. The complete per-formula report is carried as `formulaPreservation` on the
 error/response rather than concatenated into the visible message. Expected
 validation failures are warnings, while unexpected runtime errors remain errors.
 

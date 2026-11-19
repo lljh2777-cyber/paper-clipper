@@ -143,7 +143,7 @@ function reconstruct(root) {
 
 export function mathInventory(document) {
 	return Array.from(document.querySelectorAll('mjx-container')).filter(el => !el.closest(excluded)).map((element, index) => {
-		const id = element.closest('.display-formula')?.id || `mathjax-${index + 1}`;
+		const id = element.closest('.display-formula[id], .disp-formula[id]')?.id || element.id || `mathjax-${index + 1}`;
 		try {
 			let sourceMath = element.querySelector('math');
 			const savedMath = element.getAttribute('data-paper-mathml');
@@ -176,7 +176,14 @@ export function mathInventory(document) {
 				latex = toLatex(math);
 			} else {
 				const roots = children(element).filter(el => name(el) === 'mjx-math');
-				if (roots.length !== 1) fail('No recoverable MathML, TeX or supported CHTML tree');
+				if (roots.length !== 1) {
+					const rejected = element.getAttribute('data-paper-math-error');
+					if (rejected === 'xml') fail('Invalid MathML XML');
+					if (rejected === 'structure') fail('Unsupported MathML structure or namespace');
+					if (rejected === 'size') fail('MathJax input exceeds snapshot limit');
+					if (element.querySelector('mjx-lazy')) fail('Lazy placeholder has no MathML or TeX source');
+					fail('No recoverable MathML, TeX or supported CHTML tree');
+				}
 				({ math, latex } = reconstruct(roots[0]));
 			}
 			if (!latex?.trim()) fail('Empty formula conversion');
@@ -205,9 +212,14 @@ export function retainMathForSnapshot(document) {
 export function prepareMath(document) {
 	const inventory = mathInventory(document);
 	const unsupported = inventory.filter(item => item.error);
-	if (unsupported.length) throw Object.assign(new Error(`Paper Clipper: ${unsupported.length} formula(s) could not be safely converted. Keep/export the source HTML for review.`), {
-		code: 'formula-preservation', formulaPreservation: checkMathPreservation(document, '')
-	});
+	if (unsupported.length) {
+		const first = unsupported[0];
+		const ordinal = inventory.indexOf(first) + 1;
+		const detail = `#${ordinal} (${first.id.slice(0, 48)}): ${first.error.slice(0, 100)}`;
+		throw Object.assign(new Error(`Paper Clipper: ${unsupported.length} formula(s) could not be safely converted. ${detail}.`), {
+			code: 'formula-preservation', formulaPreservation: checkMathPreservation(document, '')
+		});
+	}
 	for (const { element, math, latex, block, script } of inventory) {
 		math.setAttribute('xmlns', 'http://www.w3.org/1998/Math/MathML');
 		math.setAttribute('data-latex', latex);
@@ -285,8 +297,8 @@ export function checkMathPreservation(document, markdown) {
 	const inventory = mathInventory(document);
 	const formulas = inventory.length ? markdownMath(markdown) : [];
 	const missing = [], unsupported = [];
-	for (const item of inventory) {
-		if (item.error) { unsupported.push({ id: item.id, reason: item.error }); continue; }
+	for (const [indexInSource, item] of inventory.entries()) {
+		if (item.error) { unsupported.push({ id: item.id, position: indexInSource + 1, reason: item.error }); continue; }
 		const index = formulas.findIndex(formula => formula.block === item.block && canonical(formula.latex) === canonical(item.latex));
 		if (index < 0) missing.push(item.id);
 		else formulas.splice(index, 1);
@@ -298,5 +310,5 @@ export function checkMathPreservation(document, markdown) {
 
 export function assertMathPreserved(document, markdown) {
 	const report = checkMathPreservation(document, markdown);
-	if (report.status === 'failed') throw Object.assign(new Error(`Paper Clipper: formula preservation failed (${report.matched}/${report.expected} matched). Keep/export the source HTML for review.`), { code: 'formula-preservation', formulaPreservation: report });
+	if (report.status === 'failed') throw Object.assign(new Error(`Paper Clipper: formula preservation failed (${report.matched}/${report.expected} matched). ${report.unsupported.length ? report.unsupported[0].id + ': ' + report.unsupported[0].reason : report.missing[0] + ': missing or changed in Markdown'}.`), { code: 'formula-preservation', formulaPreservation: report });
 }

@@ -629,6 +629,10 @@ browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime
 		}
 
 		if (typedRequest.action === "getActiveTab") {
+			if (sender.frameId && sender.tab?.id !== undefined) {
+				sendResponse({ tabId: sender.tab.id });
+				return true;
+			}
 			browser.tabs.query({active: true, currentWindow: true}).then(async (tabs) => {
 				let currentTab = tabs[0];
 				// Fallback for when currentWindow has no tabs (e.g., debugging popup in DevTools)
@@ -706,6 +710,8 @@ browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime
 					success: true,
 					tab: {
 						id: tab.id,
+						windowId: tab.windowId,
+						active: tab.active,
 						url: url
 					}
 				});
