@@ -113,11 +113,11 @@ by later runs. They are ordinary local files, not write-protected archives.
 Malformed and skipped pairs do not get conversion snapshots.
 
 Per-paper diagnostics remain under `<paper.md>.runs/run-*/`. Each batch item's
-`paperReport` points to that run's retained report, while
-`<paper.md>.report.json` is the latest conversion report. Original raw HTML,
+`paperReport` points to that run's retained report. The report beside a
+published Markdown file belongs to the run that wrote it. Original raw HTML,
 prepared math HTML when needed, and extracted Markdown remain available for
 diagnosis. A rejected overwrite can therefore have `outputWritten: false` while
-the older accepted Markdown still exists.
+the older accepted Markdown and its matching report remain available for archiving.
 
 | Exit code | Meaning |
 | --- | --- |

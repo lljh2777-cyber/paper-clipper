@@ -233,14 +233,13 @@ For an output named `paper.md`, the tool writes:
 | Path | Contents |
 | --- | --- |
 | `paper.md` | Accepted output only. |
-| `paper.md.report.json` | Latest run status, quality checks, attempts, and whether output was written. |
+| `paper.md.report.json` | Acceptance report for the published Markdown. Before the first publication, this holds the latest failed conversion report. |
 | `paper.md.runs/run-*/` | Per-run HTML, extracted Markdown, accepted candidate if available, and report. |
 
-An incomplete attempt is available for diagnosis inside its run directory, even
-though it is not published as `paper.md`. A rejected overwrite can coexist with an
-older accepted `paper.md`; inspect `outputWritten` and the exit code for the latest
-run. Invalid arguments, missing build/template files, and destination conflicts
-fail before a run is created and report the error on stderr.
+The CLI prints the path to its own `run-*/report.json` on stderr. A failed
+retry records its reasons there and preserves the existing Markdown and its
+acceptance report for archiving. Errors detected before a run is created,
+such as invalid arguments or a missing template, appear on stderr.
 
 | Exit code | Report status | Meaning |
 | --- | --- | --- |

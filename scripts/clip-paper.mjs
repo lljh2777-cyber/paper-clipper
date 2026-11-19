@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { constants } from 'node:fs';
-import { access, copyFile, mkdir, mkdtemp, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { access, copyFile, mkdir, mkdtemp, open, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs, promisify } from 'node:util';
@@ -39,7 +39,8 @@ const usage = `Usage: node scripts/clip-paper.mjs <url> -o <paper.md> [options]
   -h, --help                  Show this help
 
 Exit: 0 passed basic checks, 1 operational error, 2 incomplete/blocked content.
-Writes <paper.md>.report.json and preserves diagnostics under <paper.md>.runs/.
+The report beside an existing Markdown belongs to its accepted run.
+The Report path printed on stderr identifies this run's diagnostics.
 Checks are heuristic, not proof of full-text completeness.
 Known Nature legends are checked against source HTML before publishing.
 `;
@@ -203,17 +204,60 @@ async function convert(htmlPath, url, template, timeout) {
 	}
 }
 
+function missingFile(error) {
+	if (error.code === 'ENOENT') return null;
+	throw error;
+}
+
+async function publishRun(report, overwrite, runReport) {
+	const { artifactDirectory: directory, output, outputWritten } = report;
+	// Failed retries only need their run report. Leave the published pair alone.
+	if (!outputWritten && await stat(output).catch(missingFile)) return;
+	const sidecar = `${output}.report.json`;
+	const lockPath = path.join(path.dirname(directory), 'publish.lock');
+	const lock = await open(lockPath, 'wx').catch(error => {
+		if (error.code === 'EEXIST') throw new Error(`Another run may be publishing this paper. Check ${lockPath} before retrying.`);
+		throw error;
+	});
+	try {
+		const existing = await stat(output).catch(missingFile);
+		if (existing && !outputWritten) return;
+		if (existing && (!overwrite || !existing.isFile())) throw new Error('Output already exists.');
+
+		const stagedReport = path.join(directory, 'publish.report.json');
+		await copyFile(runReport, stagedReport);
+		if (!outputWritten) {
+			await rename(stagedReport, sidecar);
+			return;
+		}
+		const candidate = path.join(directory, 'accepted.md');
+		const stagedMarkdown = path.join(directory, 'publish.md');
+		if (overwrite) await copyFile(candidate, stagedMarkdown);
+		const previousMarkdown = path.join(directory, 'previous.md');
+		if (existing) await copyFile(output, previousMarkdown, constants.COPYFILE_FICLONE);
+		if (overwrite) await rename(stagedMarkdown, output);
+		else await copyFile(candidate, output, constants.COPYFILE_EXCL);
+		try {
+			await rename(stagedReport, sidecar);
+		} catch (error) {
+			// The previous report is still in place. Restore its Markdown before unlocking.
+			if (existing) await rename(previousMarkdown, output);
+			else await unlink(output);
+			throw error;
+		}
+		if (existing) await unlink(previousMarkdown).catch(error => console.error(`Could not remove publication backup: ${error.message}`));
+	} finally {
+		await lock.close().then(() => unlink(lockPath)).catch(error => console.error(`Could not release publication lock: ${error.message}`));
+	}
+}
+
 export async function clipPaper(options) {
 	await access(cliPath).catch(() => { throw new Error('Build the Clipper CLI first: npm run build:cli'); });
 	const templateInfo = await stat(options.template);
 	if (!templateInfo.isDirectory()) JSON.parse(await readFile(options.template, 'utf8'));
 	if (options.login && !process.stdin.isTTY) throw new Error('--login requires an interactive terminal.');
-	try {
-		const outputInfo = await stat(options.output);
-		if (!outputInfo.isFile() || !options.overwrite) throw new Error('Output already exists. Choose a different name or use --overwrite for a file.');
-	} catch (error) {
-		if (error.code !== 'ENOENT') throw error;
-	}
+	const outputInfo = await stat(options.output).catch(missingFile);
+	if (outputInfo && (!outputInfo.isFile() || !options.overwrite)) throw new Error('Output already exists. Choose a different name or use --overwrite for a file.');
 	await mkdir(`${options.output}.runs`, { recursive: true });
 	const directory = await mkdtemp(path.join(`${options.output}.runs`, 'run-'));
 	const report = {
@@ -297,12 +341,6 @@ export async function clipPaper(options) {
 			}
 			const candidate = path.join(directory, 'accepted.md');
 			await writeFile(candidate, markdown, 'utf8');
-			if (options.overwrite) {
-				// Stage on the destination filesystem before replacing the previous paper.
-				const staged = path.join(directory, 'publish.md');
-				await copyFile(candidate, staged);
-				await rename(staged, options.output);
-			} else await copyFile(candidate, options.output, constants.COPYFILE_EXCL);
 			attempt.status = report.status = 'passed-checks';
 			report.outputWritten = true;
 			report.url = attempt.url;
@@ -319,9 +357,18 @@ export async function clipPaper(options) {
 		report.error = error.message;
 	} finally {
 		report.finishedAt = new Date().toISOString();
-		const serialized = `${JSON.stringify(report, null, 2)}\n`;
-		await writeFile(path.join(directory, 'report.json'), serialized, 'utf8');
-		await writeFile(`${options.output}.report.json`, serialized, 'utf8');
+		const runReport = path.join(directory, 'report.json');
+		const writeReport = () => writeFile(runReport, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+		await writeReport();
+		try {
+			await publishRun(report, options.overwrite, runReport);
+		} catch (error) {
+			report.status = 'error';
+			report.outputWritten = false;
+			report.error = error.message;
+			exitCode = 1;
+			await writeReport();
+		}
 	}
 	return { exitCode, report };
 }
@@ -330,7 +377,7 @@ export async function main(args = process.argv.slice(2)) {
 	const options = parseOptions(args);
 	if (options.help) { console.log(usage); return 0; }
 	const { exitCode, report } = await clipPaper(options);
-	console.error(`Status: ${report.status}\nReport: ${options.output}.report.json`);
+	console.error(`Status: ${report.status}\nReport: ${path.join(report.artifactDirectory, 'report.json')}`);
 	console.error(qualitySummary(report.attempts.findLast(attempt => attempt.quality)?.quality));
 	if (report.outputWritten) console.error(`Markdown: ${options.output}\nBasic checks passed; this is not a guarantee of full-text completeness.`);
 	else console.error(report.error ?? 'No new Markdown published. Inspect the retained diagnostics.');

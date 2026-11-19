@@ -6,6 +6,7 @@ import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { archivePapers, parseOptions as archiveOptions, splitFrontmatter } from './archive-papers.mjs';
 import { clipPaper, normalizeMathJaxTex, normalizeMathMLForReader, normalizePublisherLinks, parseOptions } from './clip-paper.mjs';
 import { assessMarkdown, bodyCheckVersion } from './paper-validation.mjs';
 import { parseHTML } from 'linkedom';
@@ -427,7 +428,9 @@ test('HTTP success follows redirects, resolves links, and writes a report with n
 	assert.ok(markdown.includes(`${baseUrl}/figures/1`));
 	assert.equal(JSON.parse(await readFile(`${config.output}.report.json`, 'utf8')).outputWritten, true);
 	await assert.rejects(clipPaper(config), /Output already exists/);
-	assert.equal((await clipPaper({ ...config, overwrite: true })).exitCode, 0);
+	const replacement = await clipPaper({ ...config, overwrite: true });
+	assert.equal(replacement.exitCode, 0);
+	assert.equal(JSON.parse(await readFile(`${config.output}.report.json`, 'utf8')).artifactDirectory, replacement.report.artifactDirectory);
 	assert.equal(await readFile(config.output, 'utf8'), markdown);
 });
 
@@ -460,17 +463,42 @@ test('auto falls back from an incomplete HTTP page to a rendered browser page', 
 	assert.ok((await readFile(config.output, 'utf8')).includes(paragraph.trim()));
 });
 
-test('preview CLI exits 2 and preserves an existing good Markdown even with --overwrite', { timeout: 15000 }, async () => {
-	const output = path.join(directory, 'preserved.md');
-	await writeFile(output, 'Previously accepted paper', 'utf8');
-	await assert.rejects(run(process.execPath, [path.join(root, 'scripts/clip-paper.mjs'), `${baseUrl}/preview`,
-		'-o', output, '--fetch', 'http', '--overwrite']), error => error.code === 2);
-	assert.equal(await readFile(output, 'utf8'), 'Previously accepted paper');
-	const report = JSON.parse(await readFile(`${output}.report.json`, 'utf8'));
-	assert.equal(report.status, 'incomplete');
-	assert.equal(report.outputWritten, false);
-	assert.ok(report.attempts[0].quality.reasons.includes('subscription-preview'));
-	assert.match(await readFile(report.attempts[0].html, 'utf8'), /subscription content/);
+test('failed CLI retries preserve the accepted Markdown and its report for Vault archiving', { timeout: 20000 }, async () => {
+	const html = path.join(directory, 'retry.html');
+	const config = options('preserved', '/article', ['--html', html]);
+	await writeFile(html, fullHtml);
+	const first = await clipPaper(config);
+	assert.equal(first.exitCode, 0);
+	const sidecar = `${config.output}.report.json`;
+	const acceptedReport = await readFile(sidecar);
+	const markdown = await readFile(config.output);
+
+	await writeFile(html, previewHtml);
+	for (const [input, exitCode] of [[html, 2], [path.join(directory, 'missing.html'), 1]]) {
+		let reportPath;
+		await assert.rejects(run(process.execPath, [path.join(root, 'scripts/clip-paper.mjs'), config.url,
+			'-o', config.output, '--html', input, '--overwrite']), error => {
+			assert.equal(error.code, exitCode);
+			reportPath = error.stderr.match(/^Report: (.+)$/m)?.[1];
+			return true;
+		});
+		assert.ok((await readFile(sidecar)).equals(acceptedReport), 'retry changed the acceptance report');
+		assert.ok((await readFile(config.output)).equals(markdown), 'retry changed the accepted Markdown');
+		const failed = JSON.parse(await readFile(reportPath, 'utf8'));
+		assert.equal(reportPath, path.join(failed.artifactDirectory, 'report.json'));
+		assert.notEqual(failed.artifactDirectory, first.report.artifactDirectory);
+		assert.equal(failed.outputWritten, false);
+		if (exitCode === 2) assert.ok(failed.attempts[0].quality.reasons.includes('subscription-preview'));
+		else assert.match(failed.attempts[0].error, /ENOENT/);
+	}
+
+	const vault = path.join(directory, 'retry-vault');
+	const archive = await archivePapers(archiveOptions([config.output, '--vault', vault]));
+	assert.equal(archive.exitCode, 0, JSON.stringify(archive.report.items));
+	assert.equal(archive.report.counts.archived, 1);
+	const archived = splitFrontmatter(await readFile(archive.report.items[0].output, 'utf8'));
+	assert.equal(archived.properties.source, config.url);
+	assert.equal(archived.body, splitFrontmatter(markdown.toString('utf8')).body);
 });
 
 test('saved HTML is processed offline and creates no accepted output when checks fail', { timeout: 20000 }, async () => {
@@ -485,6 +513,20 @@ test('saved HTML is processed offline and creates no accepted output when checks
 	assert.equal(requests, count);
 });
 
+test('an overwrite restores the old Markdown if the new report cannot be published', async () => {
+	const config = options('report-conflict', '/article', ['--fetch', 'http', '--overwrite']);
+	await writeFile(config.output, 'Previous paper');
+	await mkdir(`${config.output}.report.json`);
+	const { exitCode, report } = await clipPaper(config);
+	assert.equal(exitCode, 1);
+	assert.equal(report.attempts[0].status, 'passed-checks');
+	assert.equal(report.outputWritten, false);
+	assert.equal(report.status, 'error');
+	assert.ok(report.error);
+	assert.equal(await readFile(config.output, 'utf8'), 'Previous paper');
+	assert.equal(JSON.parse(await readFile(path.join(report.artifactDirectory, 'report.json'), 'utf8')).error, report.error);
+});
+
 test('HTTP errors, non-HTML responses, and timeouts produce error reports without Markdown', { timeout: 20000 }, async () => {
 	for (const route of ['/failure', '/json', '/slow']) {
 		const config = options(`error-${route.slice(1)}`, route, ['--fetch', 'http', '--timeout', '1000', '--settle', '100']);
@@ -492,6 +534,7 @@ test('HTTP errors, non-HTML responses, and timeouts produce error reports withou
 		assert.equal(exitCode, 1);
 		assert.equal(report.status, 'error');
 		assert.ok(report.attempts[0].error);
+		assert.equal(JSON.parse(await readFile(`${config.output}.report.json`, 'utf8')).artifactDirectory, report.artifactDirectory);
 		await assert.rejects(stat(config.output), { code: 'ENOENT' });
 	}
 });
