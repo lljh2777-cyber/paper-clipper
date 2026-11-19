@@ -3,7 +3,7 @@ export type ManualCheck = {
 	scope: string;
 	expected: number;
 	matched: number;
-	issues: { id: string; reason: string }[];
+	issues: { id: string; reason: string; position?: number; outputPosition?: number }[];
 	reason?: string;
 };
 export type ManualChecks = Record<'captions' | 'references' | 'extendedImages' | 'math', ManualCheck>;

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { execFileSync } from 'node:child_process';
 import { parseHTML } from 'linkedom';
-import { mathInventory, prepareMath, checkMathPreservation } from '../src/utils/paper-math.mjs';
+import { mathInventory, prepareMath, checkMathPreservation, assertMathPreserved } from '../src/utils/paper-math.mjs';
 import { assessPaper } from './paper-validation.mjs';
 import { mathHtml, container, token } from './fixtures/mathjax.mjs';
 import { runtimeMathHtml } from './fixtures/mathjax-runtime.mjs';
@@ -79,11 +79,51 @@ test('preservation checks formulas, duplicates, display mode, font and matrix st
 	assert.equal(mathInventory(parse('<html><body><pre>' + container(token('x')) + '</pre><aside>' + container(token('y')) + '</aside></body></html>')).length, 0);
 });
 
+test('extraction locates swapped display equations and surplus copies while preserving genuine repetitions', () => {
+	const doc = parse('<article><p>Native inline value <math><mi>q</mi></math>.</p>' +
+		'<mjx-container id="eq-a" display="true" data-latex="a"></mjx-container>' +
+		'<mjx-container id="eq-b" display="true" data-latex="b"></mjx-container>' +
+		'<mjx-container id="eq-b-again" display="true" data-latex="b"></mjx-container></article>');
+	const output = (...equations) => ['Native inline value $q$.', ...equations.map(tex => '$$' + tex + '$$')].join('\n\n');
+	assert.doesNotThrow(() => assertMathPreserved(doc, output('a', 'b', 'b')));
+	const swapped = output('b', 'a', 'b');
+	assert.throws(() => assertMathPreserved(doc, swapped), /eq-a.*out of order.*3/i);
+	const quality = assessPaper(doc.toString(), swapped, 'https://example.org/article', { minWords: 100 });
+	assert.ok(quality.reasons.includes('formula-preservation'));
+	assert.deepEqual(quality.formulaPreservation.issues, [
+		{ id: 'eq-a', position: 1, outputPosition: 3, reason: 'formula-out-of-order' },
+		{ id: 'eq-b', position: 2, outputPosition: 2, reason: 'formula-out-of-order' },
+	]);
+	const duplicate = output('a', 'a', 'b', 'b');
+	assert.throws(() => assertMathPreserved(doc, duplicate), /eq-a.*extra occurrence.*3/i);
+	assert.deepEqual(checkMathPreservation(doc, duplicate).issues, [
+		{ id: 'eq-a', position: 1, outputPosition: 3, reason: 'formula-extra-occurrence' },
+	]);
+	assert.deepEqual(checkMathPreservation(doc, output('b', 'b')).issues, [
+		{ id: 'eq-a', position: 1, reason: 'formula-missing-or-changed' },
+	]);
+	// An early surplus must not consume the correctly placed occurrences later on.
+	assert.deepEqual(checkMathPreservation(doc, output('b', 'a', 'b', 'b')).issues, [
+		{ id: 'eq-b', position: 2, outputPosition: 2, reason: 'formula-extra-occurrence' },
+	]);
+});
+
 test('comparison preserves TeX command boundaries and significant text spaces', () => {
 	const source = parse('<html><body><mjx-container data-latex="\\alpha x + \\text{two words}"></mjx-container></body></html>');
 	assert.equal(checkMathPreservation(source, '$\\alpha x + \\text{two words}$').status, 'passed');
 	for (const bad of ['$\\alphax + \\text{two words}$', '$\\alpha x + \\text{twowords}$']) assert.equal(checkMathPreservation(source, bad).status, 'failed');
 	assert.equal(checkMathPreservation(source, 'Cost $5; formula $\\alpha x + \\text{two words}$.').status, 'passed');
+});
+
+test('a matching native MathML occurrence on a mixed page is counted separately from a MathJax duplicate', () => {
+	const doc = parse('<article><math><mi>x</mi></math><math hidden><mi>x</mi></math><mjx-container id="eq-y" data-latex="y"></mjx-container>' +
+		'<mjx-container id="eq-x" data-latex="x"></mjx-container></article>');
+	const mixed = '$x$ then $y$ then $x$';
+	assert.equal(checkMathPreservation(doc, mixed).status, 'passed');
+	assert.equal(checkMathPreservation(doc, '$y$ then $x$').matched, 2);
+	assert.deepEqual(checkMathPreservation(doc, mixed + ' and $x$').issues, [
+		{ id: 'eq-x', position: 2, outputPosition: 4, reason: 'formula-extra-occurrence' },
+	]);
 });
 
 test('formula loss is a source-preservation failure, not proof of incomplete source HTML', () => {

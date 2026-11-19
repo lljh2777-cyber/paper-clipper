@@ -293,22 +293,110 @@ function canonical(latex) {
 	return JSON.stringify(tokens);
 }
 
+function pairOccurrences(source, output) {
+	// Anchor identical ends first, so an extra copy before a correct sequence
+	// (or a missing copy before a repeated equation) doesn't steal its match.
+	let first = 0, lastSource = source.length - 1, lastOutput = output.length - 1;
+	const pair = (expected, actual) => {
+		expected.outputPosition = actual.position;
+		actual.source = expected;
+	};
+	while (first <= lastSource && first <= lastOutput && source[first].signature === output[first].signature) {
+		pair(source[first], output[first]);
+		first++;
+	}
+	while (lastSource >= first && lastOutput >= first && source[lastSource].signature === output[lastOutput].signature) {
+		pair(source[lastSource--], output[lastOutput--]);
+	}
+	const remaining = new Map();
+	for (let index = lastSource; index >= first; index--) {
+		const item = source[index];
+		if (!remaining.has(item.signature)) remaining.set(item.signature, []);
+		remaining.get(item.signature).push(item);
+	}
+	for (let index = first; index <= lastOutput; index++) {
+		const item = output[index];
+		const expected = remaining.get(item.signature)?.pop();
+		if (expected) pair(expected, item);
+	}
+}
+
+const formulaSignature = (latex, block) => (block ? 'block:' : 'inline:') + canonical(latex);
+
+function includeNativeCopies(document, supported, byFormula) {
+	// A standalone MathML equation may legitimately produce the same Markdown as
+	// a MathJax equation. Account for that copy in DOM order only when needed.
+	const byElement = new Map(supported.map(item => [item.element, item]));
+	const sequence = [];
+	for (const element of document.querySelectorAll('mjx-container, math')) {
+		const occurrence = byElement.get(element);
+		if (occurrence) { sequence.push(occurrence); continue; }
+		if (name(element) !== 'math' || element.closest(`mjx-container, [hidden], [aria-hidden="true"], ${excluded}`) ||
+			element.parentElement?.closest('math')) continue;
+		let latex = element.getAttribute('data-latex') || element.querySelector('annotation[encoding="application/x-tex"]')?.textContent;
+		if (!latex) {
+			try { latex = toLatex(element); } catch { continue; }
+		}
+		const signature = formulaSignature(latex, element.getAttribute('display') === 'block');
+		const group = byFormula.get(signature);
+		if (group && group.surplus > 0) {
+			group.surplus--;
+			sequence.push({ signature });
+		}
+	}
+	return sequence;
+}
+
 export function checkMathPreservation(document, markdown) {
 	const inventory = mathInventory(document);
-	const formulas = inventory.length ? markdownMath(markdown) : [];
-	const missing = [], unsupported = [];
+	const supported = [], unsupported = [];
+	const byFormula = new Map();
 	for (const [indexInSource, item] of inventory.entries()) {
-		if (item.error) { unsupported.push({ id: item.id, position: indexInSource + 1, reason: item.error }); continue; }
-		const index = formulas.findIndex(formula => formula.block === item.block && canonical(formula.latex) === canonical(item.latex));
-		if (index < 0) missing.push(item.id);
-		else formulas.splice(index, 1);
+		const occurrence = { id: item.id, position: indexInSource + 1 };
+		if (item.error) { unsupported.push({ ...occurrence, reason: item.error }); continue; }
+		const signature = formulaSignature(item.latex, item.block);
+		supported.push({ ...occurrence, signature, element: item.element });
+		if (!byFormula.has(signature)) byFormula.set(signature, { first: occurrence, surplus: 0 });
+		byFormula.get(signature).surplus--;
 	}
-	return { status: missing.length || unsupported.length ? 'failed' : inventory.length ? 'passed' : 'not-applicable',
-		scope: 'mathjax-source-v1', expected: inventory.length, matched: inventory.length - missing.length - unsupported.length,
-		missing, unsupported };
+
+	const output = [];
+	const formulas = supported.length ? markdownMath(markdown) : [];
+	for (const [index, formula] of formulas.entries()) {
+		const signature = formulaSignature(formula.latex, formula.block);
+		// Markdown can also contain math from sources outside mjx-container.
+		const group = byFormula.get(signature);
+		if (group) {
+			group.surplus++;
+			output.push({ signature, position: index + 1 });
+		}
+	}
+	const hasSurplus = [...byFormula.values()].some(group => group.surplus > 0);
+	pairOccurrences(hasSurplus ? includeNativeCopies(document, supported, byFormula) : supported, output);
+	const inOutputOrder = output.filter(item => item.source?.position).map(item => item.source);
+	const missing = supported.filter(item => !item.outputPosition);
+	const misplaced = supported.filter(item => item.outputPosition).filter((item, index) => item !== inOutputOrder[index]);
+	const issues = [
+		...unsupported,
+		...missing.map(({ id, position }) => ({ id, position, reason: 'formula-missing-or-changed' })),
+		...misplaced.map(({ id, position, outputPosition }) => ({ id, position, outputPosition, reason: 'formula-out-of-order' })),
+		...output.filter(item => !item.source).map(item => ({
+			...byFormula.get(item.signature).first, outputPosition: item.position, reason: 'formula-extra-occurrence',
+		})),
+	];
+	return { status: issues.length ? 'failed' : inventory.length ? 'passed' : 'not-applicable',
+		scope: 'mathjax-source-v2', expected: inventory.length, matched: inOutputOrder.length - misplaced.length,
+		missing: missing.map(item => item.id), unsupported, issues };
 }
 
 export function assertMathPreserved(document, markdown) {
 	const report = checkMathPreservation(document, markdown);
-	if (report.status === 'failed') throw Object.assign(new Error(`Paper Clipper: formula preservation failed (${report.matched}/${report.expected} matched). ${report.unsupported.length ? report.unsupported[0].id + ': ' + report.unsupported[0].reason : report.missing[0] + ': missing or changed in Markdown'}.`), { code: 'formula-preservation', formulaPreservation: report });
+	if (report.status !== 'failed') return;
+	const first = report.issues[0];
+	const descriptions = { 'formula-missing-or-changed': 'missing or changed in Markdown',
+		'formula-out-of-order': 'out of order', 'formula-extra-occurrence': 'extra occurrence' };
+	const reason = descriptions[first.reason] ?? first.reason;
+	const output = first.outputPosition ? ` at Markdown formula #${first.outputPosition}` : '';
+	throw Object.assign(new Error(`Paper Clipper: formula preservation failed (${report.matched}/${report.expected} matched). Source #${first.position} (${first.id.slice(0, 48)}): ${reason}${output}.`),
+		{ code: 'formula-preservation', formulaPreservation: report });
 }

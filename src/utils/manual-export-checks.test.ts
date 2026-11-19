@@ -119,6 +119,21 @@ describe('manual export preservation reports', () => {
 		expect(report.stages.output.captions.status).toBe('passed');
 		expect(report.preservation).toBe('attention-required');
 	});
+	it('attributes swapped equations to the template and an extra occurrence to the edited output', () => {
+		const capture = snapshot('<p>First value <mjx-container id="eq-x" data-latex="x"></mjx-container>.</p>' +
+			'<p>Second value <mjx-container id="eq-y" data-latex="y"></mjx-container>.</p>');
+		capture.templateMarkdown = capture.extractedMarkdown.replace(/\$[xy]\$/g, tex => tex === '$x$' ? '$y$' : '$x$');
+		const report = checkManualExport(capture, capture.extractedMarkdown + '\n\nRepeated value $x$.');
+		expect(report.stages.extraction.math).toMatchObject({ status: 'passed', matched: 2 });
+		expect(report.stages.template.math).toMatchObject({ status: 'failed', issues: [
+			{ id: 'eq-x', reason: 'formula-out-of-order', position: 1, outputPosition: 2 },
+			{ id: 'eq-y', reason: 'formula-out-of-order', position: 2, outputPosition: 1 },
+		] });
+		expect(report.stages.output.math).toMatchObject({ status: 'failed', issues: [
+			{ id: 'eq-x', reason: 'formula-extra-occurrence', outputPosition: 3 },
+		] });
+		expect(report.preservation).toBe('attention-required');
+	});
 	it('labels selection/custom-template losses separately without attributing intent', () => {
 		const capture = snapshot();
 		capture.templateMarkdown = '# Selected excerpt\n\nFinding.';

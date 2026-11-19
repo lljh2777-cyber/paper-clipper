@@ -185,7 +185,7 @@ function inspect(snapshot: ManualExportSnapshot, markdown: string): Checks {
 	const math = checkMathPreservation(document, markdown);
 	return { captions, references, extendedImages, math: math.status === 'not-applicable' ? uncovered(math.scope) : {
 		status: math.status, scope: math.scope, expected: math.expected, matched: math.matched,
-		issues: [...math.missing.map(id => ({ id, reason: 'formula-missing-or-changed' })), ...math.unsupported],
+		issues: math.issues,
 	} };
 }
 

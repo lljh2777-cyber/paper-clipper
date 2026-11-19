@@ -5,6 +5,7 @@ export interface FormulaReport {
 	matched: number;
 	missing: string[];
 	unsupported: { id: string; position: number; reason: string }[];
+	issues: { id: string; position: number; outputPosition?: number; reason: string }[];
 }
 export function mathInventory(document: Document): { element: Element; id: string; math?: Element; latex?: string; block?: boolean; error?: string }[];
 export function prepareMath(document: Document): void;

@@ -347,8 +347,11 @@ display mode, mathematical fonts and source spacing; it does not infer matrix
 columns, reconstruct glyphs from CSS fonts, or use OCR. Unknown/unloaded layouts
 stop conversion with a formula error; keep the original HTML for diagnosis.
 
-`quality.formulaPreservation` compares the source-derived TeX, multiplicity and
-display mode with actual Markdown formulas, excluding code and HTML comments.
+`quality.formulaPreservation` compares each supported equation's TeX, display
+mode, relative order and occurrence count with the Markdown body. A swap or a
+surplus copy fails the check. Each issue identifies the source equation and its
+one-based ordinal. A misplaced or extra occurrence also gives its ordinal among
+the Markdown formulas. Code and HTML comments are excluded.
 It participates in the same checks for conversion, custom templates and legacy
 Vault archival. `not-applicable` means no in-scope MathJax container was found,
 not that all formulas or full text were verified. The comparison detects loss or

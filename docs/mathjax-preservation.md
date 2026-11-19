@@ -29,6 +29,13 @@ Two source-backed layout corrections prevent loss during extraction:
 Unfenced display MathML tables use the same `aligned` representation as the
 existing converter. Fenced matrices, row/cell contents, fonts, occurrence counts
 and inline/display distinctions continue to be checked.
+The `mathjax-source-v2` check compares the sequence of supported equations. A
+swap reports both source IDs and their Markdown formula positions. An extra copy
+reports its Markdown position and the first source ID with the same TeX and
+display mode. A repeated equation in the source has its own occurrence.
+The manual save report records these differences separately for extraction,
+template output and the edited note. Positions refer to formula ordinals,
+starting at one.
 Literal underscore operators in identifiers are escaped as `\_`; they are not
 the `\underline` accent command. Actual under/over accents retain their role.
 
