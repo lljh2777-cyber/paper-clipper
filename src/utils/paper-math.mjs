@@ -21,7 +21,9 @@ function toLatex(math) {
 		token.textContent = 'PCUNDERSCORE';
 		operator.replaceWith(token);
 	}
-	return MathMLToLaTeX.convert(copy.outerHTML)
+	// HTML serialization emits &nbsp; for U+00A0. The converter understands
+	// the numeric entity, but otherwise turns "nbsp" into visible formula text.
+	return MathMLToLaTeX.convert(copy.outerHTML.replaceAll('&nbsp;', '&#160;'))
 		.replaceAll('PCUNDERSCORE', '\\_')
 		.replace(/\\mathbf\{\\mathit\{([^{}]*)\}\}/g, '\\boldsymbol{$1}');
 }

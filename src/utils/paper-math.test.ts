@@ -12,6 +12,23 @@ import { mathHtml } from '../../scripts/fixtures/mathjax.mjs';
 const url = 'https://www.cell.com/cell/fulltext/synthetic-math';
 const parse = () => new DOMParser().parseFromString(mathHtml, 'text/html');
 
+test.each(['&nbsp;', '&#160;', '&#xA0;', '\u00a0'])('converts MathML nonbreaking spaces (%s) without visible entity names', space => {
+	for (const retained of [false, true]) {
+		const math = `<math><mtext>before${space}after</mtext></math>`;
+		const source = new DOMParser().parseFromString(`<mjx-container>${retained ? '<mjx-lazy></mjx-lazy>' : `<mjx-assistive-mml>${math}</mjx-assistive-mml>`}</mjx-container>`, 'text/html');
+		if (retained) source.querySelector('mjx-container')!.setAttribute('data-paper-mathml', math);
+		const before = source.documentElement.outerHTML;
+		expect(mathInventory(source)[0]).toMatchObject({ latex: '\\text{before}\\textrm{ }\\text{after}' });
+		expect(source.documentElement.outerHTML).toBe(before);
+	}
+});
+
+test('preserves literal entity text and legitimate words containing nbsp', () => {
+	const source = new DOMParser().parseFromString('<mjx-container><math><mtext>&amp;nbsp;</mtext></math></mjx-container><mjx-container><math><mtext>nbsp</mtext></math></mjx-container>', 'text/html');
+	const formulas = mathInventory(source);
+	expect(formulas.map(item => item.latex)).toEqual(['\\&\\text{nbsp};', '\\text{nbsp}']);
+});
+
 test('cleaned check snapshots retain CHTML spacing and still detect removed formulas', () => {
 	const source = parse();
 	const markdown = createMarkdownContent(parseForClip(source).content, url);

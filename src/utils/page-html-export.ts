@@ -39,7 +39,10 @@ export function capturePageHtml(): SnapshotResult {
 					!item.math.trim() || item.math.length > 200000 || typeof item.display !== 'boolean') continue;
 				const kind = item.inputJax?.name;
 				if (kind === 'MathML') {
-					const parsed = new DOMParser().parseFromString(item.math, 'application/xml');
+					// HTML-serialized MathJax input can use &nbsp;, which XML does not
+					// define. Normalize only that entity; do not HTML-decode arbitrary
+					// input or recursively decode escaped text such as &amp;nbsp;.
+					const parsed = new DOMParser().parseFromString(item.math.replaceAll('&nbsp;', '&#160;'), 'application/xml');
 					const math = parsed.documentElement;
 					if (math.localName !== 'math' || parsed.querySelector('parsererror') ||
 						Array.from(math.querySelectorAll('*')).some(el =>

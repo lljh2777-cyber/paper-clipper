@@ -160,6 +160,29 @@ describe('retained MathJax input capture', () => {
 		expect(document.documentElement.outerHTML).toBe(before);
 	});
 
+	it.each(['&nbsp;', '&#160;', '&#xA0;', '\u00a0'])('captures nonbreaking spaces (%s) without relaxing XML validation', space => {
+		document.body.innerHTML = '<mjx-container><mjx-lazy></mjx-lazy></mjx-container>';
+		const target = document.querySelector('mjx-container')!;
+		(window as any).MathJax = { startup: { document: { math: [{ typesetRoot: target,
+			math: `<math><mi>x</mi><mo>;</mo><mtext>${space}where</mtext></math>`,
+			display: false, inputJax: { name: 'MathML' } }] } } };
+		const injected = new Function(`return (${capturePageHtml.toString()})();`);
+		const captured = new DOMParser().parseFromString(injected().snapshot.html, 'text/html');
+		const retained = captured.querySelector('mjx-container')!.getAttribute('data-paper-mathml')!;
+		expect(new DOMParser().parseFromString(retained, 'application/xml').querySelector('mtext')?.textContent).toBe('\u00a0where');
+		expect(mathInventory(captured)[0]).toMatchObject({ latex: 'x ; \\textrm{ }\\text{where}' });
+		expect(target.hasAttribute('data-paper-mathml')).toBe(false);
+	});
+
+	it('does not recursively decode escaped entity text', () => {
+		document.body.innerHTML = '<mjx-container><mjx-lazy></mjx-lazy></mjx-container>';
+		(window as any).MathJax = { startup: { document: { math: [{ typesetRoot: document.querySelector('mjx-container'),
+			math: '<math><mtext>&amp;nbsp;</mtext></math>', display: false, inputJax: { name: 'MathML' } }] } } };
+		const captured = new DOMParser().parseFromString(snapshot().html, 'text/html');
+		const retained = captured.querySelector('mjx-container')!.getAttribute('data-paper-mathml')!;
+		expect(new DOMParser().parseFromString(retained, 'application/xml').querySelector('mtext')?.textContent).toBe('&nbsp;');
+	});
+
 	it('ignores detached, mismatched, oversized and unsafe runtime inputs', () => {
 		document.body.innerHTML = '<mjx-container><mjx-lazy></mjx-lazy></mjx-container>';
 		const target = document.querySelector('mjx-container')!;
@@ -167,6 +190,10 @@ describe('retained MathJax input capture', () => {
 			{ typesetRoot: target.cloneNode(true), math: '<math><mi>x</mi></math>' },
 			{ typesetRoot: target, math: '<math><script>unsafe()</script></math>' },
 			{ typesetRoot: target, math: '<math><annotation-xml><html>bad</html></annotation-xml></math>' },
+			{ typesetRoot: target, math: '<math><mtext>&nbsp;&unknown;</mtext></math>' },
+			{ typesetRoot: target, math: '<math><mtext>&nbsp;where</mi></math>' },
+			{ typesetRoot: target, math: '<math><mtext>&nbsp;where</mtext><script>unsafe()</script></math>' },
+			{ typesetRoot: target, math: '<math><mtext xmlns="https://example.org/foreign">&nbsp;where</mtext></math>' },
 			{ typesetRoot: target, math: '<math><mi>' + 'x'.repeat(200001) + '</mi></math>' },
 			{ typesetRoot: target, math: '<math><mi>x</mi></math>', inputJax: { name: 'Unknown' } },
 		];

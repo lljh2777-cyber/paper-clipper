@@ -107,4 +107,6 @@ test('the built CLI retains lazy-source snapshots, rich captions, norm bars and 
 	assert.equal(checkMathPreservation(parse(runtimeMathHtml), markdown).matched, 5);
 	assert.match(markdown, /bold caption text/);
 	assert.match(markdown, /\\begin\{aligned\}/);
+	assert.match(markdown, /\\textrm\{ \}\\text\{where\}/);
+	assert.doesNotMatch(markdown, /nbsp/);
 });

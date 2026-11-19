@@ -126,11 +126,15 @@ try {
 	const lazySaved = strFromU8(lazyArchive[Object.keys(lazyArchive).find(key => key.endsWith('/paper.md'))]);
 	assert.equal(checkMathPreservation(parseHTML(runtimeMathHtml).document, lazySaved).matched, 5);
 	assert.doesNotMatch(lazySaved, /No alternative text available/);
+	assert.doesNotMatch(lazySaved, /nbsp/);
+	assert.match(lazySaved, /\\textrm\{ \}\\text\{where\}/);
 	const lazyFormulas = Array.from(lazySaved.matchAll(/\$\$([\s\S]*?)\$\$|\$([^$\n]+)\$/g), match => ({ latex: match[1] ?? match[2], block: match[1] !== undefined }));
 	await preview.setContent('<!doctype html><title>Lazy formula preview</title><style>body{font:18px Georgia;margin:24px}section{margin:24px 0}</style><h1>Retained formula input</h1>' + lazyFormulas.map(item =>
 		`<section>${temml.renderToString(item.latex, { displayMode: item.block, throwOnError: true })}</section>`).join(''));
 	assert.equal(await preview.locator('math').count(), 5);
 	assert.equal(await preview.locator('merror').count(), 0);
+	assert.match(await preview.locator('section').nth(2).textContent(), /where/);
+	assert.doesNotMatch(await preview.locator('section').nth(2).textContent(), /nbsp/);
 	await preview.screenshot({ path: path.join(directory, 'formulas-lazy.png'), fullPage: true });
 	// Use the real publisher URL but fulfill it only with the synthetic fixture.
 	await lazyPopup.close();
