@@ -30,6 +30,10 @@ jobs:
           package-manager-cache: false
       - name: Install development dependencies
         run: npm ci --no-audit --no-fund
+      - name: Check extension types and settings and template regressions
+        run: |
+          npx tsc --noEmit
+          npx vitest run src/utils/settings-restore.test.ts src/utils/model-variables.test.ts src/utils/template-editor.test.ts src/utils/template-integration.test.ts
       - name: Test queue service and snapshot client
         run: npm run test:browser-queue
       - name: Test manual image archives

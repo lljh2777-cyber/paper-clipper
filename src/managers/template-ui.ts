@@ -7,7 +7,6 @@ import { generalSettings } from '../utils/storage-utils';
 import { updateUrl } from '../utils/routing';
 import { handleDragStart, handleDragOver, handleDrop, handleDragEnd } from '../utils/drag-and-drop';
 import { createElementWithClass, createElementWithHTML } from '../utils/dom-utils';
-import { updatePromptContextVisibility } from './interpreter-settings';
 import { showSettingsSection } from './settings-section-ui';
 import { updatePropertyType } from './property-types-manager';
 import { getMessage } from '../utils/i18n';
@@ -218,12 +217,6 @@ export function showTemplateEditor(template: Template | null): void {
 		validateTemplateField(noteContentFormat, true);
 	}
 
-	const promptContextTextarea = document.getElementById('prompt-context') as HTMLTextAreaElement;
-	if (promptContextTextarea) {
-		promptContextTextarea.value = editingTemplate.context || '';
-		validateTemplateField(promptContextTextarea, true);
-	}
-
 	updateBehaviorFields();
 
 	if (behaviorSelect) {
@@ -278,8 +271,7 @@ export function showTemplateEditor(template: Template | null): void {
 	}
 
 	updateUrl('templates', editingTemplate.id);
-	updatePromptContextVisibility();
-	[noteContentFormat, noteNameFormat, pathInput, promptContextTextarea].forEach(field => {
+	[noteContentFormat, noteNameFormat, pathInput].forEach(field => {
 		if (field) createTemplateEditor(field);
 	});
 }
@@ -547,8 +539,6 @@ export function updateTemplateFromForm(): void {
 	const noteContentFormat = document.getElementById('note-content-format') as HTMLTextAreaElement;
 	if (noteContentFormat) template.noteContentFormat = noteContentFormat.value;
 
-	const promptContextTextarea = document.getElementById('prompt-context') as HTMLTextAreaElement;
-	if (promptContextTextarea) template.context = promptContextTextarea.value;
 
 	const propertyElements = document.querySelectorAll('#template-properties .property-editor');
 	template.properties = Array.from(propertyElements).map(prop => {
@@ -815,7 +805,4 @@ export function initializeTemplateValidation(): void {
 	const pathInput = document.getElementById('template-path-name') as HTMLInputElement;
 	addValidationListener(pathInput, false);
 
-	// Prompt context (multiline, show line numbers)
-	const promptContext = document.getElementById('prompt-context') as HTMLTextAreaElement;
-	addValidationListener(promptContext, true);
 }

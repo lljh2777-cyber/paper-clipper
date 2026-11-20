@@ -107,20 +107,8 @@
 	"activity": {
 		"message": "活动"
 	},
-	"addModel": {
-		"message": "+ 添加模型"
-	},
-	"addModelTitle": {
-		"message": "添加模型"
-	},
 	"addProperty": {
 		"message": "+ 添加属性"
-	},
-	"addProvider": {
-		"message": "+ 添加提供商"
-	},
-	"addProviderTitle": {
-		"message": "添加提供商"
 	},
 	"addToObsidian": {
 		"message": "添加到 Obsidian"
@@ -146,23 +134,11 @@
 	"alwaysShowHighlightsDescription": {
 		"message": "加载页面时显示已保存的高亮内容。关闭此选项则仅在高亮模式激活时显示高亮。"
 	},
-	"apiKeyMissing": {
-		"message": "无 API 密钥"
-	},
-	"apiKeysWarning": {
-		"message": "解释器请求会直接发送给你配置的服务提供方，受其条款和隐私政策约束。Paper Clipper 不提供托管推理服务。"
-	},
 	"appendToDaily": {
 		"message": "添加到日记末尾"
 	},
 	"appendToExisting": {
 		"message": "添加到现有笔记末尾"
-	},
-	"autoRunInterpreter": {
-		"message": "自动运行"
-	},
-	"autoRunInterpreterDescription": {
-		"message": "如果模板包含提示变量，则立即运行。这将消耗模型提供商的 API 额度。如果您只想手动运行解释器，请关闭此选项。"
 	},
 	"behavior": {
 		"message": "行为"
@@ -178,9 +154,6 @@
 	},
 	"cancel": {
 		"message": "取消"
-	},
-	"cannotDeleteProvider": {
-		"message": "无法删除提供商 \"$1\"，因为它正在被 $2 个模型使用。"
 	},
 	"changelog": {
 		"message": "更新日志"
@@ -258,12 +231,6 @@
 	"dailyNoteFormat": {
 		"message": "日记格式（如：YYYY-MM-DD）"
 	},
-	"defaultInterpreterContext": {
-		"message": "默认解释器上下文"
-	},
-	"defaultInterpreterContextDescription": {
-		"message": "模型将使用此上下文来解释提示变量。可以在此处使用变量和过滤器。"
-	},
 	"defaultTemplateName": {
 		"message": "默认"
 	},
@@ -278,12 +245,6 @@
 	},
 	"deleteHighlightsForPage": {
 		"message": "删除此页面的所有高亮？"
-	},
-	"deleteModelConfirm": {
-		"message": "您确定要删除此模型吗？"
-	},
-	"deleteProviderConfirm": {
-		"message": "您确定要删除此提供商吗？"
 	},
 	"disableHighlighter": {
 		"message": "禁用高亮"
@@ -317,12 +278,6 @@
 	"edit": {
 		"message": "编辑"
 	},
-	"editModel": {
-		"message": "编辑模型"
-	},
-	"editProvider": {
-		"message": "编辑提供商"
-	},
 	"editTemplate": {
 		"message": "编辑模板"
 	},
@@ -331,26 +286,6 @@
 	},
 	"enableHighlighterDescription": {
 		"message": "在网页上高亮内容并保存到 Obsidian。"
-	},
-	"enableInterpreter": {
-		"message": "启用解释器"
-	},
-	"enableInterpreterDescription": {
-		"message": "使用自然语言从页面提取数据。例如，您可以使用模板语法 $strong_start${{\"页面摘要\"}}$strong_end$。需要 API 密钥或下面配置的自定义模型。$link_start$了解更多$link_end$",
-		"placeholders": {
-			"link_end": {
-				"content": "</a>"
-			},
-			"link_start": {
-				"content": "<a href=\"https://help.obsidian.md/web-clipper/interpreter\" target=\"_blank\">"
-			},
-			"strong_end": {
-				"content": "</strong>"
-			},
-			"strong_start": {
-				"content": "<strong>"
-			}
-		}
 	},
 	"enableReader": {
 		"message": "打开阅读视图"
@@ -444,12 +379,6 @@
 	"failedToInitializeContent": {
 		"message": "无法初始化页面内容。"
 	},
-	"failedToProcessInterpreter": {
-		"message": "解释器处理失败。请重试。"
-	},
-	"failedToResetProviders": {
-		"message": "重置提供商和模型失败"
-	},
 	"failedToResetTemplate": {
 		"message": "无法重置默认模板。请再试一次。"
 	},
@@ -458,9 +387,6 @@
 	},
 	"failedToSaveFile": {
 		"message": "保存文件失败"
-	},
-	"failedToSaveProvider": {
-		"message": "无法保存提供商。请再试一次。"
 	},
 	"feedback": {
 		"message": "反馈"
@@ -479,9 +405,6 @@
 	},
 	"generalSettings": {
 		"message": "常规设置"
-	},
-	"getApiKeyHere": {
-		"message": "在此处获取您的 $1 API 密钥。"
 	},
 	"help": {
 		"message": "帮助"
@@ -574,26 +497,6 @@
 	"importTemplate": {
 		"message": "导入模板"
 	},
-	"interpret": {
-		"message": "解释"
-	},
-	"interpreter": {
-		"message": "解释器"
-	},
-	"interpreterContext": {
-		"message": "解释器上下文"
-	},
-	"interpreterContextDescription": {
-		"message": "用于解释提示变量的上下文。覆盖$link_start$解释器设置$link_end$中定义的默认上下文。此处可以使用变量。",
-		"placeholders": {
-			"link_end": {
-				"content": "</a>"
-			},
-			"link_start": {
-				"content": "<a href=\"?section=interpreter\">"
-			}
-		}
-	},
 	"language": {
 		"message": "语言"
 	},
@@ -617,30 +520,6 @@
 	},
 	"loading": {
 		"message": "正在加载…"
-	},
-	"modelName": {
-		"message": "模型名称"
-	},
-	"modelNameDescription": {
-		"message": "您想在界面中显示的模型名称。"
-	},
-	"modelProvider": {
-		"message": "提供商"
-	},
-	"modelProviderDescription": {
-		"message": "模型提供商，例如 Ollama、OpenRouter、Google 等。"
-	},
-	"modelProviderPlaceholder": {
-		"message": "提供商"
-	},
-	"modelRequiredFields": {
-		"message": "模型名称、提供商和模型 ID 是必需的。"
-	},
-	"models": {
-		"message": "模型"
-	},
-	"modelsListFor": {
-		"message": "$1的模型列表"
 	},
 	"more": {
 		"message": "更多"
@@ -755,12 +634,6 @@
 	"embeddedPanelToggleFailed": {
 		"message": "无法切换面板，当前编辑内容仍保留在这里；刷新页面前请先复制尚未保存的修改。"
 	},
-	"popularModels": {
-		"message": "热门模型"
-	},
-	"popularModelsDescription": {
-		"message": "从常用模型中选择，或输入自定义模型详细信息。"
-	},
 	"popup": {
 		"message": "弹出窗口"
 	},
@@ -805,48 +678,6 @@
 	},
 	"propertyValue": {
 		"message": "属性值"
-	},
-	"provider": {
-		"message": "提供商"
-	},
-	"providerApiKey": {
-		"message": "API 密钥"
-	},
-	"providerApiKeyDescription": {
-		"message": "此提供商的 API 密钥。"
-	},
-	"providerBaseUrl": {
-		"message": "基础 URL"
-	},
-	"providerBaseUrlDescription": {
-		"message": "此提供商的 API 端点 URL。"
-	},
-	"providerModelId": {
-		"message": "模型 ID"
-	},
-	"providerModelIdDescription": {
-		"message": "来自提供商的模型标识符。通常是一个不含空格的简短名称。"
-	},
-	"providerModelIdPlaceholder": {
-		"message": "模型 ID"
-	},
-	"providerName": {
-		"message": "提供商名称"
-	},
-	"providerNameDescription": {
-		"message": "此提供商的显示名称。"
-	},
-	"providerPreset": {
-		"message": "预设"
-	},
-	"providerPresetDescription": {
-		"message": "选择一个提供商或创建一个自定义的。"
-	},
-	"providerRequiredFields": {
-		"message": "提供商名称和基础 URL 是必需的。"
-	},
-	"providers": {
-		"message": "提供商"
 	},
 	"rateExtensionDescription": {
 		"message": "您喜欢使用Paper Clipper吗？请帮助我们给它评分。"
@@ -1040,12 +871,6 @@
 	"resetDefaultTemplateDescription": {
 		"message": "移除对默认模板的所有更改。"
 	},
-	"resetProvidersAndModels": {
-		"message": "重置默认模型"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "将提供商和模型重置为默认设置。"
-	},
 	"save": {
 		"message": "保存"
 	},
@@ -1066,9 +891,6 @@
 	},
 	"searchVariables": {
 		"message": "搜索变量..."
-	},
-	"selectProvider": {
-		"message": "选择一个提供商"
 	},
 	"selectTemplateToExport": {
 		"message": "请选择要导出的模板。"
@@ -1186,12 +1008,6 @@
 	},
 	"templatesHeading": {
 		"message": "模板"
-	},
-	"thinking": {
-		"message": "思考中"
-	},
-	"unknownProvider": {
-		"message": "未知的提供商"
 	},
 	"updateAvailable": {
 		"message": "有可用更新。"

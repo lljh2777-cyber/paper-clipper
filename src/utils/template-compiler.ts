@@ -7,8 +7,8 @@ import { clipperFilters, type ClipperTemplateContext } from './filters';
 import { processSimpleVariable } from './variables/simple';
 import { processSelector, resolveSelector } from './variables/selector';
 import { processSchema } from './variables/schema';
-import { processPrompt } from './variables/prompt';
-import { isModelVariable, processModelVariable } from './variables/model';
+import { isLegacyPrompt } from './variables/prompt';
+import { isModelVariable } from './variables/model';
 import { resolveSchemaVariable } from './resolver';
 
 export interface RenderContext {
@@ -20,18 +20,6 @@ export interface RenderContext {
 export type AsyncResolver = (name: string, context: RenderContext) => Promise<any>;
 
 const engine = createEngine<ClipperTemplateContext>({ filters: clipperFilters });
-
-interface DeferredTemplates {
-	template: string;
-	variables: Record<string, string>;
-	expressions: DeferredExpression[];
-}
-
-interface DeferredExpression {
-	token: string;
-	template: string;
-	kind: 'model' | 'prompt';
-}
 
 interface TemplateExpression {
 	end: number;
@@ -84,107 +72,25 @@ function readTemplateExpression(text: string, start: number): TemplateExpression
 	return null;
 }
 
-function canonicalizeDeferredExpression(expression: string): Omit<DeferredExpression, 'token'> | null {
-	const value = expression.trim();
-	const modelMatch = value.match(/^(modelProvider|modelId|model)(?:\s*\|\s*([\s\S]*))?$/);
-	if (modelMatch) {
-		const [, name, filters] = modelMatch;
-		return {
-			kind: 'model',
-			template: `{{${name}${filters?.trim() ? `|${filters.trim()}` : ''}}}`,
-		};
-	}
-
-	const hasPromptPrefix = value.startsWith('prompt:');
-	const promptExpression = hasPromptPrefix ? value.slice('prompt:'.length).trimStart() : value;
-	const quote = promptExpression[0];
-	if (quote !== '"' && quote !== "'") return null;
-
-	let closingQuote = -1;
-	let escaped = false;
-	for (let index = 1; index < promptExpression.length; index++) {
-		const char = promptExpression[index];
-		if (escaped) {
-			escaped = false;
-		} else if (char === '\\') {
-			escaped = true;
-		} else if (char === quote) {
-			closingQuote = index;
-			break;
-		}
-	}
-	if (closingQuote === -1) return null;
-
-	const remainder = promptExpression.slice(closingQuote + 1).trim();
-	if (remainder && !remainder.startsWith('|')) return null;
-	const filters = remainder ? remainder.slice(1).trim() : '';
-	let prompt = promptExpression.slice(1, closingQuote);
-	if (quote === "'") {
-		prompt = prompt.replace(/\\'/g, "'").replace(/"/g, '\\"');
-	}
-
-	return {
-		kind: 'prompt',
-		template: `{{${hasPromptPrefix ? 'prompt:' : ''}"${prompt}"${filters ? `|${filters}` : ''}}}`,
-	};
-}
-
-/**
- * Prompt expressions and interpreter model variables must survive the first
- * render pass. Knap remains application-neutral, so Clipper temporarily maps
- * them to ordinary variables and restores their original template syntax in
- * the rendered output for the interpreter-specific post-processing pass.
- */
-function protectDeferredTemplates(text: string, variables: Record<string, any>): DeferredTemplates {
-	const deferredVariables: Record<string, string> = {};
-	const expressions: DeferredExpression[] = [];
-	let deferredIndex = 0;
+// Preserve the old disabled-interpreter behavior for existing templates.
+function omitLegacySlots(text: string): string {
+	let output = '';
 	let cursor = 0;
-	let searchFrom = 0;
-	let template = '';
-
-	while (searchFrom < text.length) {
-		const start = text.indexOf('{{', searchFrom);
+	while (cursor < text.length) {
+		const start = text.indexOf('{{', cursor);
 		if (start === -1) break;
 		const parsed = readTemplateExpression(text, start);
 		if (!parsed) break;
-		const deferred = canonicalizeDeferredExpression(parsed.expression);
-		if (!deferred) {
-			searchFrom = start + 2;
-			continue;
+		const value = parsed.expression.trim();
+		output += text.slice(cursor, start);
+		if (isModelVariable(value) || isLegacyPrompt(value)) {
+			output += '{{' + (parsed.trimLeft ? '-' : '') + ' "" ' + (parsed.trimRight ? '-' : '') + '}}';
+		} else {
+			output += text.slice(start, parsed.end);
 		}
-
-		let key: string;
-		do {
-			key = `__knap_deferred_${deferredIndex++}`;
-		} while (key in variables || key in deferredVariables);
-		const token = `\uE000knap-deferred-${deferredIndex}\uE001`;
-
-		template += text.slice(cursor, start);
-		template += `{{${parsed.trimLeft ? '-' : ''}${key}${parsed.trimRight ? '-' : ''}}}`;
-		deferredVariables[key] = token;
-		expressions.push({ ...deferred, token });
 		cursor = parsed.end;
-		searchFrom = parsed.end;
 	}
-
-	template += text.slice(cursor);
-	return { template, variables: deferredVariables, expressions };
-}
-
-async function restoreDeferredTemplates(
-	output: string,
-	expressions: DeferredExpression[],
-	variables: Record<string, any>,
-	currentUrl: string,
-): Promise<string> {
-	for (const expression of expressions) {
-		const replacement = expression.kind === 'prompt'
-			? await processPrompt(expression.template, variables, currentUrl)
-			: await processModelVariable(expression.template);
-		output = output.split(expression.token).join(replacement);
-	}
-	return output;
+	return output + text.slice(cursor);
 }
 
 /**
@@ -214,7 +120,6 @@ export async function compileTemplate(
 ): Promise<string> {
 	// Strip text fragment from URL
 	currentUrl = currentUrl.replace(/#:~:text=[^&]+(&|$)/, '');
-	const deferred = protectDeferredTemplates(text, variables);
 
 	// Keep application-specific variable resolution outside the shared engine.
 	const resolveVariable = async (name: string): Promise<any> => {
@@ -239,11 +144,8 @@ export async function compileTemplate(
 		return undefined;
 	};
 
-	const result = await engine.render(deferred.template, {
-		variables: {
-			...variables,
-			...deferred.variables,
-		},
+	const result = await engine.render(omitLegacySlots(text), {
+		variables,
 		context: { tabId, currentUrl },
 		resolveVariable,
 	});
@@ -261,12 +163,7 @@ export async function compileTemplate(
 		);
 	}
 
-	// Skip application post-processing if no prompt/model expressions were protected.
-	if (deferred.expressions.length === 0) {
-		return result.output;
-	}
-
-	return restoreDeferredTemplates(result.output, deferred.expressions, variables, currentUrl);
+	return result.output;
 }
 
 /**
@@ -301,10 +198,8 @@ export async function processVariables(
 			}
 		} else if (trimmedMatch.startsWith('schema:')) {
 			replacement = await processSchema(fullMatch, variables, currentUrl);
-		} else if (trimmedMatch.startsWith('"') || trimmedMatch.startsWith('prompt:')) {
-			replacement = await processPrompt(fullMatch, variables, currentUrl);
-		} else if (isModelVariable(trimmedMatch)) {
-			replacement = await processModelVariable(fullMatch);
+		} else if (isLegacyPrompt(trimmedMatch) || isModelVariable(trimmedMatch)) {
+			replacement = '';
 		} else {
 			replacement = await processSimpleVariable(trimmedMatch, variables, currentUrl);
 		}

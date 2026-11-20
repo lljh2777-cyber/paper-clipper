@@ -1,9 +1,8 @@
 import { updateUrl } from '../utils/routing';
 import { generalSettings } from '../utils/storage-utils';
-import { updatePromptContextVisibility } from './interpreter-settings';
 import { initializePropertyTypesManager } from './property-types-manager';
 
-export type SettingsSection = 'general' | 'properties' | 'highlighter' | 'interpreter' | 'reader' | 'templates';
+export type SettingsSection = 'general' | 'properties' | 'highlighter' | 'reader' | 'templates';
 
 export function showSettingsSection(section: SettingsSection, templateId?: string): void {
 	const sections = document.querySelectorAll('.settings-section');
@@ -35,7 +34,6 @@ export function showSettingsSection(section: SettingsSection, templateId?: strin
 		}
 	}
 
-	updatePromptContextVisibility();
 }
 
 function updateSidebarActiveState(activeSection: string): void {
@@ -75,9 +73,8 @@ export function initializeSidebar(): void {
 			if (section === 'general'
 				|| section === 'properties'
 				|| section === 'highlighter'
-				|| section === 'interpreter'
 				|| section === 'reader') {
-				showSettingsSection(section as 'general' | 'properties' | 'highlighter' | 'interpreter' | 'reader');
+				showSettingsSection(section as 'general' | 'properties' | 'highlighter' | 'reader');
 			}
 			if (settingsContainer) {
 				settingsContainer.classList.remove('sidebar-open');

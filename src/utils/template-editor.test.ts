@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { undo } from '@codemirror/commands';
-import { acceptCompletion, startCompletion } from '@codemirror/autocomplete';
+import { acceptCompletion, currentCompletions, startCompletion } from '@codemirror/autocomplete';
 import { EditorView, runScopeHandlers } from '@codemirror/view';
 import { createTemplateEditor, destroyTemplateEditors, setTemplateEditorValue } from './template-editor';
 
@@ -140,6 +140,20 @@ describe('template editor form integration', () => {
 		view.dispatch({ changes: { from: 0, insert: '{{title}}' } });
 		expect(view.contentDOM.hasAttribute('aria-invalid')).toBe(false);
 		expect(document.querySelector<HTMLElement>('.knap-editor-validation')?.hidden).toBe(true);
+	});
+
+	it('offers supported variables and omits retired interpreter completions', async () => {
+		const input = field();
+		input.value = '{{}}';
+		const view = createTemplateEditor(input);
+		view.dispatch({ selection: { anchor: 2 } });
+		view.focus();
+		startCompletion(view);
+		await vi.waitFor(() => {
+			const labels = currentCompletions(view.state).map(option => option.label);
+			expect(labels).toEqual(expect.arrayContaining(['title', 'selector:']));
+			for (const retired of ['model', 'modelId', 'modelProvider', 'prompt:']) expect(labels).not.toContain(retired);
+		});
 	});
 
 	it('accepts a filter completion and saves the resulting input value', async () => {

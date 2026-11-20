@@ -8,7 +8,7 @@
 			"icons": ["icons"]
 		},
 		"target": "es6",
-		"module": "es6",
+		"module": "ES2020",
 		"strict": true,
 		"esModuleInterop": true,
 		"skipLibCheck": true,

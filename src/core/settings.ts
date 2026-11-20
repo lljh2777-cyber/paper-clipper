@@ -11,7 +11,6 @@ import {
 } from '../managers/template-manager';
 import { updateTemplateList, showTemplateEditor, initializeAddPropertyButton, initializeTemplateValidation } from '../managers/template-ui';
 import { initializeGeneralSettings } from '../managers/general-settings';
-import { initializeInterpreterSettings } from '../managers/interpreter-settings';
 import { showSettingsSection, initializeSidebar } from '../managers/settings-section-ui';
 import { initializeReaderSettings } from '../managers/reader-settings';
 import { initializeAutoSave } from '../utils/auto-save';
@@ -40,7 +39,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 	// Apply section from URL params immediately to avoid flash (DOM only, no side effects)
 	const { section: initialSection } = getUrlParameters();
-	const targetSection = (initialSection === 'general' || initialSection === 'interpreter' || initialSection === 'properties' || initialSection === 'highlighter' || initialSection === 'reader') ? initialSection : 'general';
+	const targetSection = (initialSection === 'general' || initialSection === 'properties' || initialSection === 'highlighter' || initialSection === 'reader') ? initialSection : 'general';
 	document.querySelectorAll('.settings-section').forEach(s => s.classList.remove('active'));
 	document.querySelectorAll('#sidebar li[data-section]').forEach(i => i.classList.remove('active'));
 	document.getElementById(`${targetSection}-section`)?.classList.add('active');
@@ -52,13 +51,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 			await initializeGeneralSettings();
 			await initializeReaderSettings();
-			
-			// Initialize interpreter settings with error handling
-			try {
-				await initializeInterpreterSettings();
-			} catch (error) {
-				console.error('Error initializing interpreter settings, continuing with defaults:', error);
-			}
 			
 			// Load templates with error handling
 			let loadedTemplates;
@@ -206,7 +198,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 	async function handleUrlParameters(): Promise<void> {
 		const { section, templateId } = getUrlParameters();
 
-		if (section === 'general' || section === 'interpreter' || section === 'properties' || section === 'highlighter' || section === 'reader') {
+		if (section === 'general' || section === 'properties' || section === 'highlighter' || section === 'reader') {
 			showSettingsSection(section);
 		} else if (templateId) {
 			const template = findTemplateById(templateId);

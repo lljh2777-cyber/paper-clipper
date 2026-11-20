@@ -23,14 +23,14 @@ vi.mock('../utils/browser-polyfill', () => ({ default: {
 } }));
 vi.mock('../utils/storage-utils', () => ({
 	loadSettings: async () => ({ vaults: [], saveBehavior: 'savePaperDirectory' }),
-	getLocalStorage: async () => undefined, generalSettings: { propertyTypes: [], interpreterEnabled: false },
+	getLocalStorage: async () => undefined, generalSettings: { propertyTypes: [] },
 }));
 vi.mock('../utils/browser-detection', () => ({ addBrowserClassToHtml: vi.fn(), detectBrowser: async () => 'chrome' }));
 vi.mock('../utils/i18n', () => ({ getMessage: (key: string) => key, translatePage: vi.fn(), setupLanguageAndDirection: vi.fn() }));
 vi.mock('../icons/icons', () => ({ initializeIcons: vi.fn(), getPropertyTypeIcon: () => 'text' }));
 vi.mock('../managers/template-manager', () => ({ loadTemplates: async () => [{
 	id: 'test', name: 'Article', properties: [{ name: 'doi', value: 'doi' }],
-	noteNameFormat: 'title', noteContentFormat: 'content', path: '',
+	noteNameFormat: 'title', noteContentFormat: 'content', path: '', context: '{{selector:.legacy-ai-context}}',
 }] }));
 vi.mock('../utils/content-extractor', () => ({
 	extractPageContent: state.extract,
@@ -85,6 +85,7 @@ it('hands off only the current article after out-of-order extraction and compila
 	expect(field('doi').value).toBe('10.1234/paper3');
 	expect(field('note-name-field').value).toBe('Title 3');
 	expect(field('note-content-field').value).toBe('Body 3');
+	expect(vi.mocked(compileTemplate).mock.calls.map(call => call[1])).not.toContain('{{selector:.legacy-ai-context}}');
 
 	field('note-content-field').value = 'Edited body 3';
 	for (const [button, format] of [['clip-btn', 'directory'], ['save-image-archive', 'zip']]) {

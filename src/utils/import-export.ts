@@ -1,3 +1,4 @@
+import { withoutInterpreterSettings } from '../managers/interpreter-settings';
 import { Template } from '../types/types';
 import { templates, saveTemplateSettings, editingTemplateIndex, loadTemplates } from '../managers/template-manager';
 import { showTemplateEditor, updateTemplateList } from '../managers/template-ui';
@@ -328,10 +329,11 @@ export async function exportAllSettings(): Promise<void> {
 	try {
 		console.log('Fetching all data from browser storage');
 		const allData = await browser.storage.sync.get(null) as StorageData;
-		console.log('All data fetched:', allData);
 
 		// Create a copy of the data to modify
-		const exportData: StorageData = { ...allData };
+		const exportData: StorageData = Object.fromEntries(
+			Object.entries(withoutInterpreterSettings(allData)).filter(([, value]) => value !== null)
+		);
 
 		// Decompress all templates
 		const templateIds = exportData.template_list || [];
@@ -349,7 +351,6 @@ export async function exportAllSettings(): Promise<void> {
 			}
 		}
 
-		console.log('Data prepared for export:', exportData);
 		const content = JSON.stringify(exportData, null, 2);
 		console.log('Data stringified, length:', content.length);
 
@@ -379,49 +380,62 @@ export function importAllSettings(): void {
 	);
 }
 
-async function importAllSettingsFromJson(jsonContent: string): Promise<void> {
+async function restoreSettingsBackup(importData: StorageData): Promise<void> {
+	const current = await browser.storage.sync.get(null);
+	const obsolete = Object.keys(current).filter(key => !Object.prototype.hasOwnProperty.call(importData, key));
+	// Retire old values and install the new template index and payloads in one quota-checked write.
+	// If Chrome rejects it, the previous settings and every referenced template are still intact.
+	const retiredValues = Object.fromEntries(obsolete.map(key => [key, null]));
+	await browser.storage.sync.set({ ...retiredValues, ...importData });
+	if (obsolete.length) {
+		try {
+			await browser.storage.sync.remove(obsolete);
+		} catch (error) {
+			// Null entries are already inactive. A later restore can reclaim their keys.
+			console.warn('Settings restored, but empty sync entries could not be removed:', error);
+		}
+	}
+}
+
+export async function importAllSettingsFromJson(jsonContent: string): Promise<void> {
 	try {
 		const settings = JSON.parse(jsonContent) as StorageData;
+		if (!settings || typeof settings !== 'object' || Array.isArray(settings) ||
+			!['template_list', 'general_settings', 'vaults', 'migrationVersion', 'reader_settings', 'highlighter_settings', 'property_types', 'stats']
+				.some(key => Object.prototype.hasOwnProperty.call(settings, key))) {
+			throw new Error('Expected a Paper Clipper settings backup');
+		}
 		
 		if (confirm(getMessage('confirmReplaceSettings'))) {
 			// Create a copy of the settings to modify
-			const importData: StorageData = { ...settings };
+			const importData: StorageData = withoutInterpreterSettings(settings);
 			
 			// Compress all templates
-			const templateIds = importData.template_list || [];
+			const templateIds = importData.template_list ?? [];
+			if (!Array.isArray(templateIds)) throw new Error('Invalid template list');
 			for (const id of templateIds) {
 				const key = `template_${id}`;
-				if (importData[key]) {
-					try {
-						// Check if the data is already compressed (will be an array of strings)
-						const isAlreadyCompressed = Array.isArray(importData[key]) && 
-							importData[key].every((chunk: any) => typeof chunk === 'string');
-
-						if (!isAlreadyCompressed) {
-							// Compress the template data
-							const templateStr = JSON.stringify(importData[key]);
-							const compressedData = compressToUTF16(templateStr);
-							
-							// Split into chunks
-							const chunks: string[] = [];
-							const CHUNK_SIZE = 8000;
-							for (let i = 0; i < compressedData.length; i += CHUNK_SIZE) {
-								chunks.push(compressedData.slice(i, i + CHUNK_SIZE));
-							}
-							importData[key] = chunks;
-						}
-					} catch (error) {
-						console.error(`Failed to process template ${id}:`, error);
-					}
+				const stored = importData[key];
+				const compressed = Array.isArray(stored);
+				if (compressed && !stored.every(chunk => typeof chunk === 'string')) throw new Error('Invalid template chunks');
+				const template = compressed ? JSON.parse(decompressFromUTF16(stored.join(''))) : stored;
+				if (typeof id !== 'string' || !template || template.id !== id || !Array.isArray(template.properties)) {
+					throw new Error(`Missing or invalid template: ${id}`);
 				}
+				if (compressed) continue;
+				const data = compressToUTF16(JSON.stringify(template));
+				const chunks: string[] = [];
+				for (let i = 0; i < data.length; i += 8000) chunks.push(data.slice(i, i + 8000));
+				importData[key] = chunks;
 			}
 
-			await browser.storage.sync.clear();
-			await browser.storage.sync.set(importData);
-			await loadSettings();
-			await loadTemplates();
-			updateTemplateList();
-			updatePropertyTypesList();
+			await navigator.locks.request('paper-clipper-settings-import', async () => {
+				await restoreSettingsBackup(importData);
+				await loadSettings();
+				await loadTemplates();
+				updateTemplateList();
+				updatePropertyTypesList();
+			});
 			alert(getMessage('settingsImportSuccess'));
 		}
 	} catch (error) {

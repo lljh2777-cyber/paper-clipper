@@ -2,20 +2,8 @@
 	"activity": {
 		"message": "Atividade"
 	},
-	"addModel": {
-		"message": "+ Adicionar modelo"
-	},
-	"addModelTitle": {
-		"message": "Adicionar modelo"
-	},
 	"addProperty": {
 		"message": "+ Adicionar propriedade"
-	},
-	"addProvider": {
-		"message": "+ Adicionar provedor"
-	},
-	"addProviderTitle": {
-		"message": "Adicionar provedor"
 	},
 	"addToObsidian": {
 		"message": "Adicionar ao Obsidian"
@@ -41,23 +29,11 @@
 	"alwaysShowHighlightsDescription": {
 		"message": "Exiba suas marcações salvos ao carregar a página. Desative para exibir as marcações somente quando o modo marcador estiver ativado."
 	},
-	"apiKeyMissing": {
-		"message": "Chave API ausente"
-	},
-	"apiKeysWarning": {
-		"message": "Interpreter requests go directly to the provider you configure, subject to that provider's terms and privacy policy. Paper Clipper has no hosted inference service."
-	},
 	"appendToDaily": {
 		"message": "Adicionar à nota diária, no final"
 	},
 	"appendToExisting": {
 		"message": "Adicionar a uma nota existente, no final"
-	},
-	"autoRunInterpreter": {
-		"message": "Executar automaticamente"
-	},
-	"autoRunInterpreterDescription": {
-		"message": "Execute variáveis de prompt imediatamente se o modelo contiver alguma. Isso consumirá créditos de API com seu provedor de modelo. Desative se você quiser executar o interpretador apenas manualmente."
 	},
 	"behavior": {
 		"message": "Comportamento"
@@ -73,9 +49,6 @@
 	},
 	"cancel": {
 		"message": "Cancelar"
-	},
-	"cannotDeleteProvider": {
-		"message": "Não é possível excluir o provedor \"$1\" porque está sendo usado por $2 modelo(s)."
 	},
 	"changelog": {
 		"message": "Registro de alterações"
@@ -153,12 +126,6 @@
 	"dailyNoteFormat": {
 		"message": "Formato da nota diária (ex: YYYY-MM-DD)"
 	},
-	"defaultInterpreterContext": {
-		"message": "Contexto padrão do interpretador"
-	},
-	"defaultInterpreterContextDescription": {
-		"message": "O modelo usará este contexto para interpretar variáveis de prompt. Variáveis e filtros podem ser usados aqui."
-	},
 	"defaultTemplateName": {
 		"message": "Padrão"
 	},
@@ -173,12 +140,6 @@
 	},
 	"deleteHighlightsForPage": {
 		"message": "Excluir todos os destaques desta página?"
-	},
-	"deleteModelConfirm": {
-		"message": "Tem certeza que deseja excluir este modelo?"
-	},
-	"deleteProviderConfirm": {
-		"message": "Tem certeza de que deseja excluir este provedor?"
 	},
 	"disableHighlighter": {
 		"message": "Desativar marcador"
@@ -212,12 +173,6 @@
 	"edit": {
 		"message": "Editar"
 	},
-	"editModel": {
-		"message": "Editar modelo"
-	},
-	"editProvider": {
-		"message": "Editar provedor"
-	},
 	"editTemplate": {
 		"message": "Editar modelo"
 	},
@@ -226,26 +181,6 @@
 	},
 	"enableHighlighterDescription": {
 		"message": "Demarque o conteúdo de páginas da internet para que possa salvar no Obsidian."
-	},
-	"enableInterpreter": {
-		"message": "Habilitar interpretador"
-	},
-	"enableInterpreterDescription": {
-		"message": "Use linguagem natural para extrair dados das páginas. Por exemplo, você pode usar a sintaxe de modelo $strong_start${{\"um resumo da página\"}}$strong_end$. Requer uma chave API ou modelo personalizado configurado abaixo. $link_start$Saiba mais$link_end$",
-		"placeholders": {
-			"link_end": {
-				"content": "</a>"
-			},
-			"link_start": {
-				"content": "<a href=\"https://help.obsidian.md/web-clipper/interpreter\" target=\"_blank\">"
-			},
-			"strong_end": {
-				"content": "</strong>"
-			},
-			"strong_start": {
-				"content": "<strong>"
-			}
-		}
 	},
 	"enableReader": {
 		"message": "Abrir vista de leitura"
@@ -315,12 +250,6 @@
 	"failedToInitializeContent": {
 		"message": "Não foi possível inicializar o conteúdo da página."
 	},
-	"failedToProcessInterpreter": {
-		"message": "Falha no processamento do intérprete. Por favor, tente novamente."
-	},
-	"failedToResetProviders": {
-		"message": "Falha ao redefinir provedores e modelos"
-	},
 	"failedToResetTemplate": {
 		"message": "Falha ao redefinir o modelo padrão. Por favor, tente novamente."
 	},
@@ -329,9 +258,6 @@
 	},
 	"failedToSaveFile": {
 		"message": "Falha ao salvar o arquivo"
-	},
-	"failedToSaveProvider": {
-		"message": "Falha ao salvar o provedor. Por favor, tente novamente."
 	},
 	"feedback": {
 		"message": "Comentários"
@@ -350,9 +276,6 @@
 	},
 	"generalSettings": {
 		"message": "Configurações gerais"
-	},
-	"getApiKeyHere": {
-		"message": "Obtenha sua chave API $1 aqui."
 	},
 	"help": {
 		"message": "Ajuda"
@@ -445,26 +368,6 @@
 	"importTemplate": {
 		"message": "Importar modelo"
 	},
-	"interpret": {
-		"message": "interpretar"
-	},
-	"interpreter": {
-		"message": "Intérprete"
-	},
-	"interpreterContext": {
-		"message": "Contexto do intérprete"
-	},
-	"interpreterContextDescription": {
-		"message": "O contexto usado para interpretar variáveis de prompt. Substitui o contexto padrão definido nas $link_start$Configurações do interpretador$link_end$. Variáveis podem ser usadas aqui.",
-		"placeholders": {
-			"link_end": {
-				"content": "</a>"
-			},
-			"link_start": {
-				"content": "<a href=\"?section=interpreter\">"
-			}
-		}
-	},
 	"language": {
 		"message": "Idioma"
 	},
@@ -488,30 +391,6 @@
 	},
 	"loading": {
 		"message": "Carregando…"
-	},
-	"modelName": {
-		"message": "Nome do modelo"
-	},
-	"modelNameDescription": {
-		"message": "O nome do modelo que você deseja exibir na interface."
-	},
-	"modelProvider": {
-		"message": "Provedor"
-	},
-	"modelProviderDescription": {
-		"message": "O provedor do modelo, por exemplo Ollama, OpenRouter, Google, etc."
-	},
-	"modelProviderPlaceholder": {
-		"message": "Provedor"
-	},
-	"modelRequiredFields": {
-		"message": "Nome do modelo, Provedor e ID do modelo são obrigatórios."
-	},
-	"models": {
-		"message": "Modelos"
-	},
-	"modelsListFor": {
-		"message": "Lista de modelos para $1"
 	},
 	"more": {
 		"message": "Mais"
@@ -620,12 +499,6 @@
 	"pleaseReload": {
 		"message": "Por favor, tente recarregar a página."
 	},
-	"popularModels": {
-		"message": "Modelos populares"
-	},
-	"popularModelsDescription": {
-		"message": "Escolha entre os modelos comumente usados ou insira os detalhes do modelo personalizado."
-	},
 	"popup": {
 		"message": "Popup"
 	},
@@ -670,48 +543,6 @@
 	},
 	"propertyValue": {
 		"message": "valor da propriedade"
-	},
-	"provider": {
-		"message": "Provedor"
-	},
-	"providerApiKey": {
-		"message": "Chave API"
-	},
-	"providerApiKeyDescription": {
-		"message": "Sua chave API para este provedor."
-	},
-	"providerBaseUrl": {
-		"message": "URL base"
-	},
-	"providerBaseUrlDescription": {
-		"message": "A URL do endpoint API para este provedor."
-	},
-	"providerModelId": {
-		"message": "ID do modelo"
-	},
-	"providerModelIdDescription": {
-		"message": "O identificador do modelo do seu provedor. Geralmente um nome curto sem espaços."
-	},
-	"providerModelIdPlaceholder": {
-		"message": "ID do modelo"
-	},
-	"providerName": {
-		"message": "Nome do provedor"
-	},
-	"providerNameDescription": {
-		"message": "Nome de exibição para este provedor."
-	},
-	"providerPreset": {
-		"message": "Predefinição"
-	},
-	"providerPresetDescription": {
-		"message": "Escolha um provedor ou crie um personalizado."
-	},
-	"providerRequiredFields": {
-		"message": "Nome do provedor e URL base são obrigatórios."
-	},
-	"providers": {
-		"message": "Provedores"
 	},
 	"rateExtensionDescription": {
 		"message": "Você está gostando do Paper Clipper? Ajude-nos dando uma avaliação."
@@ -905,12 +736,6 @@
 	"resetDefaultTemplateDescription": {
 		"message": "Remove quaisquer alterações que você tenha feito no modelo padrão."
 	},
-	"resetProvidersAndModels": {
-		"message": "Redefinir modelos padrão"
-	},
-	"resetProvidersAndModelsDescription": {
-		"message": "Redefina provedores e modelos para as configurações padrão."
-	},
 	"save": {
 		"message": "Salvar"
 	},
@@ -931,9 +756,6 @@
 	},
 	"searchVariables": {
 		"message": "Procurar variáveis..."
-	},
-	"selectProvider": {
-		"message": "Selecione um provedor"
 	},
 	"selectTemplateToExport": {
 		"message": "Por favor, selecione um modelo para exportar."
@@ -1051,12 +873,6 @@
 	},
 	"templatesHeading": {
 		"message": "Modelos"
-	},
-	"thinking": {
-		"message": "pensando"
-	},
-	"unknownProvider": {
-		"message": "Provedor desconhecido"
 	},
 	"updateAvailable": {
 		"message": "Uma atualização está disponível."

@@ -25,7 +25,9 @@ export async function loadTemplates(): Promise<Template[]> {
 		// Filter out any null or undefined values
 		templateIds = templateIds.filter(id => id != null);
 
-		if (templateIds.length > 0) {
+		if (templateIds.length === 0) {
+			templates = [];
+		} else {
 			const loadedTemplates = await Promise.all(templateIds.map(async (id: string) => {
 				try {
 					const result = await browser.storage.sync.get(`template_${id}`);
@@ -245,7 +247,7 @@ export async function rebuildTemplateList(): Promise<void> {
 		
 		// Filter for template keys and extract IDs
 		const templateIds = Object.keys(allItems)
-			.filter(key => key.startsWith('template_') && key !== 'template_list')
+			.filter(key => key.startsWith('template_') && key !== 'template_list' && Array.isArray(allItems[key]))
 			.map(key => key.replace('template_', ''));
 
 		console.log('Found template IDs:', templateIds);

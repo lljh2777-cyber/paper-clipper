@@ -959,8 +959,12 @@ browser.contextMenus.onClicked.addListener(async (info, tab) => {
 	}
 });
 
-browser.runtime.onInstalled.addListener(() => {
+browser.runtime.onInstalled.addListener(async () => {
 	debouncedUpdateContextMenu(-1); // Use a dummy tabId for initial creation
+	await Promise.all([
+		browser.storage.sync.remove('interpreter_settings'),
+		browser.storage.local.remove('provider_presets'),
+	]);
 });
 
 async function isSidePanelOpen(windowId: number): Promise<boolean> {

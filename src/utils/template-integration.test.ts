@@ -19,8 +19,14 @@ import { createAsyncResolver, createSelectorProcessor } from '../api';
 
 const FROZEN_DATE = new Date('2025-01-15T12:00:00Z');
 
-beforeAll(() => { vi.useFakeTimers({ now: FROZEN_DATE }); });
-afterAll(() => { vi.useRealTimers(); });
+beforeAll(() => {
+	vi.stubEnv('TZ', 'America/Los_Angeles');
+	vi.useFakeTimers({ now: FROZEN_DATE });
+});
+afterAll(() => {
+	vi.useRealTimers();
+	vi.unstubAllEnvs();
+});
 
 // ---------------------------------------------------------------------------
 // Fixture types
@@ -110,7 +116,7 @@ function getFixtures(): Array<{ name: string; jsonPath: string; htmlPath: string
 
 function loadExpected(name: string): string | null {
 	const expectedPath = join(EXPECTED_DIR, `${name}.md`);
-	return existsSync(expectedPath) ? readFileSync(expectedPath, 'utf-8') : null;
+	return existsSync(expectedPath) ? readFileSync(expectedPath, 'utf-8').replace(/\r\n/g, '\n') : null;
 }
 
 function saveExpected(name: string, content: string): void {

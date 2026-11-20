@@ -1,6 +1,6 @@
 import dayjs from 'dayjs';
 import { createMarkdownContent } from 'defuddle/full';
-import { Template, Property, PromptVariable } from '../types/types';
+import { Template, Property } from '../types/types';
 import { incrementStat, addHistoryEntry, getClipHistory } from '../utils/storage-utils';
 import { generateFrontmatter, saveToObsidian } from '../utils/obsidian-note-creator';
 import { extractPageContent, initializePageContent } from '../utils/content-extractor';
@@ -13,7 +13,6 @@ import { loadTemplates, createDefaultTemplate } from '../managers/template-manag
 import browser from '../utils/browser-polyfill';
 import { addBrowserClassToHtml, detectBrowser } from '../utils/browser-detection';
 import { createElementWithClass } from '../utils/dom-utils';
-import { initializeInterpreter, handleInterpreterUI, collectPromptVariables } from '../utils/interpreter';
 import { adjustNoteNameHeight } from '../utils/ui-utils';
 import { debugLog, isDebugMode } from '../utils/debug';
 import { showVariables, initializeVariablesPanel, updateVariablesPanel } from '../managers/inspect-variables';
@@ -636,26 +635,6 @@ function logError(message: string, error?: any): void {
 	showError(message);
 }
 
-async function waitForInterpreter(interpretBtn: HTMLButtonElement, signal: AbortSignal): Promise<void> {
-	return new Promise((resolve, reject) => {
-		const checkProcessing = () => {
-			if (signal.aborted) { resolve(); return; }
-			if (!interpretBtn.classList.contains('processing')) {
-				if (interpretBtn.classList.contains('done')) {
-					resolve();
-				} else if (interpretBtn.classList.contains('error')) {
-					reject(new Error(getMessage('failedToProcessInterpreter')));
-				} else {
-					setTimeout(checkProcessing, 100);
-				}
-			} else {
-				setTimeout(checkProcessing, 100);
-			}
-		};
-		checkProcessing();
-	});
-}
-
 function invalidateEditor() {
 	refreshController?.abort();
 	manualExportPage = undefined;
@@ -859,30 +838,6 @@ function buildTemplateFieldsSkeleton(template: Template | null) {
 	if (noteContentField) {
 		noteContentField.setAttribute('data-template-value', template.noteContentFormat || '');
 	}
-
-	// Show/hide interpreter section based on template prompt variables
-	const interpreterContainer = document.getElementById('interpreter');
-	const interpretBtn = document.getElementById('interpret-btn');
-	const hasPromptVars = generalSettings.interpreterEnabled && collectPromptVariables(template).length > 0;
-	if (interpreterContainer) interpreterContainer.style.display = hasPromptVars ? 'flex' : 'none';
-	if (interpretBtn) interpretBtn.style.display = hasPromptVars ? 'inline-block' : 'none';
-
-	// Populate model dropdown immediately (only needs generalSettings)
-	if (hasPromptVars) {
-		const modelSelect = document.getElementById('model-select') as HTMLSelectElement;
-		if (modelSelect) {
-			const enabledModels = generalSettings.models.filter(model => model.enabled);
-			modelSelect.textContent = '';
-			enabledModels.forEach(model => {
-				const option = document.createElement('option');
-				option.value = model.id;
-				option.textContent = model.name;
-				modelSelect.appendChild(option);
-			});
-			modelSelect.value = generalSettings.interpreterModel || (enabledModels[0]?.id ?? '');
-			modelSelect.style.display = 'inline-block';
-		}
-	}
 }
 
 async function fillTemplateFieldValues(currentTabId: number, template: Template, variables: { [key: string]: string }, exportPage: ExportPage, signal: AbortSignal, rebuildSkeleton: boolean) {
@@ -954,40 +909,6 @@ async function fillTemplateFieldValues(currentTabId: number, template: Template,
 		clearError();
 		document.querySelector<HTMLElement>('.clipper')!.inert = false;
 	}
-
-	if (generalSettings.interpreterEnabled) {
-		await initializeInterpreter(template, variables, currentTabId!, currentUrl, signal);
-		if (signal.aborted) return;
-
-		const promptVariables = collectPromptVariables(template);
-
-		if (generalSettings.interpreterAutoRun && promptVariables.length > 0) {
-			try {
-				const interpretBtn = document.getElementById('interpret-btn') as HTMLButtonElement;
-				const modelSelect = document.getElementById('model-select') as HTMLSelectElement;
-				const selectedModelId = modelSelect?.value || generalSettings.interpreterModel;
-				const modelConfig = generalSettings.models.find(m => m.id === selectedModelId);
-				if (!modelConfig) {
-					throw new Error(`Model configuration not found for ${selectedModelId}`);
-				}
-				await handleInterpreterUI(template, variables, currentTabId!, currentUrl, modelConfig, signal);
-				if (signal.aborted) return;
-
-				if (interpretBtn) {
-					interpretBtn.classList.add('done');
-					interpretBtn.disabled = true;
-				}
-			} catch (error) {
-				if (signal.aborted) return;
-				console.error('Error auto-processing with interpreter:', error);
-				const interpretBtn = document.getElementById('interpret-btn') as HTMLButtonElement;
-				if (interpretBtn) {
-					interpretBtn.classList.add('error');
-				}
-			}
-		}
-	}
-
 	if (isDebugMode()) {
 		const replacedTemplate = await getReplacedTemplate(template, variables, currentTabId!, currentUrl);
 		debugLog('Variables', 'Current template with replaced variables:', JSON.stringify(replacedTemplate, null, 2));
@@ -1051,10 +972,6 @@ async function getReplacedTemplate(template: Template, variables: { [key: string
 		properties: [],
 		triggers: template.triggers
 	};
-
-	if (template.context) {
-		replacedTemplate.context = await compileTemplate(tabId, template.context, variables, currentUrl);
-	}
 
 	for (const prop of template.properties) {
 		const replacedProp: Property = {
@@ -1436,7 +1353,6 @@ async function handleClipObsidian(): Promise<void> {
 	const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
 	const noteNameField = document.getElementById('note-name-field') as HTMLInputElement;
 	const pathField = document.getElementById('path-name-field') as HTMLInputElement;
-	const interpretBtn = document.getElementById('interpret-btn') as HTMLButtonElement;
 
 	if (!vaultDropdown || !noteContentField) {
 		showError('Some required fields are missing. Please try reloading the extension.');
@@ -1444,16 +1360,6 @@ async function handleClipObsidian(): Promise<void> {
 	}
 
 	try {
-		// Handle interpreter if needed
-		if (generalSettings.interpreterEnabled && interpretBtn && collectPromptVariables(currentTemplate).length > 0) {
-			if (interpretBtn.classList.contains('processing')) {
-				await waitForInterpreter(interpretBtn, signal);
-			} else if (!interpretBtn.classList.contains('done')) {
-				interpretBtn.click();
-				await waitForInterpreter(interpretBtn, signal);
-			}
-		}
-
 		if (signal.aborted) return;
 		// Gather content
 		const properties = getPropertiesFromDOM();
