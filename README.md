@@ -1,6 +1,6 @@
 # Paper Clipper
 
-An independent, unofficial paper-acquisition workflow based on
+Paper Clipper is independently maintained by [@lljh2777-cyber](https://github.com/lljh2777-cyber) and is based on
 [Obsidian Web Clipper](https://github.com/obsidianmd/obsidian-clipper).
 Resolve a title, DOI or URL, obtain accessible publisher HTML, convert it to
 Markdown, check supported content structures, and optionally archive local images
