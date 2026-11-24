@@ -11,7 +11,7 @@ import DefuddleClass from 'defuddle';
 import { createMarkdownContent } from 'defuddle/full';
 import { buildVariables, generateFrontmatter, formatPropertyValue } from './shared';
 import { compileTemplate } from './template-compiler';
-import { createAsyncResolver, createSelectorProcessor } from '../api';
+import { createAsyncResolver } from '../api';
 
 // ---------------------------------------------------------------------------
 // Freeze time so {{date}} is deterministic in expected output
@@ -67,10 +67,9 @@ async function runFixture(html: string, url: string, template: FixtureTemplate):
 	});
 
 	const asyncResolver = createAsyncResolver(document);
-	const selectorProcessor = createSelectorProcessor(document);
 
 	const compileFn = (text: string) =>
-		compileTemplate(0, text, variables, url, asyncResolver, selectorProcessor);
+		compileTemplate(0, text, variables, url, asyncResolver);
 
 	// Compile properties with type-aware formatting
 	const compiledProperties = await Promise.all(

@@ -216,10 +216,9 @@ export async function clip(options: ClipOptions): Promise<ClipResult> {
 
 	// Create resolvers for selector variables
 	const asyncResolver = createAsyncResolver(doc);
-	const selectorProcessor = createSelectorProcessor(doc);
 
 	const compile = (text: string) =>
-		compileTemplate(0, text, variables, url, asyncResolver, selectorProcessor);
+		compileTemplate(0, text, variables, url, asyncResolver);
 
 	// Compile note name
 	const compiledNoteName = await compile(template.noteNameFormat);

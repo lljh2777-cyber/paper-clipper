@@ -1,8 +1,8 @@
 import dayjs from 'dayjs';
 import { createMarkdownContent } from 'defuddle/full';
 import { Template, Property } from '../types/types';
-import { incrementStat, addHistoryEntry, getClipHistory } from '../utils/storage-utils';
-import { generateFrontmatter, saveToObsidian } from '../utils/obsidian-note-creator';
+import { incrementStat, getClipHistory, type HistoryEntry } from '../utils/storage-utils';
+import { generateFrontmatter } from '../utils/obsidian-note-creator';
 import { extractPageContent, initializePageContent } from '../utils/content-extractor';
 import { compileTemplate } from '../utils/template-compiler';
 import { initializeIcons, getPropertyTypeIcon } from '../icons/icons';
@@ -19,12 +19,11 @@ import { showVariables, initializeVariablesPanel, updateVariablesPanel } from '.
 import { isBlankPage, isValidUrl, isRestrictedUrl } from '../utils/active-tab-manager';
 import { debounce } from '../utils/debounce';
 import { sanitizeFileName } from '../utils/string-utils';
-import { saveFile } from '../utils/file-utils';
 import { collectImageSources } from '../utils/image-sources.mjs';
 import { collectFigureLinks } from '../utils/figure-links';
 import { resetAttachmentPicker, selectedPaperAttachments } from '../utils/attachment-picker';
 import { paperIdentity, paperDirectoryFailure } from '../utils/paper-directory';
-import { lastPaperSaveResult, openPaperDirectorySave } from '../utils/paper-directory-handoff';
+import { lastPaperSaveResult, openPaperDirectorySave, type PaperSaveFormat, type PaperSaveInput } from '../utils/paper-directory-handoff';
 import { translatePage, getMessage, setupLanguageAndDirection } from '../utils/i18n';
 import { formatPropertyValue } from '../utils/shared';
 import { exportPageHtml } from '../utils/page-html-export';
@@ -46,7 +45,7 @@ let editorWindowId: number | undefined;
 let refreshController: AbortController | undefined;
 type ExportPage = { data: NonNullable<Awaited<ReturnType<typeof extractPageContent>>>; source: string };
 let manualExportPage: { tabId: number; data: ExportPage['data']; snapshot: ManualExportSnapshot } | undefined;
-let lastSelectedVault: string | null = null;
+
 
 const isSidePanel = window.location.pathname.includes('side-panel.html');
 const urlParams = new URLSearchParams(window.location.search);
@@ -136,14 +135,10 @@ const debouncedSetPopupDimensions = debounce(setPopupDimensions, 100); // 100ms 
 
 async function initializeExtension(tabId: number) {
 	try {
-		// Initialize translations
-		await translatePage();
 		document.getElementById('export-page-html')?.setAttribute('aria-label', getMessage('exportPageHtml'));
 		
 		// Setup language and RTL support
 		await setupLanguageAndDirection();
-		const lastSave = await lastPaperSaveResult();
-		if (lastSave && !imageArchiveBusy) manualSaveStatus().textContent = getMessage('paperSaveLastResult', lastSave);
 		
 		// First, add the browser class to allow browser-specific styles to apply
 		await addBrowserClassToHtml();
@@ -163,8 +158,7 @@ async function initializeExtension(tabId: number) {
 		debugLog('Templates', 'Loaded templates:', templates);
 
 		if (templates.length === 0) {
-			console.error('No templates loaded');
-			return false;
+			templates = [createDefaultTemplate()];
 		}
 
 		// Initialize triggers to speed up template matching
@@ -172,13 +166,6 @@ async function initializeExtension(tabId: number) {
 
 		currentTemplate = templates[0];
 		debugLog('Templates', 'Current template set to:', currentTemplate);
-
-		// Load last selected vault
-		lastSelectedVault = await getLocalStorage('lastSelectedVault');
-		if (!lastSelectedVault && loadedSettings.vaults.length > 0) {
-			lastSelectedVault = loadedSettings.vaults[0];
-		}
-		debugLog('Vaults', 'Last selected vault:', lastSelectedVault);
 
 		// Setup message listeners
 		setupMessageListeners();
@@ -203,6 +190,7 @@ const debouncedHighlightRefresh = debounce(() => {
 
 function setupStorageListeners() {
 	browser.storage.local.onChanged.addListener((changes) => {
+		if (changes.history) renderSaveMethods(changes.history.newValue as HistoryEntry[] ?? []);
 		if (changes.highlights) {
 			debouncedHighlightRefresh();
 		}
@@ -225,10 +213,14 @@ function setupMessageListeners() {
 	}
 	browser.runtime.onMessage.addListener((request: any, sender: browser.Runtime.MessageSender, sendResponse: (response?: any) => void) => {
 		if (request.action === "triggerQuickClip") {
-			handleClipObsidian().then(() => {
+			if (!manualExportPage || refreshController?.signal.aborted) {
+				sendResponse({success: false});
+				return;
+			}
+			saveActions[primarySaveBehavior()]().then(() => {
 				sendResponse({success: true});
 			}).catch((error) => {
-				console.error('Error in handleClipObsidian:', error);
+				console.error('Quick clip failed:', error);
 				sendResponse({success: false, error: error.message});
 			});
 			return true;
@@ -264,6 +256,11 @@ function setupMessageListeners() {
 }
 
 document.addEventListener('DOMContentLoaded', async function() {
+	await translatePage();
+	const feedback = document.querySelector<HTMLAnchorElement>('.paper-feedback')!;
+	const form = new URL('https://github.com/lljh2777-cyber/paper-clipper/issues/new');
+	form.searchParams.set('body', getMessage('paperFeedbackBody'));
+	feedback.href = form.href;
 	loadedSettings = await loadSettings();
 	const exportButton = document.getElementById('export-page-html') as HTMLButtonElement | null;
 	if (exportButton) {
@@ -367,7 +364,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
 			try {
 				// DOM-dependent initializations
-				updateVaultDropdown(loadedSettings.vaults);
+				initializeDestinationSwitch();
 				populateTemplateDropdown();
 				setupEventListeners(currentTabId);
 				await initializeUI();
@@ -431,13 +428,13 @@ function setupEventListeners(tabId: number) {
 				try {
 					const result = await requestEmbeddedPanelToggle();
 					if (result === 'invalidated') {
-						manualSaveStatus().textContent = getMessage('embeddedPanelReloadRequired');
+						showSaveStatus(getMessage('embeddedPanelReloadRequired'));
 						return;
 					}
 					setTimeout(() => window.close(), 50);
 				} catch (error) {
 					console.error('Error toggling embedded iframe:', error);
-					manualSaveStatus().textContent = getMessage('embeddedPanelToggleFailed');
+					showSaveStatus(getMessage('embeddedPanelToggleFailed'));
 				}
 			});
 		}
@@ -445,7 +442,6 @@ function setupEventListeners(tabId: number) {
 	const moreButton = document.getElementById('more-btn');
 	const moreDropdown = document.getElementById('more-dropdown');
 	const copyContentButton = document.getElementById('copy-content');
-	const saveDownloadsButton = document.getElementById('save-downloads');
 	const shareContentButton = document.getElementById('share-content');
 
 	if (moreButton && moreDropdown) {
@@ -462,22 +458,7 @@ function setupEventListeners(tabId: number) {
 		});
 	}
 
-	if (copyContentButton) {
-		copyContentButton.addEventListener('click', async () => {
-			const properties = getPropertiesFromDOM();
-
-			const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
-			const content = noteContentField.value;
-			const frontmatter = await generateFrontmatter(properties);
-			const fileContent = frontmatter + content;
-			
-			await copyToClipboard(fileContent);
-		});
-	}
-
-	if (saveDownloadsButton) {
-		saveDownloadsButton.addEventListener('click', handleSaveToDownloads);
-	}
+	if (copyContentButton) copyContentButton.addEventListener('click', copyContent);
 
 	const shareButtons = document.querySelectorAll('.share-content');
 	if (shareButtons) {
@@ -513,15 +494,10 @@ function setupEventListeners(tabId: number) {
 						};
 
 						if (navigator.canShare(shareData)) {
-							const pathField = document.getElementById('path-name-field') as HTMLInputElement;
-							const vaultDropdown = document.getElementById('vault-select') as HTMLSelectElement;
-							const path = pathField?.value || '';
-							const vault = vaultDropdown?.value || '';
-
 							navigator.share(shareData)
 								.then(async () => {
 									const tabInfo = await getCurrentTabInfo();
-									await incrementStat('share', vault, path, tabInfo.url, tabInfo.title);
+									await incrementStat('share', undefined, undefined, tabInfo.url, tabInfo.title);
 									const moreDropdown = document.getElementById('more-dropdown');
 									if (moreDropdown) {
 											moreDropdown.classList.remove('show');
@@ -638,6 +614,8 @@ function logError(message: string, error?: any): void {
 function invalidateEditor() {
 	refreshController?.abort();
 	manualExportPage = undefined;
+	renderSaveMethods([]);
+	showSaveStatus('');
 	resetAttachmentPicker();
 	const editor = document.querySelector<HTMLElement>('.clipper');
 	if (editor) editor.inert = true;
@@ -754,16 +732,6 @@ function populateTemplateDropdown() {
 function buildTemplateFieldsSkeleton(template: Template | null) {
 	if (!template) return;
 
-	// Handle vault selection
-	const vaultDropdown = document.getElementById('vault-select') as HTMLSelectElement;
-	if (vaultDropdown) {
-		if (template.vault) {
-			vaultDropdown.value = template.vault;
-		} else if (lastSelectedVault) {
-			vaultDropdown.value = lastSelectedVault;
-		}
-	}
-
 	const existingTemplateProperties = document.querySelector('.metadata-properties') as HTMLElement;
 
 	const newTemplateProperties = createElementWithClass('div', 'metadata-properties');
@@ -822,18 +790,6 @@ function buildTemplateFieldsSkeleton(template: Template | null) {
 		noteNameField.setAttribute('data-template-value', template.noteNameFormat);
 	}
 
-	const pathField = document.getElementById('path-name-field') as HTMLInputElement;
-	const pathContainer = document.querySelector('.vault-path-container') as HTMLElement;
-	if (pathField && pathContainer) {
-		const isDailyNote = template.behavior === 'append-daily' || template.behavior === 'prepend-daily';
-		if (isDailyNote) {
-			pathField.style.display = 'none';
-		} else {
-			pathContainer.style.display = 'flex';
-			pathField.setAttribute('data-template-value', template.path);
-		}
-	}
-
 	const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
 	if (noteContentField) {
 		noteContentField.setAttribute('data-template-value', template.noteContentFormat || '');
@@ -847,12 +803,11 @@ async function fillTemplateFieldValues(currentTabId: number, template: Template,
 	if (!Array.isArray(template.properties)) throw new Error('failedToExtractContent');
 
 	// Compile all templates in parallel
-	const [compiledPropertyValues, formattedNoteName, formattedPath, formattedContent] = await Promise.all([
+	const [compiledPropertyValues, formattedNoteName, formattedContent] = await Promise.all([
 		Promise.all(template.properties.map(property =>
 			compileTemplate(currentTabId!, unescapeValue(property.value), variables, currentUrl)
 		)),
 		compileTemplate(currentTabId!, template.noteNameFormat, variables, currentUrl),
-		compileTemplate(currentTabId!, template.path, variables, currentUrl),
 		template.noteContentFormat
 			? compileTemplate(currentTabId!, template.noteContentFormat, variables, currentUrl)
 			: Promise.resolve('')
@@ -891,11 +846,6 @@ async function fillTemplateFieldValues(currentTabId: number, template: Template,
 		adjustNoteNameHeight(noteNameField);
 	}
 
-	const pathField = document.getElementById('path-name-field') as HTMLInputElement;
-	if (pathField) {
-		pathField.value = formattedPath;
-	}
-
 	const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
 	if (noteContentField) {
 		noteContentField.value = template.noteContentFormat ? formattedContent : '';
@@ -905,6 +855,7 @@ async function fillTemplateFieldValues(currentTabId: number, template: Template,
 			document: new DOMParser().parseFromString(exportPage.data.fullHtml, 'text/html'), source: exportPage.source,
 			extractedMarkdown: createMarkdownContent(exportPage.data.content, exportPage.source), templateMarkdown: noteContentField.value,
 		} };
+		void restoreSaveFeedback(manualExportPage);
 		resetAttachmentPicker(manualExportPage.snapshot);
 		clearError();
 		document.querySelector<HTMLElement>('.clipper')!.inert = false;
@@ -985,38 +936,20 @@ async function getReplacedTemplate(template: Template, variables: { [key: string
 	return replacedTemplate;
 }
 
-function updateVaultDropdown(vaults: string[]) {
-	const vaultDropdown = document.getElementById('vault-select') as HTMLSelectElement | null;
-	const vaultContainer = document.getElementById('vault-container');
-
-	if (!vaultDropdown || !vaultContainer) return;
-
-	// Clear existing options
-	vaultDropdown.textContent = '';
-	
-	vaults.forEach(vault => {
-		const option = document.createElement('option');
-		option.value = vault;
-		option.textContent = vault;
-		vaultDropdown.appendChild(option);
-	});
-
-	// Only show vault selector if vaults are defined
-	if (vaults.length > 0) {
-		vaultContainer.style.display = 'block';
-		if (lastSelectedVault && vaults.includes(lastSelectedVault)) {
-			vaultDropdown.value = lastSelectedVault;
-		} else {
-			vaultDropdown.value = vaults[0];
+function initializeDestinationSwitch() {
+	const toggle = document.querySelector<HTMLInputElement>('#use-default-paper-directory')!;
+	toggle.checked = loadedSettings.useDefaultPaperDirectory !== false;
+	toggle.onchange = async () => {
+		const selected = toggle.checked;
+		try {
+			await browser.storage.sync.set({ useDefaultPaperDirectory: selected });
+		} catch {
+			toggle.checked = !selected;
+			showSaveStatus(getMessage('paperDestinationSettingFailed'));
 		}
-	} else {
-		vaultContainer.style.display = 'none';
-	}
-
-	// Add event listener to update lastSelectedVault when changed
-	vaultDropdown.addEventListener('change', () => {
-		lastSelectedVault = vaultDropdown.value;
-		setLocalStorage('lastSelectedVault', lastSelectedVault);
+	};
+	browser.storage.sync.onChanged.addListener(changes => {
+		if (changes.useDefaultPaperDirectory) toggle.checked = changes.useDefaultPaperDirectory.newValue !== false;
 	});
 }
 
@@ -1142,39 +1075,21 @@ async function toggleReaderMode(tabId: number) {
 	}
 }
 
-export async function copyToClipboard(content: string) {
+async function copyToClipboard(content: string, page: NonNullable<typeof manualExportPage>) {
+	if (page === manualExportPage) showSaveStatus('');
 	try {
 		try {
 			await navigator.clipboard.writeText(content);
 		} catch {
-			await browser.runtime.sendMessage({
-				action: 'copy-to-clipboard',
-				text: content
-			});
+			const response = await browser.runtime.sendMessage({ action: 'copy-to-clipboard', text: content }) as { success?: boolean } | undefined;
+			if (!response?.success) throw new Error('Clipboard write failed');
 		}
 
-		const pathField = document.getElementById('path-name-field') as HTMLInputElement;
-		const vaultDropdown = document.getElementById('vault-select') as HTMLSelectElement;
-		const path = pathField?.value || '';
-		const vault = vaultDropdown?.value || '';
-		
-		const tabInfo = await getCurrentTabInfo();
-		await incrementStat('copyToClipboard', vault, path, tabInfo.url, tabInfo.title);
-
-		// Change the main button text temporarily
-		const clipButton = document.getElementById('clip-btn');
-		if (clipButton) {
-			const originalText = clipButton.textContent || getMessage('addToObsidian');
-			clipButton.textContent = getMessage('copied');
-			
-			// Reset the text after 1.5 seconds
-			setTimeout(() => {
-				clipButton.textContent = originalText;
-			}, 1500);
-		}
+		await incrementStat('copyToClipboard', undefined, undefined, page.snapshot.source, page.data.title)
+			.catch(error => console.warn('Could not record clipboard history', error));
 	} catch (error) {
 		console.error('Failed to copy to clipboard:', error);
-		showError('failedToCopyText');
+		if (page === manualExportPage) showSaveStatus(getMessage('failedToCopyText'));
 	}
 }
 
@@ -1205,66 +1120,44 @@ async function handleExportPageHtml() {
 	}
 }
 
-async function handleSaveToDownloads() {
-	try {
-		const noteNameField = document.getElementById('note-name-field') as HTMLInputElement;
-		const pathField = document.getElementById('path-name-field') as HTMLInputElement;
-		const vaultDropdown = document.getElementById('vault-select') as HTMLSelectElement;
-		
-		let fileName = noteNameField?.value || 'untitled';
-		const path = pathField?.value || '';
-		const vault = vaultDropdown?.value || '';
-		
-		const properties = getPropertiesFromDOM();
-
-		const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
-		const content = noteContentField.value;
-		const frontmatter = await generateFrontmatter(properties);
-		const fileContent = frontmatter + content;
-
-		await saveFile({
-			content: fileContent,
-			fileName,
-			mimeType: 'text/markdown',
-			tabId: currentTabId,
-			onError: (error) => showError('failedToSaveFile')
-		});
-
-		const tabInfo = await getCurrentTabInfo();
-		await incrementStat('saveFile', vault, path, tabInfo.url, tabInfo.title);
-
-		const moreDropdown = document.getElementById('more-dropdown');
-		if (moreDropdown) {
-			moreDropdown.classList.remove('show');
-		}
-	} catch (error) {
-		console.error('Failed to save file:', error);
-		showError('failedToSaveFile');
-	}
-}
-
 let imageArchiveBusy = false;
-function manualSaveStatus(): HTMLElement {
-	let status = document.getElementById('image-archive-status');
-	if (!status) {
-		status = document.createElement('div');
-		status.id = 'image-archive-status';
-		status.setAttribute('role', 'status');
-		status.style.cssText = 'padding:8px;overflow-wrap:anywhere;white-space:pre-line';
-		document.getElementById('clip-btn')?.parentElement?.before(status);
-	}
-	return status;
+const methodLabels = {
+	directory: 'savePaperDirectory', 'chosen-directory': 'savePaperDirectory', markdown: 'paperMethodMarkdownSaved', zip: 'paperMethodZip',
+	saveFile: 'paperMethodMarkdown', copyToClipboard: 'paperMethodClipboard',
+} as const;
+let historyRevision = 0;
+function renderSaveMethods(history: HistoryEntry[]) {
+	historyRevision++;
+	const field = document.getElementById('paper-save-methods')!;
+	const source = manualExportPage?.snapshot.source;
+	const actions = new Set(history.filter(entry => entry.url === source).map(entry => entry.action));
+	const methods = Object.entries(methodLabels).filter(([action]) => actions.has(action as HistoryEntry['action']));
+	field.textContent = methods.length ? getMessage('paperSaveMethods', [...new Set(methods.map(([, key]) => getMessage(key)))].join(' · ')) : '';
+}
+function showSaveStatus(message: string, expanded = true) {
+	const details = document.querySelector<HTMLDetailsElement>('#paper-save-details')!;
+	details.hidden = !message;
+	details.open = !!message && expanded;
+	document.getElementById('image-archive-status')!.textContent = message;
+}
+async function restoreSaveFeedback(page: NonNullable<typeof manualExportPage>) {
+	const revision = historyRevision;
+	const [history, detail] = await Promise.all([getClipHistory().catch(() => []), lastPaperSaveResult(page.snapshot.source)]);
+	if (page !== manualExportPage) return;
+	if (revision === historyRevision) renderSaveMethods(history);
+	if (detail && !document.getElementById('image-archive-status')!.textContent) showSaveStatus(detail, false);
 }
 
-const handleSavePaperDirectory = () => handleManualSave('directory');
-const handleSaveImageArchive = () => handleManualSave('zip');
-
-async function handleManualSave(format: 'directory' | 'zip') {
+async function handleManualSave(format: PaperSaveFormat) {
 	if (imageArchiveBusy) return;
 	imageArchiveBusy = true;
-	const status = manualSaveStatus();
+	const origin = manualExportPage?.snapshot.source;
+	const useDefault = document.querySelector<HTMLInputElement>('#use-default-paper-directory')!.checked;
+	const status = (message: string, expanded = true) => {
+		if (origin === manualExportPage?.snapshot.source) showSaveStatus(message, expanded);
+	};
 	document.getElementById('more-dropdown')?.classList.remove('show');
-	status.textContent = getMessage('paperDirectorySaving');
+	status(getMessage('paperDirectorySaving'));
 	try {
 		// Every editor surface hands off the same immutable snapshot. Images and
 		// writes belong to the save page, so closing a popup cannot interrupt them.
@@ -1273,33 +1166,50 @@ async function handleManualSave(format: 'directory' | 'zip') {
 		const properties = getPropertiesFromDOM();
 		const page = manualExportPage;
 		if (!page) {
-			status.textContent = getMessage('paperEditorChanged');
+			status(getMessage('paperEditorChanged'));
 			return;
 		}
-		const attachments = selectedPaperAttachments();
 		const frontmatter = await generateFrontmatter(properties);
 		const source = page.snapshot.source;
-		const identity = paperIdentity(page.data.metaTags, properties, source, page.data.published);
-		const imageSources = collectImageSources(page.snapshot.document, source);
-		const checkContext = await prepareManualExportChecks(page.snapshot, frontmatter + markdown);
-		const figureLinks = collectFigureLinks(page.snapshot.document, source, frontmatter + markdown);
-		const input = { format, markdown: frontmatter + markdown, title, source, identity, imageSources, checkContext, figureLinks, attachments };
+		const input: PaperSaveInput = { format, destination: useDefault ? 'default' : 'once', markdown: frontmatter + markdown,
+			title, source, identity: { doi: null, published: null } };
+		if (format !== 'markdown') {
+			input.identity = paperIdentity(page.data.metaTags, properties, source, page.data.published);
+			input.imageSources = collectImageSources(page.snapshot.document, source);
+			input.attachments = selectedPaperAttachments();
+			input.checkContext = await prepareManualExportChecks(page.snapshot, input.markdown);
+			input.figureLinks = collectFigureLinks(page.snapshot.document, source, input.markdown);
+		}
 		const tab = await getTabInfo(page.tabId);
 		if (page !== manualExportPage || currentTabId !== page.tabId || tab.url !== source || (isSidePanel && !isIframe && (!tab.active || tab.windowId !== editorWindowId))) {
-			status.textContent = getMessage('paperEditorChanged');
+			status(getMessage('paperEditorChanged'));
 			return;
 		}
 		let receivedStatus = false;
 		const job = await openPaperDirectorySave(input, update => {
 			receivedStatus = true;
-			status.textContent = update.state === 'closed' ? getMessage('paperDirectoryClosed') : update.message;
+			status(update.state === 'closed' ? getMessage('paperDirectoryClosed') : update.message, update.state !== 'saved');
 		});
-		if (!receivedStatus) status.textContent = getMessage('paperDirectoryHandedOff');
+		if (!receivedStatus) status(getMessage('paperDirectoryHandedOff'));
 		await job.finished;
 	} catch (error) {
 		const failure = paperDirectoryFailure(error);
-		status.textContent = getMessage(failure.key, failure.detail);
+		status(getMessage(failure.key, failure.detail));
 	} finally { imageArchiveBusy = false; }
+}
+
+const saveActions = {
+	savePaperDirectory: () => handleManualSave('directory'),
+	saveImageArchive: () => handleManualSave('zip'),
+	saveMarkdownWithImageLinks: () => handleManualSave('markdown'),
+	copyToClipboard: copyContent
+};
+
+const saveLabel = (action: Settings['saveBehavior']) => action === 'copyToClipboard' ? 'paperCopyMarkdown' : action;
+
+function primarySaveBehavior(): Settings['saveBehavior'] {
+	const behavior = loadedSettings?.saveBehavior;
+	return behavior ?? 'savePaperDirectory';
 }
 
 function determineMainAction() {
@@ -1311,98 +1221,25 @@ function determineMainAction() {
 	// Clear existing secondary actions
 	secondaryActions.textContent = '';
 
-	// Set up actions based on saved behavior
-	switch (loadedSettings.saveBehavior) {
-		case 'savePaperDirectory':
-			mainButton.textContent = getMessage('savePaperDirectory');
-			mainButton.onclick = handleSavePaperDirectory;
-			addSecondaryAction(secondaryActions, 'addToObsidian', () => handleClipObsidian());
-			addSecondaryAction(secondaryActions, 'copyToClipboard', copyContent);
-			addSecondaryAction(secondaryActions, 'saveFile', handleSaveToDownloads);
-			break;
-		case 'copyToClipboard':
-			mainButton.textContent = getMessage('copyToClipboard');
-			mainButton.onclick = () => copyContent();
-			// Add direct actions to secondary
-			addSecondaryAction(secondaryActions, 'addToObsidian', () => handleClipObsidian());
-			addSecondaryAction(secondaryActions, 'saveFile', handleSaveToDownloads);
-			break;
-		case 'saveFile':
-			mainButton.textContent = getMessage('saveFile');
-			mainButton.onclick = () => handleSaveToDownloads();
-			// Add direct actions to secondary
-			addSecondaryAction(secondaryActions, 'addToObsidian', () => handleClipObsidian());
-			addSecondaryAction(secondaryActions, 'copyToClipboard', copyContent);
-			break;
-		default: // 'addToObsidian'
-			mainButton.textContent = getMessage('addToObsidian');
-			mainButton.onclick = () => handleClipObsidian();
-			// Add direct actions to secondary
-			addSecondaryAction(secondaryActions, 'copyToClipboard', copyContent);
-			addSecondaryAction(secondaryActions, 'saveFile', handleSaveToDownloads);
-	}
-	addSecondaryAction(secondaryActions, 'saveImageArchive', handleSaveImageArchive);
-	if (loadedSettings.saveBehavior !== 'savePaperDirectory') addSecondaryAction(secondaryActions, 'savePaperDirectory', handleSavePaperDirectory);
-}
-
-async function handleClipObsidian(): Promise<void> {
-	const signal = refreshController?.signal;
-	if (!currentTemplate || !manualExportPage || !signal || signal.aborted) return;
-
-	const vaultDropdown = document.getElementById('vault-select') as HTMLSelectElement;
-	const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
-	const noteNameField = document.getElementById('note-name-field') as HTMLInputElement;
-	const pathField = document.getElementById('path-name-field') as HTMLInputElement;
-
-	if (!vaultDropdown || !noteContentField) {
-		showError('Some required fields are missing. Please try reloading the extension.');
-		return;
-	}
-
-	try {
-		if (signal.aborted) return;
-		// Gather content
-		const properties = getPropertiesFromDOM();
-
-		const frontmatter = await generateFrontmatter(properties);
-		if (signal.aborted) return;
-		const fileContent = frontmatter + noteContentField.value;
-
-		// Save to Obsidian
-		const selectedVault = vaultDropdown.value || currentTemplate.vault || '';
-		const isDailyNote = currentTemplate.behavior === 'append-daily' || currentTemplate.behavior === 'prepend-daily';
-		const noteName = isDailyNote ? '' : noteNameField?.value || '';
-		const path = isDailyNote ? '' : pathField?.value || '';
-
-		await saveToObsidian(fileContent, noteName, path, selectedVault, currentTemplate.behavior);
-		const tabInfo = await getCurrentTabInfo();
-		await incrementStat('addToObsidian', selectedVault, path, tabInfo.url, tabInfo.title);
-
-		lastSelectedVault = selectedVault;
-		await setLocalStorage('lastSelectedVault', lastSelectedVault);
-
-		if (!isSidePanel) {
-			setTimeout(() => window.close(), 500);
-		}
-	} catch (error) {
-		console.error('Error in handleClipObsidian:', error);
-		showError('failedToSaveFile');
-		throw error;
+	const primary = primarySaveBehavior();
+	mainButton.textContent = getMessage(saveLabel(primary));
+	mainButton.onclick = saveActions[primary];
+	for (const action of ['savePaperDirectory', 'saveImageArchive', 'saveMarkdownWithImageLinks', 'copyToClipboard'] as const) {
+		if (action !== primary) addSecondaryAction(secondaryActions, action, saveActions[action]);
 	}
 }
 
-function addSecondaryAction(container: Element, actionType: string, handler: () => void) {
+function addSecondaryAction(container: Element, actionType: Settings['saveBehavior'], handler: () => void) {
 	const menuItem = document.createElement('div');
 	menuItem.className = 'menu-item';
-	if (actionType === 'saveImageArchive' || actionType === 'savePaperDirectory') {
-		menuItem.id = actionType === 'saveImageArchive' ? 'save-image-archive' : 'save-paper-directory';
-		menuItem.setAttribute('role', 'button');
-		menuItem.tabIndex = 0;
-		menuItem.addEventListener('keydown', event => {
-			if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); handler(); }
-		});
-	}
-	
+	if (actionType === 'saveImageArchive') menuItem.id = 'save-image-archive';
+	if (actionType === 'savePaperDirectory') menuItem.id = 'save-paper-directory';
+	menuItem.setAttribute('role', 'button');
+	menuItem.tabIndex = 0;
+	menuItem.addEventListener('keydown', event => {
+		if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); handler(); }
+	});
+
 	// Create menu item icon container
 	const menuItemIcon = document.createElement('div');
 	menuItemIcon.className = 'menu-item-icon';
@@ -1414,8 +1251,8 @@ function addSecondaryAction(container: Element, actionType: string, handler: () 
 	// Create menu item title
 	const menuItemTitle = document.createElement('div');
 	menuItemTitle.className = 'menu-item-title';
-	menuItemTitle.setAttribute('data-i18n', actionType);
-	menuItemTitle.textContent = getMessage(actionType);
+	menuItemTitle.setAttribute('data-i18n', saveLabel(actionType));
+	menuItemTitle.textContent = getMessage(saveLabel(actionType));
 	
 	// Assemble menu item
 	menuItem.appendChild(menuItemIcon);
@@ -1429,21 +1266,22 @@ function addSecondaryAction(container: Element, actionType: string, handler: () 
 function getActionIcon(actionType: string): string {
 	switch (actionType) {
 		case 'copyToClipboard': return 'copy';
-		case 'saveFile': return 'file-down';
+		case 'saveMarkdownWithImageLinks': return 'file-down';
 		case 'saveImageArchive': return 'archive';
 		case 'savePaperDirectory': return 'folder-open';
-		case 'addToObsidian': return 'pen-line';
 		default: return 'plus';
 	}
 }
 
 async function copyContent() {
+	const page = manualExportPage;
+	if (!page) return;
 	const properties = getPropertiesFromDOM();
 
 	const noteContentField = document.getElementById('note-content-field') as HTMLTextAreaElement;
+	const content = noteContentField.value;
 	const frontmatter = await generateFrontmatter(properties);
-	const fileContent = frontmatter + noteContentField.value;
-	await copyToClipboard(fileContent);
+	await copyToClipboard(frontmatter + content, page);
 }
 
 // Update the resize event listener to use the debounced version

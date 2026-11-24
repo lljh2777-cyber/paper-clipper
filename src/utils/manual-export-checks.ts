@@ -77,6 +77,23 @@ function hasLinks(element: Element, block: ReturnType<typeof markdownView>['bloc
 	});
 }
 
+function checkPlosBibliography(document: Document, view: ReturnType<typeof markdownView>): Check {
+	const entries = Array.from(document.querySelectorAll('ol.references > li'));
+	return checked('plos-numbered-bibliography-text-v1', entries.map((entry, index) => {
+		const number = entry.querySelector(':scope > span.order')?.textContent?.trim().match(/^(\d+)\.$/)?.[1];
+		const id = entry.id || `reference-${index + 1}`;
+		const citation = entry.cloneNode(true) as Element;
+		citation.querySelectorAll(':scope > span.order, :scope > ul.reflinks, :scope > ul.find-nolinks').forEach(node => node.remove());
+		const expected = canonical(citation.textContent ?? '');
+		if (!number || !expected || !entry.querySelector(':scope > a.link-target[id]')) {
+			return { id, reason: 'unsupported-bibliography-structure', notCovered: true };
+		}
+		const definitions = view.footnotes.get(number);
+		return definitions?.length === 1 && definitions[0].text.startsWith(expected)
+			? { id } : { id, reason: 'missing-changed-or-duplicate-definition' };
+	}));
+}
+
 function inspect(snapshot: ManualExportSnapshot, markdown: string): Checks {
 	const { document, source } = snapshot;
 	const host = new URL(source).hostname;
@@ -167,7 +184,7 @@ function inspect(snapshot: ManualExportSnapshot, markdown: string): Checks {
 			return parts.length - 1 === count;
 		});
 		return { id, ...(!intact && { reason: 'author-year-citation-label-differs' }) };
-	})) : uncovered(referenceScope, 'unsupported-publisher');
+	})) : host === 'journals.plos.org' ? checkPlosBibliography(document, view) : uncovered(referenceScope, 'unsupported-publisher');
 
 	const extendedScope = 'nature-declared-extended-images-v1';
 	const extendedImages = nature ? checked(extendedScope, Array.from(document.querySelectorAll('.c-article-supplementary__item h3 a'))

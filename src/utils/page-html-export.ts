@@ -161,9 +161,8 @@ export async function exportPageHtml(tabId: number, sourceUrl: string): Promise<
 		htmlBytes: snapshot.htmlBytes,
 		status: 'unchecked',
 	};
-	const onError = (error: Error) => { throw error; };
-	await saveFile({ content: snapshot.html, fileName, mimeType: 'text/html', tabId, onError });
-	await saveFile({ content: JSON.stringify(metadata, null, 2) + '\n', fileName: `${fileName}.json`, mimeType: 'application/json', tabId, onError });
+	await saveFile({ content: snapshot.html, fileName, mimeType: 'text/html', tabId });
+	await saveFile({ content: JSON.stringify(metadata, null, 2) + '\n', fileName: `${fileName}.json`, mimeType: 'application/json', tabId });
 }
 
 // Called by the content script only for pages with rendered MathJax. The

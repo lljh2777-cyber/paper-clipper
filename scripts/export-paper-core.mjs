@@ -8,10 +8,10 @@ const converter = [
 	'cli.ts', 'api.ts', 'types/types.ts', 'utils/cli-utils.ts', 'utils/cli-stubs.ts',
 	'utils/browser-polyfill.ts', 'utils/debug.ts', 'utils/filters.ts', 'utils/filters/markdown.ts',
 	'utils/string-utils.ts', 'utils/shared.ts', 'utils/resolver.ts', 'utils/storage-utils.ts',
-	'utils/template-compiler.ts', 'utils/publisher-figures.ts', 'utils/image-sources.mjs', 'utils/image-sources.d.mts', 'utils/variables/selector.ts',
+	'utils/template-compiler.ts', 'utils/publisher-figures.ts', 'utils/publication-date.ts', 'utils/image-sources.mjs', 'utils/image-sources.d.mts', 'utils/variables/selector.ts',
 	'utils/paper-math.mjs', 'utils/paper-math.d.mts',
 	'utils/cell-citations.mjs', 'utils/cell-citations.d.mts',
-	'utils/variables/simple.ts', 'utils/variables/schema.ts', 'utils/variables/prompt.ts',
+	'utils/variables/prompt.ts',
 	'utils/variables/model.ts', 'utils/fixtures/templates/minimal.json',
 ];
 const modules = [
@@ -102,11 +102,7 @@ export async function exportCore(destination, { dryRun = false } = {}) {
 		await plainParents(path.dirname(filename));
 		const info = await entry(filename);
 		if (!info?.isFile() || info.isSymbolicLink()) throw new Error(`Missing regular source file: ${source}`);
-		let content = await readFile(filename);
-		if (relative.startsWith('docs/')) {
-			content = Buffer.from(content.toString('utf8').replaceAll('E:\\Paper_Clipper\\obsidian-clipper', 'E:\\Paper_Clipper\\paper-clipper-core'));
-		}
-		files.set(relative, content);
+		files.set(relative, await readFile(filename));
 	}
 	const lock = JSON.parse(await readFile(path.join(root, 'package-lock.json'), 'utf8'));
 	const pkg = corePackage(lock);

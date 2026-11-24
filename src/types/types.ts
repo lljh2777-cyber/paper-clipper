@@ -33,7 +33,7 @@ export interface Rating {
 	date: string;
 }
 
-export type SaveBehavior = 'addToObsidian' | 'saveFile' | 'copyToClipboard';
+export type SaveBehavior = 'savePaperDirectory' | 'saveImageArchive' | 'saveMarkdownWithImageLinks' | 'copyToClipboard';
 
 export interface ReaderSettings {
 	fontSize: number;
@@ -74,13 +74,14 @@ export interface Settings {
 	};
 	history: HistoryEntry[];
 	ratings: Rating[];
-	saveBehavior: 'addToObsidian' | 'saveFile' | 'copyToClipboard' | 'savePaperDirectory';
+	saveBehavior: SaveBehavior;
+	useDefaultPaperDirectory: boolean;
 }
 
 export interface HistoryEntry {
 	datetime: string;
 	url: string;
-	action: 'addToObsidian' | 'saveFile' | 'copyToClipboard' | 'share' | 'readerMode';
+	action: keyof Settings['stats'] | 'directory' | 'chosen-directory' | 'zip' | 'markdown';
 	title?: string;
 	vault?: string;
 	path?: string;

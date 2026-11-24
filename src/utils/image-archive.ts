@@ -34,8 +34,56 @@ function imageUrl(value: string, source: string): string {
 	return url.href;
 }
 
-async function download(url: string, maxBytes = MAX_IMAGE): Promise<{ bytes: Uint8Array; extension: string }> {
-	const response = await fetch(url, { credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer', signal: AbortSignal.timeout(15000) });
+const plos = 'https://journals.plos.org';
+const plosStorage = 'https://corpus-prod.f505aadad1e46610c8f8563037eb3c4b.r2.cloudflarestorage.com';
+
+function plosFigure(url: URL, source: string): string | undefined {
+	if (url.origin !== plos) return;
+	const page = new URL(source);
+	const figure = url.searchParams.get('id') ?? '';
+	const match = /^(10\.1371\/journal\.[a-z]+\.\d+)\.g\d+$/.exec(figure);
+	if (page.origin === plos && /^\/[a-z]+\/article$/.test(page.pathname) &&
+		url.pathname === page.pathname + '/figure/image' && match && page.searchParams.get('id') === match[1] &&
+		url.searchParams.getAll('id').length === 1 && url.searchParams.getAll('size').length === 1 &&
+		Array.from(url.searchParams.keys()).every(key => ['id', 'size', 'download'].includes(key)) &&
+		/^(inline|medium|large)$/.test(url.searchParams.get('size') ?? '')) return figure;
+}
+
+async function download(url: string, source: string, maxBytes: number) {
+	const signal = AbortSignal.timeout(15000);
+	const options: RequestInit = { credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer', signal };
+	const figure = plosFigure(new URL(url), source);
+	if (!figure) return readImage(await fetch(url, options), maxBytes);
+
+	// Fetch hides Location on manual redirects. The frame's CSP checks every
+	// network hop before it is sent, including intermediate redirects.
+	const frame = document.createElement('iframe');
+	frame.hidden = true;
+	frame.srcdoc = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src ${plos} ${plosStorage}">`;
+	try {
+		await new Promise<void>((resolve, reject) => {
+			const abort = () => reject(new ImageArchiveError('download'));
+			frame.onload = () => { signal.removeEventListener('abort', abort); resolve(); };
+			signal.addEventListener('abort', abort, { once: true });
+			document.body.append(frame);
+		});
+		const client = frame.contentWindow as (Window & typeof globalThis) | null;
+		if (!client) throw new ImageArchiveError('download');
+		const response = await client.fetch(url, { ...options, redirect: 'follow', cache: 'no-store' });
+		if (response.redirected) {
+			const target = new URL(response.url);
+			const asset = /^\/(10\.1371\/journal\.[a-z]+\.\d+)\/\d+\/([^/]+)\.PNG_[IML]$/i.exec(target.pathname);
+			if (target.origin !== plosStorage || !asset || asset[1] !== figure.replace(/\.g\d+$/, '') ||
+				'10.1371/journal.' + asset[2] !== figure) {
+				await response.body?.cancel();
+				throw new ImageArchiveError('download');
+			}
+		}
+		return await readImage(response, maxBytes);
+	} finally { frame.remove(); }
+}
+
+async function readImage(response: Response, maxBytes: number): Promise<{ bytes: Uint8Array; extension: string }> {
 	if (!response.ok || !response.body) {
 		await response.body?.cancel();
 		throw new ImageArchiveError('download');
@@ -102,7 +150,7 @@ export async function prepareImageFiles(markdown: string, source: string,
 			let result: Awaited<ReturnType<typeof download>> | undefined;
 			let selected = 0;
 			for (const [candidateIndex, candidate] of candidates.entries()) {
-				try { result = await download(imageUrl(candidate, source), Math.min(MAX_IMAGE, MAX_TOTAL - total)); selected = candidateIndex; break; }
+				try { result = await download(imageUrl(candidate, source), source, Math.min(MAX_IMAGE, MAX_TOTAL - total)); selected = candidateIndex; break; }
 				catch (error) { if (candidateIndex === candidates.length - 1) throw error; }
 			}
 			const { bytes, extension } = result!;

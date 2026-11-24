@@ -20,7 +20,6 @@ try {
 	assert.equal(manifest.description, await worker.evaluate(() => chrome.i18n.getMessage('extensionDescription')));
 	assert.doesNotMatch(manifest.description, /__MSG_/);
 	// Isolated synthetic storage and provider response; never use the user's profile.
-	await context.route('https://raw.githubusercontent.com/**/providers.json', route => route.fulfill({ contentType: 'application/json', body: '{"version":"test"}' }));
 	const pairing = { endpoint: 'http://127.0.0.1:43127', key: 'a'.repeat(64), enabled: false };
 	await worker.evaluate(async pairing => {
 		await chrome.storage.local.set({ paperQueuePairing: pairing, language: 'en' });
@@ -62,7 +61,33 @@ try {
 		assert.deepEqual(stored.paperQueuePairing, pairing);
 	}
 	assert.deepEqual(errors, []);
-	console.log(JSON.stringify({ passed: true, screenshots: directory, checks: ['settings-en-zh', 'queue-navigation', 'mobile-sidebar', 'pairing-retained', 'console-clean'] }));
+	const formUrl = 'https://github.com/lljh2777-cyber/paper-clipper/issues/new';
+	await context.route(formUrl + '?**', route => {
+		assert.equal(route.request().headers().referer, undefined);
+		return route.fulfill({ contentType: 'text/html', body: '<title>Feedback destination</title>' });
+	});
+	for (const [surface, language, label, prompts, width] of [
+		['popup', 'en', 'Feedback', ['Public article URL or DOI:', 'What went wrong?', 'Error message or screenshot (optional):'], 350],
+		['side-panel', 'zh_CN', '反馈', ['论文公开网址或 DOI：', '遇到了什么问题？', '报错原文或截图（可选）：'], 320]
+	]) {
+		await worker.evaluate(language => chrome.storage.local.set({ language }), language);
+		await page.setViewportSize({ width, height: 700 });
+		await page.goto(origin + '/' + surface + '.html');
+		const link = page.getByRole('link', { name: label, exact: true });
+		await link.locator('svg').waitFor();
+		const brand = await page.locator('.paper-brand').boundingBox();
+		const button = await link.boundingBox();
+		assert.ok(button.x > brand.x + brand.width / 2 && button.x + button.width <= width + 1);
+		const [form] = await Promise.all([context.waitForEvent('page'), link.click()]);
+		await form.waitForLoadState();
+		const url = new URL(form.url());
+		assert.equal(url.origin + url.pathname, formUrl);
+		assert.deepEqual([...url.searchParams.keys()], ['body']);
+		assert.deepEqual(url.searchParams.get('body').trim().split('\n\n'), prompts);
+		assert.equal(await form.evaluate(() => window.opener), null);
+		await form.close();
+	}
+	console.log(JSON.stringify({ passed: true, screenshots: directory, checks: ['settings-en-zh', 'queue-navigation', 'mobile-sidebar', 'pairing-retained', 'console-clean', 'popup-and-side-panel-feedback'] }));
 } finally {
 	await context.close();
 }

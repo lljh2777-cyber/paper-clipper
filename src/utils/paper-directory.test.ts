@@ -68,6 +68,7 @@ describe('translation directory', () => {
 		expect(paperFolderName('../../CON:<bad>', identity, 'id')).not.toMatch(/[<>:"/\\|?*]/);
 		expect(paperIdentity([{ name: 'citation_doi', content: 'https://doi.org/10.1234/ABC' }], [], '', '')).toEqual({ doi: '10.1234/abc', published: null });
 		expect(paperIdentity([], [], 'https://example.org/10.1234/guess')).toEqual({ doi: null, published: null });
+	expect(paperIdentity([], [{ name: 'published', value: '' }], '', '2013-10-24').published).toBe('2013-10-24');
 		expect(() => paperIdentity([{ name: 'citation_doi', content: '10.1234/a' }], [{ name: 'doi', value: '10.1234/b' }], '')).toThrow('identity');
 	});
 	it('creates an untranslated bundle with a source fingerprint and independent verification states', async () => {

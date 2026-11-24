@@ -1,10 +1,13 @@
 import browser from './browser-polyfill';
-import { PaperDirectoryError, PaperDirectoryInput } from './paper-directory';
+import { loadSettings } from './storage-utils';
+import { PaperDirectoryError } from './paper-directory-error';
+import type { PaperDirectoryInput } from './paper-directory';
 
 const key = 'paperDirectorySaveDraft';
 const lock = 'paper-directory-save-draft';
 const lifetime = 60_000;
-export type PaperSaveInput = PaperDirectoryInput & { format?: 'directory' | 'zip' };
+export type PaperSaveFormat = 'directory' | 'markdown' | 'zip';
+export type PaperSaveInput = PaperDirectoryInput & { format?: PaperSaveFormat; destination?: 'default' | 'once' };
 type Draft = { id: string; expires: number; input: PaperSaveInput };
 const statusAction = 'paperDirectorySaveStatus';
 const resultKey = 'paperSaveLastResult';
@@ -12,10 +15,10 @@ export type PaperDirectorySaveStatus =
 	| { state: 'saving' | 'attention' | 'failed' | 'saved' | 'saved-warning' | 'skipped'; message: string }
 	| { state: 'closed' };
 
-export async function lastPaperSaveResult(): Promise<string | undefined> {
+export async function lastPaperSaveResult(source: string): Promise<string | undefined> {
 	try {
 		const result = (await browser.storage.session.get(resultKey))[resultKey];
-		return result && typeof result === 'object' && 'message' in result && typeof result.message === 'string' ? result.message : undefined;
+		return result && typeof result === 'object' && 'source' in result && result.source === source && 'message' in result && typeof result.message === 'string' ? result.message : undefined;
 	} catch { return undefined; }
 }
 
@@ -58,15 +61,21 @@ function observeSave(id: string, onStatus: (status: PaperDirectorySaveStatus) =>
 	return { finished, dispose, setTab: (id: number | undefined) => { tabId = id; } };
 }
 
-export async function reportPaperDirectorySave(id: string, status: Exclude<PaperDirectorySaveStatus, { state: 'closed' }>): Promise<void> {
+export async function reportPaperDirectorySave(id: string, status: Exclude<PaperDirectorySaveStatus, { state: 'closed' }>, source?: string): Promise<void> {
 	// The editor may already have been closed. Notification is not part of the
 	// filesystem transaction and must never turn a committed save into a failure.
 	try { await browser.runtime.sendMessage({ action: statusAction, id, status }); } catch { /* No editor remains. */ }
 	if (['saved', 'saved-warning', 'skipped', 'failed'].includes(status.state)) {
 		// One result, local to this browser session. Never persist article snapshots
 		// or image URLs just to restore feedback when the popup is reopened.
-		try { await browser.storage.session.set({ [resultKey]: { id, ...status } }); } catch { /* Feedback is not part of the transaction. */ }
+		try { await browser.storage.session.set({ [resultKey]: { id, ...status, source } }); } catch { /* Feedback is not part of the transaction. */ }
 	}
+}
+
+export async function openReaderMarkdownSave(source: string, title: string, markdown: string): Promise<void> {
+	const settings = await loadSettings();
+	await openPaperDirectorySave({ format: 'markdown', destination: settings.useDefaultPaperDirectory ? 'default' : 'once',
+		source, title, markdown, identity: { doi: null, published: null } });
 }
 
 // One short-lived snapshot, in trusted extension session storage only. No article
@@ -104,6 +113,7 @@ export async function takePaperDirectorySave(id: string): Promise<PaperSaveInput
 		// retry of a known pre-write failure; a reload must start from the editor.
 		await browser.storage.session.remove(key);
 		if (draft.expires <= Date.now()) throw new PaperDirectoryError('expired');
+		if ((draft.input.format as string) === 'chosen-directory') return { ...draft.input, format: 'directory', destination: 'once' };
 		return draft.input;
 	});
 }

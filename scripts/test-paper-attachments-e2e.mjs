@@ -5,13 +5,13 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { chromium } from 'playwright';
 import { unzipSync, strFromU8 } from 'fflate';
-import { authorizedDownloadExtension, configureZipDownloads, openSavePage, readCompletedZip } from './fixtures/manual-save.mjs';
+import { configurePaperFolder, countZipFiles, openSavePage, readCompletedZip } from './fixtures/manual-save.mjs';
 import { source, pdfUrl, csvUrl, pdf, csv, html } from './fixtures/paper-attachments.mjs';
 
 // Browser plugin not available. Run only in isolated hosted Chromium, never
 // against personal browser sessions, publisher captures or local paper folders.
 const directory = await mkdtemp(path.join(tmpdir(), 'paper-attachments-qa-'));
-const extension = await authorizedDownloadExtension(directory);
+const extension = path.resolve('dev');
 const context = await chromium.launchPersistentContext(path.join(directory, 'profile'), {
 	channel: 'chromium', headless: true, acceptDownloads: true,
 	args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
@@ -39,7 +39,8 @@ try {
 	const origin = `chrome-extension://${new URL(worker.url()).hostname}`;
 	await worker.evaluate(() => chrome.storage.local.set({ language: 'en' }));
 	const article = await context.newPage();
-	const downloads = await configureZipDownloads(context, article, directory);
+	await configurePaperFolder(context, origin);
+	await article.bringToFront();
 	await article.goto(source);
 	const opening = context.waitForEvent('page');
 	await worker.evaluate(url => chrome.tabs.create({ url, active: false }), `${origin}/popup.html`);
@@ -57,7 +58,7 @@ try {
 	assert.deepEqual(requests, []);
 	await popup.locator('#more-btn').click();
 	const noSelection = await openSavePage(context, () => popup.locator('#save-image-archive').click());
-	const first = await readCompletedZip(worker, noSelection, downloads);
+	const first = await readCompletedZip(worker, noSelection);
 	const firstZip = unzipSync(first.bytes);
 	assert.equal(Object.keys(firstZip).some(name => /\/supplements\/|\/supplement-report\.json$/.test(name)), false);
 	assert.deepEqual(requests, []);
@@ -82,12 +83,12 @@ try {
 	await failed.page.locator('#retry-save').waitFor({ state: 'visible' });
 	assert.match(await failed.page.locator('#save-status').innerText(), /supplementary file 1 could not be downloaded/);
 	assert.match(await failed.page.locator('#save-status').innerText(), /No archive was published/);
-	assert.equal(await worker.evaluate(async () => (await chrome.downloads.search({})).length), 1);
+	assert.equal(await countZipFiles(worker), 1);
 	assert.deepEqual(requests, [pdfUrl]);
 	await popup.close();
 	failPdf = false;
 	await failed.page.locator('#retry-save').click();
-	const completed = await readCompletedZip(worker, failed, downloads);
+	const completed = await readCompletedZip(worker, failed);
 	assert.notEqual(completed.fileName, first.fileName);
 	assert.deepEqual(requests, [pdfUrl, pdfUrl, csvUrl]);
 	const zip = unzipSync(completed.bytes);

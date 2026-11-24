@@ -1,5 +1,6 @@
 import Defuddle from 'defuddle/full';
 import { prepareDocumentForExtraction } from './publisher-figures';
+import { firstPublicationDate } from './publication-date';
 import { createElement, Paperclip } from 'lucide';
 import browser from './browser-polyfill';
 import { detectBrowser } from './browser-detection';
@@ -30,7 +31,7 @@ import { copyToClipboard } from './clipboard-utils';
 import { getMessage, initializeI18n } from './i18n';
 import { getFontCss, isFontAvailable } from './font-utils';
 import { createMarkdownContent } from 'defuddle/full';
-import { saveFile } from './file-utils';
+import { openReaderMarkdownSave } from './paper-directory-handoff';
 import { parseForClip } from './clip-utils';
 import { updateSidebarWidth, addResizeHandle, cleanupResizeHandlers } from './iframe-resize';
 import { setElementHTML, setSVGChildren, serializeChildren } from './dom-utils';
@@ -238,20 +239,20 @@ export class Reader {
 		// Clip button with dropdown
 		const clipButton = doc.createElement('button');
 		clipButton.className = 'obsidian-reader-settings-trigger nav-btn';
-		clipButton.setAttribute('aria-label', getMessage('addToObsidian'));
+		clipButton.setAttribute('aria-label', getMessage('commandOpenClipper'));
 		clipButton.appendChild(this.createSVG({
 			width: '18', height: '18', viewBox: '0 0 24 24', strokeWidth: '1.75',
 			paths: ['m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48'],
 		}));
 
-		const addToObsidianBtn = doc.createElement('button');
-		addToObsidianBtn.className = 'nav-btn';
-		addToObsidianBtn.setAttribute('aria-label', getMessage('addToObsidian'));
+		const openClipperBtn = doc.createElement('button');
+		openClipperBtn.className = 'nav-btn';
+		openClipperBtn.setAttribute('aria-label', getMessage('commandOpenClipper'));
 		const clipIcon = createElement(Paperclip);
 		clipIcon.setAttribute('width', '18');
 		clipIcon.setAttribute('height', '18');
-		addToObsidianBtn.appendChild(clipIcon);
-		addToObsidianBtn.addEventListener('click', () => {
+		openClipperBtn.appendChild(clipIcon);
+		openClipperBtn.addEventListener('click', () => {
 			if (Reader.isReaderPage) {
 				Reader.toggleReaderPageIframe(doc);
 			} else {
@@ -264,7 +265,7 @@ export class Reader {
 
 		const clipActions: Array<{ action: string; icon: SVGElement }> = [
 			{ action: 'copyToClipboard', icon: this.createSVG({ width: '16', height: '16', viewBox: '0 0 24 24', strokeWidth: '1.75', paths: ['M20 8H10a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2z', 'M4 16a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2'] }) },
-			{ action: 'saveFile', icon: this.createSVG({ width: '16', height: '16', viewBox: '0 0 24 24', strokeWidth: '1.75', paths: ['M12 17V3', 'm6 11 6 6 6-6', 'M19 21H5'] }) },
+			{ action: 'saveMarkdownWithImageLinks', icon: this.createSVG({ width: '16', height: '16', viewBox: '0 0 24 24', strokeWidth: '1.75', paths: ['M12 17V3', 'm6 11 6 6 6-6', 'M19 21H5'] }) },
 		];
 
 		for (const { action, icon } of clipActions) {
@@ -286,7 +287,7 @@ export class Reader {
 					}
 					itemLabel.textContent = getMessage('copied');
 					setTimeout(() => { itemLabel.textContent = originalText; }, 2000);
-				} else if (action === 'saveFile') {
+				} else if (action === 'saveMarkdownWithImageLinks') {
 					clipDropdown.classList.remove('is-open');
 					if (Reader.isReaderPage) {
 						Reader.saveMarkdownOnReaderPage(doc);
@@ -342,7 +343,7 @@ export class Reader {
 		triggerGroup.appendChild(highlighterBtn);
 		triggerGroup.appendChild(clipButton);
 		triggerGroup.appendChild(trigger);
-		triggerGroup.appendChild(addToObsidianBtn);
+		triggerGroup.appendChild(openClipperBtn);
 		settingsBar.appendChild(triggerGroup);
 		settingsBar.appendChild(clipDropdown);
 
@@ -2549,7 +2550,7 @@ export class Reader {
 		let formattedDate = '';
 		if (content.published) {
 			try {
-				const date = new Date(content.published.split(',')[0].trim());
+				const date = new Date(firstPublicationDate(content.published));
 				formattedDate = !isNaN(date.getTime())
 					? new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }).format(date)
 					: content.published;
@@ -2798,8 +2799,7 @@ export class Reader {
 			const defuddled = parseForClip(doc);
 			const markdown = createMarkdownContent(defuddled.content, doc.URL);
 			const title = defuddled.title || doc.title || 'Untitled';
-			const fileName = title.replace(/[/\\?%*:|"<>]/g, '-');
-			await saveFile({ content: markdown, fileName, mimeType: 'text/markdown' });
+			await openReaderMarkdownSave(doc.URL, title, markdown);
 		} catch (err) {
 			console.error('Failed to save markdown:', err);
 		}

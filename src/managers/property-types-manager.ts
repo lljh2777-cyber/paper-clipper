@@ -197,7 +197,6 @@ function showTypesImportModal(): void {
 		'import-modal',
 		importTypesFromJson,
 		'.json',
-		false,
 		'importProperties'
 	);
 }
@@ -278,12 +277,12 @@ async function exportTypesJson(): Promise<void> {
 	const content = JSON.stringify({ types: typesObject }, null, 2);
 	const fileName = 'types.json';
 
-	await saveFile({
-		content,
-		fileName,
-		mimeType: 'application/json',
-		onError: (error) => console.error('Failed to export types:', error)
-	});
+	try {
+		await saveFile({ content, fileName, mimeType: 'application/json' });
+	} catch (error) {
+		console.error('Failed to export property types:', error);
+		alert(getMessage('failedToSaveFile'));
+	}
 }
 
 export async function addPropertyType(name: string, type: string = 'text', defaultValue: string = ''): Promise<void> {

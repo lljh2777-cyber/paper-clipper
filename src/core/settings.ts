@@ -52,16 +52,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 			await initializeGeneralSettings();
 			await initializeReaderSettings();
 			
-			// Load templates with error handling
-			let loadedTemplates;
-			try {
-				loadedTemplates = await loadTemplates();
-				updateTemplateList(loadedTemplates);
-			} catch (error) {
-				console.error('Error loading templates:', error);
-				// Continue with empty template list
-				updateTemplateList([]);
-			}
+			updateTemplateList(await loadTemplates());
 			initializeTemplateListeners();
 			await handleUrlParameters();
 			initializeSidebar();
@@ -91,7 +82,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 				errorDiv.appendChild(heading);
 				
 				const message = document.createElement('p');
-				message.textContent = 'There was an error loading your settings. This may be due to corrupted data.';
+				message.textContent = 'There was an error loading your settings. Reload this page to try again.';
 				errorDiv.appendChild(message);
 				
 				errorContainer.appendChild(errorDiv);

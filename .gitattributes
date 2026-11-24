@@ -1,0 +1,14 @@
+# Preserve the bytes of text assets copied into the Chrome 1.7.2 package.
+/LICENSE text eol=crlf
+/THIRD_PARTY_NOTICES.md text eol=lf
+/src/manifest.chrome.json text eol=lf
+/src/_locales/*/messages.json text eol=lf
+/src/icons/paper-clipper.svg text eol=lf
+/src/styles/paper-*.css text eol=lf
+/src/paper-*.html text eol=lf
+/src/popup.html text eol=crlf
+/src/side-panel.html text eol=crlf
+/src/settings.html text eol=crlf
+/src/reader.html text eol=crlf
+# The released highlights page contains both LF and CRLF.
+/src/highlights.html -text

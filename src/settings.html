@@ -99,7 +99,7 @@
 													<span data-i18n="version">Version</span> <span id="version-number" class="version-tag"></span>
 											</label>
 											<div class="setting-item-description">
-												<span id="using-latest-version" data-i18n="developmentBuild">
+												<span id="using-latest-version" data-i18n="developmentBuild" hidden>
 													Local development build
 												</span>
 												<span id="update-available" class="text-warning" style="display: none;" data-i18n="updateAvailable">
@@ -151,10 +151,10 @@
 										</div>
 										<div class="setting-item-control">
 											<select id="save-behavior-dropdown">
-												<option value="addToObsidian" selected data-i18n="addToObsidian">Add to Obsidian</option>
-												<option value="copyToClipboard" data-i18n="copyToClipboard">Copy to clipboard</option>
-												<option value="saveFile" data-i18n="saveFile">Save file</option>
-												<option value="savePaperDirectory" data-i18n="savePaperDirectory">Save to default directory</option>
+												<option value="savePaperDirectory" selected data-i18n="savePaperDirectory">Save Markdown + images to a local folder</option>
+												<option value="saveImageArchive" data-i18n="saveImageArchive">Paper archive (.zip, with images)</option>
+												<option value="saveMarkdownWithImageLinks" data-i18n="saveMarkdownWithImageLinks">Markdown file (.md, image links)</option>
+												<option value="copyToClipboard" data-i18n="paperCopyMarkdown">Copy Markdown</option>
 											</select>
 										</div>
 									</div>
@@ -182,32 +182,6 @@
 												<option value="embedded" data-i18n="embedded">Embedded</option>
 												<option value="reader" data-i18n="reader">Reader</option>
 											</select>
-										</div>
-									</div>
-									<div class="setting-item mod-horizontal mod-toggle">
-										<div class="setting-item-info">
-											<label for="silent-open-toggle" data-i18n="silentOpen">Save clipped note without opening&nbsp;it</label>
-											<div class="setting-item-description" data-i18n="silentOpenDescription">
-												Clipped notes will be saved but will not open as a new tab. Obsidian will still be brought to the foreground.
-											</div>
-										</div>
-										<div class="setting-item-control">
-											<div class="checkbox-container">
-												<input type="checkbox" id="silent-open-toggle" />
-											</div>
-										</div>
-									</div>
-									<div class="setting-item mod-horizontal mod-toggle">
-										<div class="setting-item-info">
-											<label for="legacy-mode-toggle" data-i18n="legacyMode">Legacy&nbsp;mode</label>
-											<div class="setting-item-description" data-i18n="legacyModeDescription">
-												Uses the URI clipping method compatible with Obsidian 1.6.7 or earlier. Note that the length of the content you can clip is limited by your browser and OS. Some pages may fail without any errors.
-											</div>
-										</div>
-										<div class="setting-item-control">
-											<div class="checkbox-container">
-												<input type="checkbox" id="legacy-mode-toggle" />
-											</div>
 										</div>
 									</div>
 								</div>

@@ -158,7 +158,13 @@ module.exports = (env, argv) => {
 					{ from: "src/settings.html", to: "settings.html" },
 					{ from: "src/highlights.html", to: "highlights.html" },
 					{ from: "src/reader.html", to: "reader.html" },
-					{ from: "src/icons", to: "icons" },
+					...['icon16.png', 'icon48.png', 'paper-clipper.svg'].map(name => ({
+						from: `src/icons/${name}`, to: `icons/${name}`
+					})),
+					{
+						from: browserName === 'chrome' ? 'assets/chrome/icon128-chrome-store.png' : 'src/icons/icon128.png',
+						to: 'icons/icon128.png'
+					},
 					{ from: "LICENSE", to: "LICENSE.txt" },
 					{ from: "THIRD_PARTY_NOTICES.md", to: "THIRD_PARTY_NOTICES.md" },
 					{ from: "node_modules/lucide/LICENSE", to: "LICENSE-lucide.txt" },
@@ -166,8 +172,9 @@ module.exports = (env, argv) => {
 					{ from: "node_modules/webextension-polyfill/dist/browser-polyfill.min.js", to: "browser-polyfill.min.js" },
 					{ from: "src/flatten-shadow-dom.js", to: "flatten-shadow-dom.js" },
 					{
-						from: 'src/_locales',
-						to: '_locales'
+						context: path.join(__dirname, 'src/_locales'),
+						from: '{[a-z][a-z],[a-z][a-z]_[A-Z][A-Z]}/messages.json',
+						to: '_locales/[path][name][ext]'
 					}
 				],
 			}),
@@ -183,13 +190,16 @@ module.exports = (env, argv) => {
 			}]),
 			new webpack.DefinePlugin({
 				'process.env.NODE_ENV': JSON.stringify(argv.mode),
-				'PAPER_CLIPPER_BUILD': JSON.stringify(package.version + '/' + new Date().toISOString()),
+				'PAPER_CLIPPER_BUILD': JSON.stringify(isProduction ? package.version : package.version + '/' + new Date().toISOString()),
 				'DEBUG_MODE': JSON.stringify(!isProduction)
 			}),
 			...(isProduction ? [
 				new ZipPlugin({
 					path: path.resolve(__dirname, 'builds'),
 					filename: `paper-clipper-${package.version}-${browserName}.zip`,
+					// CSS-only entry points also emit empty JavaScript stubs.
+					exclude: /^(?:style|reader|highlighter)\.js$/,
+					fileOptions: { mtime: new Date(1980, 0, 1) },
 				})
 			] : [])
 		]

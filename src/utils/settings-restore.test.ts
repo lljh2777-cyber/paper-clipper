@@ -33,6 +33,22 @@ afterEach(() => {
 	Reflect.deleteProperty(navigator, 'locks');
 });
 
+it('defaults to the paper directory on new and retired settings and preserves current choices', async () => {
+	stored = {};
+	expect(await loadSettings()).toMatchObject({ saveBehavior: 'savePaperDirectory', vaults: [] });
+	for (const retired of ['addToObsidian', 'saveFile']) {
+		stored.general_settings = { saveBehavior: retired };
+		expect((await loadSettings()).saveBehavior).toBe('savePaperDirectory');
+	}
+	stored.general_settings = { saveBehavior: 'saveChosenDirectory' };
+	expect(await loadSettings()).toMatchObject({ saveBehavior: 'savePaperDirectory', useDefaultPaperDirectory: false });
+	expect(stored.useDefaultPaperDirectory).toBe(false);
+	for (const choice of ['saveImageArchive', 'saveMarkdownWithImageLinks', 'copyToClipboard']) {
+		stored.general_settings = { saveBehavior: choice };
+		expect((await loadSettings()).saveBehavior).toBe(choice);
+	}
+});
+
 it('retains a readable previous template and vault when Chrome rejects the backup write', async () => {
 	const original = { ...stored };
 	sync.set.mockRejectedValueOnce(new Error('QUOTA_BYTES'));
@@ -56,4 +72,53 @@ it('can retry cleanup after a successful restore and read legacy compressed back
 	expect(await loadTemplates()).toEqual([template('new')]);
 	await importAllSettingsFromJson(JSON.stringify({ ...backup, template_new: pack('new') }));
 	expect(stored).toEqual({ ...backup, template_new: pack('new') });
+});
+
+it.each([
+	{ migrationVersion: 1 }, { vaults: [] }, { template_list: [] },
+	{ ...backup, vaults: [false] }, { ...backup, property_types: {} },
+	{ ...backup, template_new: { ...template('new'), properties: [null] } },
+])('rejects incomplete or malformed backups without changing the previous installation', async input => {
+	const original = { ...stored };
+	await expect(importAllSettingsFromJson(JSON.stringify(input))).rejects.toThrow();
+	expect(stored).toEqual(original);
+	expect(sync.set).not.toHaveBeenCalled();
+	expect(await loadTemplates()).toEqual([template('old')]);
+	expect((await loadSettings()).vaults).toEqual(['Old']);
+});
+
+it('honors explicitly empty lists and preserves vaults omitted by a legacy template backup', async () => {
+	const { vaults, ...legacy } = backup;
+	await importAllSettingsFromJson(JSON.stringify(legacy));
+	expect((await loadSettings()).vaults).toEqual(['Old']);
+	await importAllSettingsFromJson(JSON.stringify({ template_list: [], vaults: [] }));
+	expect(await loadTemplates()).toEqual([]);
+	expect((await loadSettings()).vaults).toEqual([]);
+});
+
+it('does not replace the index after a failed read and can retry normally', async () => {
+	const original = { ...stored };
+	sync.get.mockRejectedValueOnce(new Error('unavailable'));
+	await expect(loadTemplates()).rejects.toThrow('unavailable');
+	expect(sync.set).not.toHaveBeenCalled();
+	expect(stored).toEqual(original);
+	expect(await loadTemplates()).toEqual([template('old')]);
+});
+
+it('never publishes a partial index when a referenced template is unreadable', async () => {
+	stored.template_list = ['old', 'damaged'];
+	stored.template_damaged = ['invalid'];
+	await expect(loadTemplates()).rejects.toThrow();
+	expect(sync.set).not.toHaveBeenCalled();
+	expect(stored.template_list).toEqual(['old', 'damaged']);
+});
+
+it('initializes only a new store and leaves orphaned payloads available for recovery', async () => {
+	delete stored.template_list;
+	await expect(loadTemplates()).rejects.toThrow();
+	expect(sync.set).not.toHaveBeenCalled();
+	stored = {};
+	const [first] = await loadTemplates();
+	expect(stored.template_list).toEqual([first.id]);
+	expect(await loadTemplates()).toEqual([first]);
 });

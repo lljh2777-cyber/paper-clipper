@@ -246,7 +246,6 @@ export function importHighlights(): void {
 		'import-modal',
 		importHighlightsFromJson,
 		'.json',
-		false,
 		'importHighlights'
 	);
 }

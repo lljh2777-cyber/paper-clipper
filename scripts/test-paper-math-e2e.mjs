@@ -14,12 +14,12 @@ import { runtimeMathHtml, installSyntheticMathJax } from './fixtures/mathjax-run
 import { pmcHtml, pmcUrl } from './fixtures/pmc.mjs';
 import { cellAuthorYearHtml, cellAuthorYearUrl } from './fixtures/cell-author-year.mjs';
 import { checkMathPreservation, mathInventory } from '../src/utils/paper-math.mjs';
-import { authorizedDownloadExtension, configureZipDownloads, openSavePage, readCompletedZip } from './fixtures/manual-save.mjs';
+import { configurePaperFolder, openSavePage, readCompletedZip } from './fixtures/manual-save.mjs';
 
 // Browser plugin not available. Only a fresh, isolated Chromium profile is used.
 // Flow: synthetic page -> actual extension popup -> ZIP -> rendered formulas.
 const directory = await mkdtemp(path.join(tmpdir(), 'paper-math-qa-'));
-const extension = await authorizedDownloadExtension(directory);
+const extension = path.resolve('dev');
 const server = createServer((request, response) => {
 	response.setHeader('Content-Type', 'text/html; charset=utf-8');
 	response.end(request.url === '/lazy' ? runtimeMathHtml.replace('</body>', `<script>(${installSyntheticMathJax.toString()})();</script></body>`) : mathHtml);
@@ -39,7 +39,8 @@ try {
 	const origin = `chrome-extension://${new URL(worker.url()).hostname}`;
 	await worker.evaluate(() => chrome.storage.local.set({ language: 'en' }));
 	const article = await context.newPage();
-	const downloads = await configureZipDownloads(context, article, directory);
+	await configurePaperFolder(context, origin);
+	await article.bringToFront();
 	await article.goto(url);
 	assert.equal(await article.title(), 'Synthetic math preservation');
 	const next = context.waitForEvent('page');
@@ -57,7 +58,7 @@ try {
 	assert.equal(checkMathPreservation(source, markdown).matched, 8);
 	await popup.locator('#more-btn').click();
 	const save = await openSavePage(context, () => popup.locator('#save-image-archive').click());
-	const archive = unzipSync((await readCompletedZip(worker, save, downloads)).bytes);
+	const archive = unzipSync((await readCompletedZip(worker, save)).bytes);
 	const checks = JSON.parse(strFromU8(archive[Object.keys(archive).find(key => key.endsWith('/checks.json'))]));
 	for (const stage of ['extraction', 'template', 'output']) assert.deepEqual(
 		{ status: checks.stages[stage].math.status, expected: checks.stages[stage].math.expected, matched: checks.stages[stage].math.matched },
@@ -120,7 +121,7 @@ try {
 	assert.equal(await article.locator('[data-paper-mathml], mjx-container[data-latex]').count(), 0);
 	await lazyPopup.locator('#more-btn').click();
 	const lazySave = await openSavePage(context, () => lazyPopup.locator('#save-image-archive').click());
-	const lazyArchive = unzipSync((await readCompletedZip(worker, lazySave, downloads)).bytes);
+	const lazyArchive = unzipSync((await readCompletedZip(worker, lazySave)).bytes);
 	const lazyChecks = JSON.parse(strFromU8(lazyArchive[Object.keys(lazyArchive).find(key => key.endsWith('/checks.json'))]));
 	for (const stage of ['extraction', 'template', 'output']) assert.equal(lazyChecks.stages[stage].math.matched, 5);
 	const lazySaved = strFromU8(lazyArchive[Object.keys(lazyArchive).find(key => key.endsWith('/paper.md'))]);
@@ -154,7 +155,7 @@ try {
 	assert.equal(await article.locator('figure > .obj_head').count(), 1);
 	await pmcPopup.locator('#more-btn').click();
 	const pmcSave = await openSavePage(context, () => pmcPopup.locator('#save-image-archive').click());
-	const pmcArchive = unzipSync((await readCompletedZip(worker, pmcSave, downloads)).bytes);
+	const pmcArchive = unzipSync((await readCompletedZip(worker, pmcSave)).bytes);
 	const pmcSaved = strFromU8(pmcArchive[Object.keys(pmcArchive).find(key => key.endsWith('/paper.md'))]);
 	assert.equal(pmcSaved.split('Figure 1. Synthetic experimental workflow.').length, 2);
 	const savedImages = fromMarkdown(pmcSaved).children.flatMap(block => block.children ?? []).filter(node => node.type === 'image');
@@ -201,7 +202,7 @@ try {
 	assert.equal(await article.locator('.reference-citations').count(), 6);
 	await cellPopup.locator('#more-btn').click();
 	const cellSave = await openSavePage(context, () => cellPopup.locator('#save-image-archive').click());
-	const cellArchive = unzipSync((await readCompletedZip(worker, cellSave, downloads)).bytes);
+	const cellArchive = unzipSync((await readCompletedZip(worker, cellSave)).bytes);
 	const cellChecks = JSON.parse(strFromU8(cellArchive[Object.keys(cellArchive).find(key => key.endsWith('/checks.json'))]));
 	for (const stage of ['extraction', 'template', 'output']) {
 		assert.equal(cellChecks.stages[stage].references.matched, 2);
@@ -214,7 +215,7 @@ try {
 	const cellSaved = strFromU8(cellArchive[Object.keys(cellArchive).find(key => key.endsWith('/paper.md'))]);
 	assert.match(cellSaved, /Chen, 2025 <sup><a href="#fn:2">2<\/a><\/sup>/);
 	assert.equal((cellSaved.match(/^\[\^\d+\]:/gm) ?? []).length, 2);
-	await cellPopup.locator('#image-archive-status').filter({ hasText: 'ZIP saved:' }).waitFor();
+	await cellPopup.locator('#paper-save-methods').filter({ hasText: 'ZIP' }).waitFor();
 	assert.equal(await worker.evaluate(async () => (await chrome.storage.session.get('paperSaveLastResult')).paperSaveLastResult.state), 'saved');
 	for (const [label, width, height] of [['desktop', 1100, 900], ['mobile', 390, 844]]) {
 		await cellPopup.setViewportSize({ width, height });

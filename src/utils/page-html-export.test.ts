@@ -137,7 +137,7 @@ describe('HTML export downloads', () => {
 
 	it('propagates saveFile errors instead of reporting success or requesting another download', async () => {
 		vi.mocked(browser.scripting.executeScript).mockResolvedValue([{ frameId: 0, result: { snapshot: await snapshot() } }]);
-		vi.mocked(saveFile).mockImplementation(async options => { options.onError!(new Error('Download failed')); });
+		vi.mocked(saveFile).mockRejectedValueOnce(new Error('Download failed'));
 		await expect(exportPageHtml(42, url)).rejects.toThrow('Download failed');
 		expect(saveFile).toHaveBeenCalledTimes(1);
 	});

@@ -1,4 +1,13 @@
 {
+	"paperCopyMarkdown": { "message": "複製 Markdown" },
+	"paperUseDefaultFolder": { "message": "使用預設資料夾" },
+	"paperDestinationSettingFailed": { "message": "無法儲存資料夾偏好。" },
+	"paperMethodMarkdownSaved": { "message": "Markdown 檔案" },
+	"paperSaveMethods": { "message": "本篇已用方式：$1" },
+	"paperSaveDetails": { "message": "儲存詳情" },
+	"paperMethodZip": { "message": "ZIP" },
+	"paperMethodMarkdown": { "message": "Markdown（已開始下載）" },
+	"paperMethodClipboard": { "message": "已複製到剪貼簿" },
 	"paperMathStopped": { "message": "有 $1 個公式無法可靠轉換。第 $2 個公式（$3）：$4。" },
 	"paperMathLazy": { "message": "頁面僅提供延遲載入的佔位符，未取得 MathML 或 TeX 原文" },
 	"paperMathXml": { "message": "MathML 原文不是有效的 XML" },
@@ -11,20 +20,23 @@
 	"paperDirectoryHandedOff": { "message": "正在背景儲存目前的編輯內容…" },
 	"paperDirectoryClosed": { "message": "儲存頁已關閉，尚未確認儲存結果。重試前請檢查目標目錄，可能留有不完整檔案；編輯內容未改動。" },
 	"paperDirectoryError_images": { "message": "未儲存：圖片準備失敗（第 $1 張，0 表示預檢查），未建立輸出目錄。請檢查圖片連結、格式與大小限制。" },
-	"savePaperDirectory": { "message": "儲存到預設目錄" },
+	"saveChosenDirectory": { "message": "本次選目錄…" },
+	"paperChooseOncePrompt": { "message": "請選擇這次儲存的目標資料夾。" },
+	"saveMarkdownWithImageLinks": { "message": "Markdown 檔案（.md，圖片連結）" },
+	"savePaperDirectory": { "message": "將正文（.md）和圖片儲存到本機資料夾" },
 	"paperDirectoryLabel": { "message": "預設論文目錄" },
 	"choosePaperDirectory": { "message": "選擇或更換目錄" },
 	"forgetPaperDirectory": { "message": "忘記目錄（保留檔案）" },
 	"paperDirectoryNotSet": { "message": "未設定" },
 	"paperDirectorySaving": { "message": "正在儲存論文…" },
 	"paperDirectorySaved": { "message": "已儲存：$1" },
-	"paperDirectoryError_unsupported": { "message": "目前瀏覽器不支援目錄授權，仍可使用 ZIP 匯出。" },
+	"paperDirectoryError_unsupported": { "message": "此瀏覽器不支援資料夾存取，可使用「複製 Markdown」。" },
 	"paperDirectoryError_missing": { "message": "請先在設定中選擇預設論文目錄。" },
 	"paperDirectoryError_permission": { "message": "目錄存取失敗，請在設定中重新選擇並授權目錄。" },
 	"paperDirectoryError_exists": { "message": "未儲存：$1 已存在，原檔案未改動。" },
 	"paperDirectoryError_identity": { "message": "未儲存：偵測到不同的 DOI，請核對論文與中繼資料。" },
 	"paperDirectoryError_write": { "message": "儲存失敗：$1 中可能留有不完整檔案，未記錄為完成，也未取代既有論文。" },
-	"saveImageArchive": { "message": "下載 Markdown＋圖片 ZIP" },
+	"saveImageArchive": { "message": "論文壓縮檔（ZIP，含圖片）" },
 	"imageArchiveProgress": { "message": "正在下載圖片：$1 / $2" },
 	"imageArchiveReady": { "message": "已發起 ZIP 下載（$1 張圖片）。" },
 	"imageArchiveError_download": { "message": "未產生 ZIP：第 $1 張圖片下載失敗，可能需要登入、重新導向或更新連結。筆記未改動。" },
@@ -146,7 +158,7 @@
 		"message": "複製為 JSON"
 	},
 	"copyToClipboard": {
-		"message": "複製到剪貼簿"
+		"message": "複製"
 	},
 	"createNewNote": {
 		"message": "建立新筆記"
@@ -313,6 +325,9 @@
 	},
 	"failedToSaveFile": {
 		"message": "儲存檔案失敗"
+	},
+	"paperFeedbackBody": {
+		"message": "論文公開網址或 DOI：\n\n遇到了什麼問題？\n\n錯誤訊息或截圖（選填）：\n"
 	},
 	"feedback": {
 		"message": "反饋"

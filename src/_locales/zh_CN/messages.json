@@ -1,4 +1,13 @@
 {
+	"paperCopyMarkdown": { "message": "复制 Markdown" },
+	"paperUseDefaultFolder": { "message": "使用默认文件夹" },
+	"paperDestinationSettingFailed": { "message": "未能保存文件夹偏好。" },
+	"paperMethodMarkdownSaved": { "message": "Markdown 文件" },
+	"paperSaveMethods": { "message": "本篇已用方式：$1" },
+	"paperSaveDetails": { "message": "保存详情" },
+	"paperMethodZip": { "message": "ZIP" },
+	"paperMethodMarkdown": { "message": "Markdown（已发起下载）" },
+	"paperMethodClipboard": { "message": "已复制到剪贴板" },
 	"paperMathStopped": { "message": "有 $1 个公式无法可靠转换。第 $2 个公式（$3）：$4。" },
 	"paperMathLazy": { "message": "页面只提供了懒加载占位符，未取得 MathML 或 TeX 原文" },
 	"paperMathXml": { "message": "MathML 原文不是有效的 XML" },
@@ -63,15 +72,7 @@
 	"paperSaveImageError_download": { "message": "第 $1 张图片下载失败，尚未创建输出目录或 ZIP。请检查网络后在此重试；若图片链接已过期或受访问限制，请返回论文页面重新提取。" },
 	"paperSaveImageError_unsupported": { "message": "未保存：存在不支持的图片地址、格式或 HTML 媒体，尚未创建输出目录或 ZIP。请在编辑器中检查图片引用。" },
 	"paperSaveImageError_limit": { "message": "未保存：图片数量或大小超过限制，尚未创建输出目录或 ZIP。请在编辑器中检查图片。" },
-	"paperZipAuthorize": { "message": "允许 ZIP 下载" },
-	"paperZipNeedsPermission": { "message": "ZIP 保存需要一次性授予浏览器下载权限，以便确认下载完成。保存到默认目录不需要此权限。" },
-	"paperZipDownloading": { "message": "正在保存 ZIP，等待浏览器确认下载完成。" },
 	"paperZipSaved": { "message": "ZIP 已保存：$1" },
-	"paperZipReview": { "message": "浏览器已暂停下载或提示风险，请在浏览器的下载页面检查。尚未确认 ZIP 保存完成。" },
-	"paperZipError_permission": { "message": "未获得下载权限，尚未启动 ZIP 下载。可点击授权按钮重试。" },
-	"paperZipError_unavailable": { "message": "当前浏览器不支持确认 ZIP 下载结果。请在支持的浏览器中使用默认目录保存。" },
-	"paperZipError_interrupted": { "message": "浏览器已中断或取消 ZIP 下载。请检查浏览器下载列表及可能残留的文件。仅可恢复的中断会提供重试；重试会创建新的下载，不覆盖已有 ZIP。" },
-	"paperZipError_unknown": { "message": "无法确认 ZIP 是否保存完成。重新保存前请检查浏览器下载列表，下载可能仍在进行或留有部分文件。已禁用自动重试。" },
 	"manualChecksAttention": { "message": "发现内容差异，请复核 checks.json。未判定全文完整性。" },
 	"manualChecksScoped": { "message": "已覆盖的检查通过，详见 checks.json。未判定全文完整性。" },
 	"manualChecksUnassessed": { "message": "尚未验证源内容保留情况，详见 checks.json。" },
@@ -85,20 +86,23 @@
 	"paperDirectoryError_expired": { "message": "此保存请求已打开过或已过期，未重复保存。请返回编辑器重新发起。" },
 	"paperDirectoryError_unexpected": { "message": "保存发生未知错误。重试前请检查目标目录是否留有不完整文件；编辑器内容未改动。" },
 	"paperDirectoryError_images": { "message": "未保存：图片准备失败（第 $1 张，0 表示预检查），未创建输出目录。请检查图片链接、格式与大小限制。" },
-	"savePaperDirectory": { "message": "保存到默认目录" },
+	"saveChosenDirectory": { "message": "本次选目录…" },
+	"paperChooseOncePrompt": { "message": "请选择本次保存的目标文件夹。" },
+	"saveMarkdownWithImageLinks": { "message": "Markdown 文件（.md，图片链接）" },
+	"savePaperDirectory": { "message": "保存正文（.md）和图片到本地文件夹" },
 	"paperDirectoryLabel": { "message": "默认论文目录" },
 	"choosePaperDirectory": { "message": "选择或更换目录" },
 	"forgetPaperDirectory": { "message": "忘记目录（保留文件）" },
 	"paperDirectoryNotSet": { "message": "未设置" },
 	"paperDirectorySaving": { "message": "正在保存论文…" },
 	"paperDirectorySaved": { "message": "已保存：$1" },
-	"paperDirectoryError_unsupported": { "message": "当前浏览器不支持目录授权，仍可使用 ZIP 导出。" },
+	"paperDirectoryError_unsupported": { "message": "当前浏览器不支持文件夹访问，可使用“复制 Markdown”。" },
 	"paperDirectoryError_missing": { "message": "请先在设置中选择默认论文目录。" },
 	"paperDirectoryError_permission": { "message": "未获得目录写入权限。请在保存页授权，或在设置中重新选择目录。" },
 	"paperDirectoryError_exists": { "message": "未保存：$1 已存在，原文件未改动。" },
 	"paperDirectoryError_identity": { "message": "未保存：检测到不同的 DOI，请核对论文与元数据。" },
 	"paperDirectoryError_write": { "message": "保存失败：$1 中可能留有不完整文件，未记录为完成，也未替换已有论文。" },
-	"saveImageArchive": { "message": "下载 Markdown＋图片 ZIP" },
+	"saveImageArchive": { "message": "论文压缩包（ZIP，含图片）" },
 	"imageArchiveProgress": { "message": "正在下载图片：$1 / $2" },
 	"imageArchiveReady": { "message": "已发起 ZIP 下载（$1 张图片）。" },
 	"imageArchiveError_download": { "message": "未生成 ZIP：第 $1 张图片下载失败，可能需要登录、重定向或更新链接。笔记未改动。" },
@@ -220,7 +224,7 @@
 		"message": "复制为 JSON"
 	},
 	"copyToClipboard": {
-		"message": "复制到剪贴板"
+		"message": "复制"
 	},
 	"createNewNote": {
 		"message": "创建新笔记"
@@ -387,6 +391,9 @@
 	},
 	"failedToSaveFile": {
 		"message": "保存文件失败"
+	},
+	"paperFeedbackBody": {
+		"message": "论文公开网址或 DOI：\n\n遇到了什么问题？\n\n报错原文或截图（可选）：\n"
 	},
 	"feedback": {
 		"message": "反馈"

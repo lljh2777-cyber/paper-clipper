@@ -14,13 +14,14 @@ await esbuild.build({
 	outfile: path.join(root, 'dist/api.mjs'),
 	external: [
 		'defuddle',
-		'defuddle/full',
 		'dayjs',
 	],
 	define: {
 		'DEBUG_MODE': 'false',
 	},
 	alias: {
+		// Bundle the CommonJS module so native ESM consumers can use its named helper.
+		'defuddle/full': path.join(root, 'node_modules/defuddle/dist/index.full.js'),
 		'webextension-polyfill': path.join(root, 'src/utils/cli-stubs.ts'),
 	},
 	logLevel: 'info',

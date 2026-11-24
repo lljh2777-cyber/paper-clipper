@@ -4,9 +4,11 @@ import { authorizePaperDirectory, choosePaperDirectory, getPaperDirectory, paper
 import { PaperSaveInput, reportPaperDirectorySave, takePaperDirectorySave } from '../utils/paper-directory-handoff';
 import { createImageArchive, ImageArchiveError } from '../utils/image-archive';
 import { AttachmentError } from '../utils/paper-attachments';
-import { authorizeZipDownload, downloadPaperZip, hasZipDownloadPermission, PaperZipDownloadError } from '../utils/paper-zip-download';
+import { saveNewPaperFile } from '../utils/paper-file-writer';
+import { sanitizeFileName } from '../utils/string-utils';
 import { manualChecksMessageKey, ManualExportChecks } from '../utils/manual-export-report';
 import browser from '../utils/browser-polyfill';
+import { addHistoryEntry, incrementStat } from '../utils/storage-utils';
 
 const status = document.getElementById('save-status')!;
 const authorize = document.getElementById('authorize-save') as HTMLButtonElement;
@@ -29,7 +31,7 @@ async function revealSavePage() {
 	} catch { /* The user may have closed the tab while it was being activated. */ }
 }
 async function showAttention(state: 'attention' | 'failed' = 'attention') {
-	await reportPaperDirectorySave(requestId, { state, message: status.textContent ?? '' });
+	await reportPaperDirectorySave(requestId, { state, message: status.textContent ?? '' }, input?.source);
 	if (state === 'attention' && !input) return;
 	await revealSavePage();
 }
@@ -55,7 +57,7 @@ function checkSummary(checks?: ManualExportChecks): { warning: boolean; message:
 }
 
 function offerPermission() {
-	authorize.querySelector('span')!.textContent = getMessage(input?.format === 'zip' ? 'paperZipAuthorize' : directory ? 'paperDirectoryAuthorize' : 'choosePaperDirectory');
+	authorize.querySelector('span')!.textContent = getMessage(directory ? 'paperDirectoryAuthorize' : input?.destination === 'once' ? 'saveChosenDirectory' : 'choosePaperDirectory');
 	authorize.hidden = false;
 }
 async function showFailure(error: unknown) {
@@ -70,17 +72,13 @@ async function showFailure(error: unknown) {
 	} else if (error instanceof AttachmentError) {
 		status.textContent = getMessage(`paperAttachmentsError_${error.reason}`, String(error.attachmentNumber));
 		retry.hidden = !input || error.reason !== 'download';
-	} else if (error instanceof PaperZipDownloadError) {
-		status.textContent = getMessage(`paperZipError_${error.reason}`);
-		if (input && error.reason === 'permission') offerPermission();
-		retry.hidden = !input || !error.retryable;
 	} else {
 		status.textContent = getMessage(failure.key, failure.detail);
-		if (input && input.format !== 'zip' && ['paperDirectoryError_duplicate', 'paperDirectoryError_exists'].includes(failure.key)) {
+		if (input && (input.format ?? 'directory') === 'directory' && ['paperDirectoryError_duplicate', 'paperDirectoryError_exists'].includes(failure.key)) {
 			existingFolder = failure.detail;
 			keep.hidden = version.hidden = false;
 		}
-		if (input && input.format !== 'zip' && ['paperDirectoryError_permission', 'paperDirectoryError_missing'].includes(failure.key)) offerPermission();
+		if (input && ['paperDirectoryError_permission', 'paperDirectoryError_missing'].includes(failure.key)) offerPermission();
 	}
 	status.dataset.error = 'true';
 	await showAttention('failed');
@@ -97,29 +95,38 @@ async function save() {
 		status.textContent = done === total && input?.attachments?.length ? getMessage('paperAttachmentsProgress', String(input.attachments.length)) : getMessage('imageArchiveProgress', [String(done), String(total)]);
 		void reportPaperDirectorySave(requestId, { state: 'saving', message: status.textContent });
 	};
+	document.getElementById('save-directory')!.textContent = directory!.name;
+	const { source, format = 'directory', title } = input!;
 	let checks: ManualExportChecks | undefined;
-	if (input!.format === 'zip') {
-		archive ??= await createImageArchive(input!.markdown, input!.title, input!.source, progress, input!.imageSources, input!.checkContext, input!.identity, input!.figureLinks, input!.attachments);
-		status.textContent = getMessage('paperZipDownloading');
-		void reportPaperDirectorySave(requestId, { state: 'saving', message: status.textContent });
-		const savedName = await downloadPaperZip(archive.bytes, archive.fileName, () => {
-			status.textContent = getMessage('paperZipReview');
-			void showAttention();
-		});
-		status.textContent = getMessage('paperZipSaved', savedName);
-		checks = archive.checks;
-	} else {
-		document.getElementById('save-directory')!.textContent = directory!.name;
+	if (format === 'directory') {
 		const saved = await savePaperDirectory(directory!, input!, progress, { newVersion });
-		status.textContent = getMessage('paperDirectorySaved', `${directory!.name}/${saved.folder}`);
+		status.textContent = getMessage('paperDirectorySaved', directory!.name + '/' + saved.folder);
 		checks = saved.checks;
+	} else {
+		let filename: string;
+		let contents: string | Uint8Array;
+		if (format === 'zip') {
+			archive ??= await createImageArchive(input!.markdown, title, source, progress, input!.imageSources, input!.checkContext, input!.identity, input!.figureLinks, input!.attachments);
+			filename = archive.fileName;
+			contents = archive.bytes;
+			checks = archive.checks;
+		} else {
+			filename = (sanitizeFileName(title.replace(/\.md$/i, '')) || 'paper') + '.md';
+			contents = input!.markdown;
+		}
+		const saved = await saveNewPaperFile(directory!, filename, contents);
+		status.textContent = getMessage(format === 'zip' ? 'paperZipSaved' : 'paperDirectorySaved', directory!.name + '/' + saved);
 	}
 	const summary = checkSummary(checks);
-	status.textContent += '\n' + (summary.warning ? getMessage('paperSaveNeedsReview') + '\n' : '') + summary.message;
+	if (format !== 'markdown') status.textContent += '\n' + (summary.warning ? getMessage('paperSaveNeedsReview') + '\n' : '') + summary.message;
 	status.dataset.warning = String(summary.warning);
+	try {
+		if (format === 'markdown') await incrementStat('markdown', undefined, undefined, source, title);
+		else await addHistoryEntry(format, source, title);
+	} catch { /* The paper is already saved. */ }
 	input = undefined;
 	archive = undefined;
-	await reportPaperDirectorySave(requestId, { state: summary.warning ? 'saved-warning' : 'saved', message: status.textContent });
+	await reportPaperDirectorySave(requestId, { state: summary.warning ? 'saved-warning' : 'saved', message: status.textContent }, source);
 	if (summary.warning) await revealSavePage();
 	else window.close();
 }
@@ -129,8 +136,7 @@ async function runSave(withPermission: boolean) {
 	try {
 		// This click is in a top-level extension document with a real user gesture.
 		if (withPermission) {
-			if (input.format === 'zip') await authorizeZipDownload();
-			else directory = directory ? await authorizePaperDirectory(directory) : await choosePaperDirectory();
+			directory = directory ? await authorizePaperDirectory(directory) : await choosePaperDirectory(input.destination);
 		}
 		await save();
 	} catch (error) {
@@ -153,9 +159,10 @@ keep.addEventListener('click', async () => {
 	if (busy || keep.hidden || !input) return;
 	busy = true;
 	keep.disabled = version.disabled = true;
+	const source = input.source;
 	input = undefined;
 	status.textContent = getMessage('paperDirectoryKept', existingFolder);
-	await reportPaperDirectorySave(requestId, { state: 'skipped', message: status.textContent });
+	await reportPaperDirectorySave(requestId, { state: 'skipped', message: status.textContent }, source);
 	window.close();
 });
 
@@ -167,23 +174,14 @@ async function initialize() {
 	if (window.top !== window) throw new Error('Save page must be top-level.');
 	input = await takePaperDirectorySave(requestId);
 	document.getElementById('paper-title')!.textContent = input.title;
-	document.getElementById('save-heading')!.textContent = getMessage(input.format === 'zip' ? 'saveImageArchive' : 'savePaperDirectory');
-	if (input.format === 'zip') {
-		if (!await hasZipDownloadPermission()) {
-			status.textContent = getMessage('paperZipNeedsPermission');
-			offerPermission();
-			await showAttention();
-			return;
-		}
-	} else {
-		directory = await getPaperDirectory();
-		if (!directory || await directory.queryPermission({ mode: 'readwrite' }) !== 'granted') {
-			status.textContent = getMessage(directory ? 'paperDirectoryNeedsPermission' : 'paperDirectoryError_missing');
-			document.getElementById('save-directory')!.textContent = directory?.name ?? '';
-			offerPermission();
-			await showAttention();
-			return;
-		}
+	document.getElementById('save-heading')!.textContent = getMessage(input.format === 'zip' ? 'saveImageArchive' : input.format === 'markdown' ? 'saveMarkdownWithImageLinks' : 'savePaperDirectory');
+	if (input.destination !== 'once') directory = await getPaperDirectory();
+	if (!directory || await directory.queryPermission({ mode: 'readwrite' }) !== 'granted') {
+		status.textContent = getMessage(directory ? 'paperDirectoryNeedsPermission' : input.destination === 'once' ? 'paperChooseOncePrompt' : 'paperDirectoryError_missing');
+		document.getElementById('save-directory')!.textContent = directory?.name ?? '';
+		offerPermission();
+		await showAttention();
+		return;
 	}
 	await runSave(false);
 }

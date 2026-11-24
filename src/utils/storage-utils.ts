@@ -41,7 +41,8 @@ export let generalSettings: Settings = {
 	},
 	history: [],
 	ratings: [],
-	saveBehavior: 'addToObsidian'
+	useDefaultPaperDirectory: true,
+	saveBehavior: 'savePaperDirectory'
 };
 
 export function setLocalStorage(key: string, value: any): Promise<void> {
@@ -53,6 +54,7 @@ export function getLocalStorage(key: string): Promise<any> {
 }
 
 interface StorageData {
+	useDefaultPaperDirectory?: boolean;
 	interpreter_settings?: unknown;
 	general_settings?: {
 		showMoreActionsButton?: boolean;
@@ -60,7 +62,7 @@ interface StorageData {
 		legacyMode?: boolean;
 		silentOpen?: boolean;
 		openBehavior?: boolean | 'popup' | 'embedded';
-		saveBehavior?: 'addToObsidian' | 'copyToClipboard' | 'saveFile' | 'savePaperDirectory';
+		saveBehavior?: Settings['saveBehavior'] | 'addToObsidian' | 'saveFile' | 'saveChosenDirectory';
 	};
 	vaults?: string[];
 	highlighter_settings?: {
@@ -116,7 +118,8 @@ export async function loadSettings(): Promise<Settings> {
 		alwaysShowHighlights: true,
 		highlightBehavior: 'highlight-inline',
 		propertyTypes: [],
-		saveBehavior: 'addToObsidian',
+		useDefaultPaperDirectory: true,
+		saveBehavior: 'savePaperDirectory',
 		readerSettings: {
 			fontSize: 16,
 			lineHeight: 1.6,
@@ -154,6 +157,11 @@ export async function loadSettings(): Promise<Settings> {
 	// Validate and sanitize data to prevent corruption
 	const sanitizedVaults = Array.isArray(data.vaults) ? data.vaults.filter(v => typeof v === 'string') : [];
 	// Load user settings
+	const behavior = data.general_settings?.saveBehavior;
+	if (behavior === 'saveChosenDirectory' && data.useDefaultPaperDirectory === undefined) {
+		data.useDefaultPaperDirectory = false;
+		await browser.storage.sync.set({ useDefaultPaperDirectory: false });
+	}
 	const loadedSettings: Settings = {
 		vaults: sanitizedVaults.length > 0 ? sanitizedVaults : defaultSettings.vaults,
 		showMoreActionsButton: data.general_settings?.showMoreActionsButton ?? defaultSettings.showMoreActionsButton,
@@ -187,7 +195,9 @@ export async function loadSettings(): Promise<Settings> {
 		stats: { ...defaultSettings.stats, ...data.stats },
 		history: data.history || defaultSettings.history,
 		ratings: data.ratings || defaultSettings.ratings,
-		saveBehavior: data.general_settings?.saveBehavior ?? defaultSettings.saveBehavior
+		useDefaultPaperDirectory: data.useDefaultPaperDirectory !== false,
+		saveBehavior: behavior === 'copyToClipboard' || behavior === 'saveMarkdownWithImageLinks' || behavior === 'saveImageArchive'
+			? behavior : defaultSettings.saveBehavior
 	};
 
 	generalSettings = loadedSettings;
@@ -243,14 +253,14 @@ export async function setLegacyMode(enabled: boolean): Promise<void> {
 }
 
 export async function incrementStat(
-	action: keyof Settings['stats'],
+	action: keyof Settings['stats'] | 'markdown',
 	vault?: string,
 	path?: string,
 	url?: string,
 	title?: string
 ): Promise<void> {
 	const settings = await loadSettings();
-	settings.stats[action]++;
+	settings.stats[action === 'markdown' ? 'saveFile' : action]++;
 	await saveSettings(settings);
 
 	// Add history entry if URL is provided
@@ -260,7 +270,7 @@ export async function incrementStat(
 }
 
 export async function addHistoryEntry(
-	action: keyof Settings['stats'], 
+	action: HistoryEntry['action'],
 	url: string, 
 	title?: string,
 	vault?: string,
@@ -275,18 +285,13 @@ export async function addHistoryEntry(
 		path
 	};
 
-	// Get existing history from local storage
-	const result = await browser.storage.local.get('history');
-	const history: HistoryEntry[] = (result.history || []) as HistoryEntry[];
-
-	// Add new entry at the beginning
-	history.unshift(entry);
-
-	// Keep only the last 1000 entries
-	const trimmedHistory = history.slice(0, 1000);
-
-	// Save back to local storage
-	await browser.storage.local.set({ history: trimmedHistory });
+	const append = async () => {
+		const history = await getClipHistory();
+		await browser.storage.local.set({ history: [entry, ...history].slice(0, 1000) });
+	};
+	// A background directory save can finish while the editor exports Markdown.
+	if (navigator.locks) await navigator.locks.request('paper-clipper-history', append);
+	else await append();
 }
 
 export async function getClipHistory(): Promise<HistoryEntry[]> {

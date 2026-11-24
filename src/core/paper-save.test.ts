@@ -5,9 +5,11 @@ import browser from '../utils/browser-polyfill';
 import { authorizePaperDirectory, choosePaperDirectory, getPaperDirectory, PaperDirectoryError, savePaperDirectory, WritableDirectory } from '../utils/paper-directory';
 import { reportPaperDirectorySave, takePaperDirectorySave } from '../utils/paper-directory-handoff';
 import { createImageArchive, ImageArchiveError } from '../utils/image-archive';
-import { authorizeZipDownload, downloadPaperZip, hasZipDownloadPermission, PaperZipDownloadError } from '../utils/paper-zip-download';
+import { saveNewPaperFile } from '../utils/paper-file-writer';
+import { addHistoryEntry, incrementStat } from '../utils/storage-utils';
 import { unassessedManualExportChecks } from '../utils/manual-export-report';
 
+vi.mock('../utils/storage-utils', () => ({ addHistoryEntry: vi.fn(), incrementStat: vi.fn() }));
 vi.mock('lucide', () => ({ createIcons: vi.fn(), FolderOpen: {}, RotateCw: {}, CopyPlus: {}, Check: {}, X: {} }));
 vi.mock('../utils/i18n', () => ({ getMessage: (key: string, detail?: string) => `${key}${detail ? ': ' + detail : ''}`,
 	translatePage: vi.fn(), setupLanguageAndDirection: vi.fn() }));
@@ -16,8 +18,7 @@ vi.mock('../utils/paper-directory', async importOriginal => ({ ...await importOr
 	authorizePaperDirectory: vi.fn(), choosePaperDirectory: vi.fn(), getPaperDirectory: vi.fn(), savePaperDirectory: vi.fn() }));
 vi.mock('../utils/paper-directory-handoff', () => ({ reportPaperDirectorySave: vi.fn(), takePaperDirectorySave: vi.fn() }));
 vi.mock('../utils/image-archive', async importOriginal => ({ ...await importOriginal<typeof import('../utils/image-archive')>(), createImageArchive: vi.fn() }));
-vi.mock('../utils/paper-zip-download', async importOriginal => ({ ...await importOriginal<typeof import('../utils/paper-zip-download')>(),
-	authorizeZipDownload: vi.fn(), downloadPaperZip: vi.fn(), hasZipDownloadPermission: vi.fn() }));
+vi.mock('../utils/paper-file-writer', async original => ({ ...await original<typeof import('../utils/paper-file-writer')>(), saveNewPaperFile: vi.fn() }));
 
 let handle: WritableDirectory;
 let close = vi.fn<() => void>();
@@ -35,8 +36,7 @@ beforeEach(() => {
 	vi.mocked(authorizePaperDirectory).mockResolvedValue(handle);
 	vi.mocked(choosePaperDirectory).mockResolvedValue(handle);
 	vi.mocked(savePaperDirectory).mockResolvedValue({ folder: 'paper-folder', checks: unassessedManualExportChecks() });
-	vi.mocked(hasZipDownloadPermission).mockResolvedValue(true);
-	vi.mocked(downloadPaperZip).mockResolvedValue('paper.zip');
+	vi.mocked(saveNewPaperFile).mockImplementation(async (_handle, name) => name);
 	vi.mocked(createImageArchive).mockResolvedValue({ bytes: new Uint8Array([1]), fileName: 'paper.zip', imageCount: 1 } as Awaited<ReturnType<typeof createImageArchive>>);
 	vi.mocked(takePaperDirectorySave).mockResolvedValue({ title: 'Edited title', markdown: 'Edited source', source: '', identity: { doi: null, published: null } });
 });
@@ -51,7 +51,8 @@ it('stays in the background until all writes finish, then reports success before
 	expect(close).not.toHaveBeenCalled();
 	complete({ folder: 'paper-folder', checks: unassessedManualExportChecks() });
 	await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
-	expect(reportPaperDirectorySave).toHaveBeenLastCalledWith('job', { state: 'saved', message: 'paperDirectorySaved: Papers/paper-folder\nmanualChecksUnassessed' });
+	expect(addHistoryEntry).toHaveBeenCalledWith('directory', '', 'Edited title');
+	expect(reportPaperDirectorySave).toHaveBeenLastCalledWith('job', { state: 'saved', message: 'paperDirectorySaved: Papers/paper-folder\nmanualChecksUnassessed' }, '');
 	expect(vi.mocked(reportPaperDirectorySave).mock.invocationCallOrder.slice(-1)[0]).toBeLessThan(close.mock.invocationCallOrder[0]);
 	expect(browser.tabs.update).not.toHaveBeenCalled();
 });
@@ -80,7 +81,7 @@ it.each(['exists', 'write'] as const)('activates and stays open on %s failure wi
 	expect(vi.mocked(reportPaperDirectorySave).mock.calls.some(([, result]) => result.state === 'saved')).toBe(false);
 	expect(retry().hidden).toBe(true);
 	expect(authorize().hidden).toBe(true);
-	expect(reportPaperDirectorySave).toHaveBeenLastCalledWith('job', { state: 'failed', message: `paperDirectoryError_${reason}: paper-folder` });
+	expect(reportPaperDirectorySave).toHaveBeenLastCalledWith('job', { state: 'failed', message: `paperDirectoryError_${reason}: paper-folder` }, '');
 });
 
 it('retries a pre-write image failure only on a click, with the original editor snapshot', async () => {
@@ -103,57 +104,25 @@ it.each(['download', 'blocked', 'unsupported', 'limit'] as const)('reports attac
 	vi.mocked(createImageArchive).mockRejectedValueOnce(new AttachmentError(reason, 1));
 	await import('./paper-save');
 	await vi.waitFor(() => expect(status().textContent).toBe(`paperAttachmentsError_${reason}: 1`));
-	expect(downloadPaperZip).not.toHaveBeenCalled(); expect(close).not.toHaveBeenCalled();
+	expect(saveNewPaperFile).not.toHaveBeenCalled(); expect(close).not.toHaveBeenCalled();
 	expect(retry().hidden).toBe(reason !== 'download');
 	expect(vi.mocked(createImageArchive).mock.calls[0][8]).toEqual(attachments);
 });
-it('requests ZIP authorization only on a click and waits for download completion before closing', async () => {
-	vi.mocked(takePaperDirectorySave).mockResolvedValue(zipInput);
-	vi.mocked(hasZipDownloadPermission).mockResolvedValue(false);
-	let complete!: (filename: string) => void;
-	vi.mocked(downloadPaperZip).mockImplementation(() => new Promise(resolve => { complete = resolve; }));
+it.each(['zip', 'markdown'] as const)('uses the chosen directory for %s only after authorization', async format => {
+	vi.mocked(takePaperDirectorySave).mockResolvedValue({ ...zipInput, format, destination: 'once' });
 	await import('./paper-save');
 	await vi.waitFor(() => expect(authorize().hidden).toBe(false));
-	expect(authorizeZipDownload).not.toHaveBeenCalled();
-	expect(createImageArchive).not.toHaveBeenCalled();
-	authorize().click();
-	await vi.waitFor(() => expect(downloadPaperZip).toHaveBeenCalledOnce());
-	expect(createImageArchive).toHaveBeenCalledWith(zipInput.markdown, zipInput.title, zipInput.source,
-		expect.any(Function), undefined, undefined, zipInput.identity, undefined, undefined);
-	expect(close).not.toHaveBeenCalled();
 	expect(getPaperDirectory).not.toHaveBeenCalled();
-	complete('paper (1).zip');
-	await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
-	expect(reportPaperDirectorySave).toHaveBeenLastCalledWith('job', { state: 'saved', message: 'paperZipSaved: paper (1).zip\nmanualChecksUnassessed' });
-});
-
-it('keeps a denied ZIP permission actionable without preparing images', async () => {
-	vi.mocked(takePaperDirectorySave).mockResolvedValue(zipInput);
-	vi.mocked(hasZipDownloadPermission).mockResolvedValue(false);
-	vi.mocked(authorizeZipDownload).mockRejectedValue(new PaperZipDownloadError('permission'));
-	await import('./paper-save');
-	await vi.waitFor(() => expect(authorize().hidden).toBe(false));
+	expect(saveNewPaperFile).not.toHaveBeenCalled();
 	authorize().click();
-	await vi.waitFor(() => expect(status().textContent).toBe('paperZipError_permission'));
-	expect(authorize().hidden).toBe(false);
-	expect(createImageArchive).not.toHaveBeenCalled();
-	expect(downloadPaperZip).not.toHaveBeenCalled();
-});
-
-it.each([true, false])('reuses prepared ZIP bytes only for explicitly retryable interruptions (%s)', async retryable => {
-	vi.mocked(takePaperDirectorySave).mockResolvedValue(zipInput);
-	vi.mocked(downloadPaperZip).mockRejectedValueOnce(new PaperZipDownloadError('interrupted', retryable));
-	await import('./paper-save');
-	await vi.waitFor(() => expect(status().textContent).toBe('paperZipError_interrupted'));
-	expect(retry().hidden).toBe(!retryable);
-	expect(close).not.toHaveBeenCalled();
-	if (retryable) {
-		await vi.waitFor(() => expect(retry().disabled).toBe(false));
-		retry().click();
-		await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
-		expect(createImageArchive).toHaveBeenCalledOnce();
-		expect(downloadPaperZip).toHaveBeenCalledTimes(2);
-	}
+	await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
+	expect(choosePaperDirectory).toHaveBeenCalledWith('once');
+	expect(saveNewPaperFile).toHaveBeenCalledWith(handle, format === 'zip' ? 'paper.zip' : 'Edited title.md',
+		format === 'zip' ? new Uint8Array([1]) : 'Edited source');
+	if (format === 'markdown') {
+		expect(incrementStat).toHaveBeenCalledWith('markdown', undefined, undefined, '', 'Edited title');
+		expect(createImageArchive).not.toHaveBeenCalled();
+	} else expect(addHistoryEntry).toHaveBeenCalledWith('zip', '', 'Edited title');
 });
 
 it.each(['unsupported', 'limit'] as const)('does not offer a futile retry for an image %s failure', async reason => {
@@ -189,6 +158,23 @@ it('shows the directory picker only on a click and keeps a cancelled picker avai
 	expect(close).not.toHaveBeenCalled();
 });
 
+it('opens a one-time picker on click, allows cancellation and never reads the saved default', async () => {
+	const draft = { format: 'directory' as const, destination: 'once' as const, title: 'Chosen paper', markdown: 'Edited', source: '', identity: { doi: null, published: null } };
+	vi.mocked(takePaperDirectorySave).mockResolvedValue(draft);
+	vi.mocked(choosePaperDirectory).mockRejectedValueOnce(new DOMException('Cancelled', 'AbortError'));
+	await import('./paper-save');
+	await vi.waitFor(() => expect(authorize().hidden).toBe(false));
+	expect(getPaperDirectory).not.toHaveBeenCalled();
+	expect(choosePaperDirectory).not.toHaveBeenCalled();
+	authorize().click();
+	await vi.waitFor(() => expect(status().textContent).toBe('paperDirectoryCancelled'));
+	expect(savePaperDirectory).not.toHaveBeenCalled();
+	authorize().click();
+	await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
+	expect(choosePaperDirectory).toHaveBeenLastCalledWith('once');
+	expect(savePaperDirectory).toHaveBeenCalledWith(handle, draft, expect.any(Function), { newVersion: false });
+});
+
 it('shows an expired request without replaying writes even if activating the closed tab fails', async () => {
 	vi.mocked(takePaperDirectorySave).mockRejectedValue(new PaperDirectoryError('expired'));
 	vi.mocked(browser.tabs.update).mockRejectedValue(new Error('Tab already closed'));
@@ -214,7 +200,7 @@ it.each(['directory', 'zip'] as const)('keeps a completed %s with content differ
 	expect(status().dataset.error).toBe('false');
 	expect(status().textContent).toContain('paperSaveKind_captions');
 	expect(status().textContent).toContain('paperSaveDifferenceIntent');
-	expect(reportPaperDirectorySave).toHaveBeenLastCalledWith('job', { state: 'saved-warning', message: status().textContent });
+	expect(reportPaperDirectorySave).toHaveBeenLastCalledWith('job', { state: 'saved-warning', message: status().textContent }, '');
 	expect(retry().hidden).toBe(true);
 	expect(authorize().hidden).toBe(true);
 });
@@ -238,7 +224,8 @@ it('keeps an existing DOI archive without writing or claiming a new save succeed
 	keep.click();
 	await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
 	expect(savePaperDirectory).toHaveBeenCalledOnce();
-	expect(reportPaperDirectorySave).toHaveBeenLastCalledWith('job', { state: 'skipped', message: 'paperDirectoryKept: Original folder' });
+	expect(addHistoryEntry).not.toHaveBeenCalled();
+	expect(reportPaperDirectorySave).toHaveBeenLastCalledWith('job', { state: 'skipped', message: 'paperDirectoryKept: Original folder' }, '');
 });
 
 it('creates a new version only on an explicit click, reusing the original snapshot', async () => {

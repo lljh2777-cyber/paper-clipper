@@ -5,6 +5,7 @@ import { createMarkdownContent } from 'defuddle/full';
 import { clip } from '../api';
 import { parseForClip } from './clip-utils';
 import { prepareDocumentForExtraction } from './publisher-figures';
+import { checkManualExport } from './manual-export-checks';
 import type { Template } from '../types/types';
 import { cellAuthorYearHtml, cellAuthorYearUrl } from '../../scripts/fixtures/cell-author-year.mjs';
 
@@ -29,6 +30,70 @@ const html = `<!doctype html><html><head><title>Synthetic Cell citations</title>
 	</article></body></html>`;
 const template: Template = { id: 'test', name: 'Test', behavior: 'create', noteNameFormat: '{{title}}', path: '', noteContentFormat: '{{content}}', properties: [] };
 const makeDocument = (input = html) => new DOMParser().parseFromString(input, 'text/html');
+
+describe('publication date in the clipping template', () => {
+	const source = 'https://journals.plos.org/example/article?id=synthetic';
+	test.each([
+		['<meta name="citation_date" content="2013年10月24日">', '', '2013-10-24'],
+		['<meta name="citation_date" content="2013/02/30">', 'Published: October 24, 2013', '2013-10-24'],
+		['<meta name="citation_publication_date" content="2013/10/24">', 'Published: October 25, 2013', '2013-10-24'],
+		['<meta property="article:published_time" content="2011-01-02"><meta name="citation_date" content="2013年10月24日">', '', '2011-01-02'],
+		['<meta name="citation_date" content="2013年2月29日">', 'Accepted: October 24, 2013', ''],
+	])('propagates the article date from %s / %s', async (tags, label, expected) => {
+		const html = `<html><head><title>Study</title>${tags}</head><body><ul><li id="artPubDate">${label}</li></ul>
+			<article><h1>Study</h1><p>${paragraph}</p></article></body></html>`;
+		const doc = makeDocument(html);
+		Object.defineProperty(doc, 'URL', { value: source });
+		const before = doc.documentElement.outerHTML;
+		expect(parseForClip(doc).published).toBe(expected);
+		expect(doc.documentElement.outerHTML).toBe(before);
+		const result = await clip({ html, url: source, documentParser: new DOMParser(), template: {
+			...template, properties: [{ name: 'published', value: '{{published}}', type: 'date' }],
+		} });
+		expect(result.fullContent.split('\n')).toContain(expected ? `published: ${expected}` : 'published:');
+	});
+});
+
+describe('PLOS numbered references', () => {
+	const source = 'https://journals.plos.org/example/article?id=synthetic';
+	const body = `<p>These simulated observations agree with the first published result
+		<a class="ref-tip" href="#paper.A">[1]</a> and an independent replication
+		<a class="ref-tip" href="#paper.B">[2]</a>. We also repeat the measurements from the first study
+		<a class="ref-tip" href="#paper.A">[1]</a> under controlled conditions.</p>`;
+	const references = `<h2>References</h2><ol class="references">
+		<li id="ref1"><span class="order">1.</span><a class="link-target" id="paper.A"></a>River A (2020).
+		<i>A synthetic study</i>. Journal 4: 17. <ul class="reflinks"><li><a href="#">View Article</a></li>
+		<li><a href="https://example.org/lookup">Search</a></li></ul></li>
+		<li id="ref2"><span class="order">2.</span><a class="link-target" id="paper.B"></a>Lake B.
+		<p>A second study. <a href="https://example.org/doi">DOI</a></p><ul class="find-nolinks"></ul></li></ol>`;
+	const page = `<html><head><title>Synthetic research</title></head><body><article><h1>Synthetic research</h1>
+		${body}<p>${paragraph}</p>${references}</article></body></html>`;
+
+	test('keeps rich bibliography text, working links and repeated inline citations in manual and API clips', async () => {
+		const document = makeDocument(page), before = document.documentElement.outerHTML;
+		Object.defineProperty(document, 'URL', { value: source });
+		const manual = createMarkdownContent(parseForClip(document).content, source);
+		const api = await clip({ html: page, url: source, template, documentParser: new DOMParser() });
+		for (const md of [manual, api.content]) {
+			expect(md.match(/\[\^\d+\](?!:)/g)).toEqual(['[^1]', '[^2]', '[^1]']);
+			expect(md).toMatch(/^\[\^1\]: River A \(2020\)\. \*A synthetic study\*\. Journal 4: 17\. \[Search\]\(https:\/\/example.org\/lookup\)$/m);
+			expect(md).toMatch(/^\[\^2\]: Lake B\. A second study\. \[DOI\]\(https:\/\/example.org\/doi\)$/m);
+			expect(md).not.toContain('View Article');
+		}
+		expect(document.documentElement.outerHTML).toBe(before);
+		const capture = { document, source, extractedMarkdown: manual, templateMarkdown: manual };
+		const broken = manual.replace(/^\[\^1\]: .*$/m, '[^1]: 1. [Search](https://example.org/lookup)');
+		const report = checkManualExport(capture, broken);
+		expect(report.stages.extraction.references).toMatchObject({ status: 'passed', expected: 2, matched: 2 });
+		expect(report.stages.output.references).toMatchObject({ status: 'failed', matched: 1, issues: [{ id: 'ref1' }] });
+	});
+
+	test('leaves other hosts and unrelated fragment links alone', () => {
+		const doc = makeDocument(page.replace(body, body + '<a class="ref-tip" href="#unrelated">[3]</a>'));
+		expect(prepareDocumentForExtraction(doc, 'https://example.org/article')).toBe(doc);
+		expect(prepareDocumentForExtraction(doc, source).querySelector('a[href="#unrelated"]')?.className).toBe('ref-tip');
+	});
+});
 
 function expectCleanCitations(markdown: string) {
 	expect(markdown).toMatch(/First finding\.\[\^1\](?:<sup>,<\/sup>|,)\[\^2\] Second finding\.\[\^1\] End of paragraph\./);

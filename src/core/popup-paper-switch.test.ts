@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { expect, it, vi } from 'vitest';
 import { openPaperDirectorySave } from '../utils/paper-directory-handoff';
 import { compileTemplate } from '../utils/template-compiler';
+import { incrementStat } from '../utils/storage-utils';
 import { generateFrontmatter } from '../utils/obsidian-note-creator';
 
 const state = vi.hoisted(() => ({
@@ -19,14 +20,17 @@ vi.mock('../utils/browser-polyfill', () => ({ default: {
 			: {} },
 	tabs: { query: async () => [{ id: state.active }], onUpdated: { addListener: vi.fn() },
 		onActivated: { addListener: (listener: typeof state.activate) => { state.activate = listener; } } },
-	storage: { local: { onChanged: { addListener: vi.fn() } } },
+	storage: { sync: { set: vi.fn(), onChanged: { addListener: vi.fn() } }, local: { onChanged: { addListener: vi.fn() } } },
 } }));
 vi.mock('../utils/storage-utils', () => ({
 	loadSettings: async () => ({ vaults: [], saveBehavior: 'savePaperDirectory' }),
-	getLocalStorage: async () => undefined, generalSettings: { propertyTypes: [] },
+	incrementStat: vi.fn().mockResolvedValue(undefined), getClipHistory: async () => [
+		{ url: url(3), action: 'directory' }, { url: url(3), action: 'directory' },
+		{ url: url(3), action: 'zip' }, { url: url(1), action: 'copyToClipboard' },
+	], getLocalStorage: async () => undefined, generalSettings: { propertyTypes: [] },
 }));
 vi.mock('../utils/browser-detection', () => ({ addBrowserClassToHtml: vi.fn(), detectBrowser: async () => 'chrome' }));
-vi.mock('../utils/i18n', () => ({ getMessage: (key: string) => key, translatePage: vi.fn(), setupLanguageAndDirection: vi.fn() }));
+vi.mock('../utils/i18n', () => ({ getMessage: (key: string, detail?: string) => detail ?? key, translatePage: vi.fn(), setupLanguageAndDirection: vi.fn() }));
 vi.mock('../icons/icons', () => ({ initializeIcons: vi.fn(), getPropertyTypeIcon: () => 'text' }));
 vi.mock('../managers/template-manager', () => ({ loadTemplates: async () => [{
 	id: 'test', name: 'Article', properties: [{ name: 'doi', value: 'doi' }],
@@ -87,19 +91,30 @@ it('hands off only the current article after out-of-order extraction and compila
 	expect(field('note-content-field').value).toBe('Body 3');
 	expect(vi.mocked(compileTemplate).mock.calls.map(call => call[1])).not.toContain('{{selector:.legacy-ai-context}}');
 
+	expect(field('paper-save-methods').textContent).toBe('savePaperDirectory · paperMethodZip');
+	expect(field('action-buttons').nextElementSibling).toBe(field('paper-save-methods'));
 	field('note-content-field').value = 'Edited body 3';
-	for (const [button, format] of [['clip-btn', 'directory'], ['save-image-archive', 'zip']]) {
+	let saves = 0;
+	for (const [button, format] of [['clip-btn', 'directory'], ['save-image-archive', 'zip'], ['clip-btn', 'directory']]) {
+		field('use-default-paper-directory').checked = ++saves !== 3;
 		field(button).click();
 		await vi.waitFor(() => expect(openPaperDirectorySave).toHaveBeenLastCalledWith(expect.objectContaining({
-			format, title: 'Title 3', source: url(3), markdown: 'Edited body 3',
+			format, destination: saves === 3 ? 'once' : 'default', title: 'Title 3', source: url(3), markdown: 'Edited body 3',
 			identity: { doi: '10.1234/paper3', published: '2026' },
+		}), expect.any(Function)));
+	}
+	for (const useDefault of [true, false]) {
+		field('use-default-paper-directory').checked = useDefault;
+		document.querySelector<HTMLElement>('[data-i18n="saveMarkdownWithImageLinks"]')!.click();
+		await vi.waitFor(() => expect(openPaperDirectorySave).toHaveBeenLastCalledWith(expect.objectContaining({
+			format: 'markdown', destination: useDefault ? 'default' : 'once', markdown: 'Edited body 3',
 		}), expect.any(Function)));
 	}
 	// The browser may have switched before its activation event reaches the panel.
 	state.active = 4;
 	field('clip-btn').click();
 	await vi.waitFor(() => expect(document.getElementById('image-archive-status')?.textContent).toBe('paperEditorChanged'));
-	expect(openPaperDirectorySave).toHaveBeenCalledTimes(2);
+	expect(openPaperDirectorySave).toHaveBeenCalledTimes(5);
 
 	// If the paper changes while a save is being prepared, discard that handoff.
 	state.active = 3;
@@ -109,6 +124,16 @@ it('hands off only the current article after out-of-order extraction and compila
 	activate(4);
 	await vi.waitFor(() => expect(field('note-content-field').value).toBe('Body 4'));
 	finishFrontmatter('');
-	await vi.waitFor(() => expect(document.getElementById('image-archive-status')?.textContent).toBe('paperEditorChanged'));
-	expect(openPaperDirectorySave).toHaveBeenCalledTimes(2);
+	await new Promise(resolve => setTimeout(resolve, 0));
+	expect(field('image-archive-status').textContent).toBe('');
+	expect(field('paper-save-methods').textContent).toBe('');
+	expect(openPaperDirectorySave).toHaveBeenCalledTimes(5);
+	const copy = document.querySelector<HTMLElement>('.secondary-actions [data-i18n="paperCopyMarkdown"]')!;
+	copy.click();
+	await vi.waitFor(() => expect(field('image-archive-status').textContent).toBe('failedToCopyText'));
+	expect(incrementStat).not.toHaveBeenCalledWith('copyToClipboard', expect.anything(), expect.anything(), url(4), 'Title 4');
+	Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: vi.fn().mockResolvedValue(undefined) } });
+	copy.click();
+	await vi.waitFor(() => expect(incrementStat).toHaveBeenCalledWith('copyToClipboard', undefined, undefined, url(4), 'Title 4'));
+	expect(field('note-content-field').value).toBe('Body 4');
 });

@@ -8,6 +8,7 @@ import { Settings } from './types/types';
 import { debugLog } from './utils/debug';
 import { incrementStat } from './utils/storage-utils';
 import { hasStoredHighlights } from './utils/url-utils';
+import { openReaderMarkdownSave } from './utils/paper-directory-handoff';
 import { capturePageHtml } from './utils/page-html-export';
 
 const YOUTUBE_EMBED_RULE_ID = 9001;
@@ -694,8 +695,17 @@ browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime
 
 		if (typedRequest.action === "copyMarkdownToClipboard" || typedRequest.action === "saveMarkdownToFile") {
 			if (sender.tab?.id) {
+				const source = sender.url;
 				routeMessageToTab(sender.tab.id, { action: typedRequest.action })
-					.then(() => sendResponse({success: true}))
+					.then(async result => {
+						if (typedRequest.action === 'saveMarkdownToFile') {
+							if (!source || result?.source !== source || !result.success || typeof result.markdown !== 'string' || typeof result.title !== 'string') {
+								throw new Error('Could not capture the current reader article');
+							}
+							await openReaderMarkdownSave(source, result.title, result.markdown);
+						}
+						sendResponse({success: true});
+					})
 					.catch((error) => sendResponse({success: false, error: error instanceof Error ? error.message : String(error)}));
 				return true;
 			}
@@ -777,50 +787,11 @@ browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime
 			return true;
 		}
 
-		if (typedRequest.action === "openObsidianUrl") {
-			const url = (typedRequest as any).url;
-			if (url) {
-				browser.tabs.query({active: true, currentWindow: true}).then((tabs) => {
-					const currentTab = tabs[0];
-					if (currentTab && currentTab.id) {
-						browser.tabs.update(currentTab.id, { url: url }).then(() => {
-							sendResponse({ success: true });
-						}).catch((error) => {
-							console.error('Error opening Obsidian URL:', error);
-							sendResponse({
-								success: false,
-								error: error instanceof Error ? error.message : String(error)
-							});
-						});
-					} else {
-						sendResponse({
-							success: false,
-							error: 'No active tab found'
-						});
-					}
-				}).catch((error) => {
-					console.error('Error querying tabs:', error);
-					sendResponse({
-						success: false,
-						error: error instanceof Error ? error.message : String(error)
-					});
-				});
-				return true;
-			} else {
-				sendResponse({
-					success: false,
-					error: 'Missing URL'
-				});
-				return true;
-			}
-		}
-
 		// For other actions that use sendResponse
 		if (typedRequest.action === "extractContent" ||
 			typedRequest.action === "ensureContentScriptLoaded" ||
 			typedRequest.action === "getHighlighterMode" ||
-			typedRequest.action === "toggleHighlighterMode" ||
-			typedRequest.action === "openObsidianUrl") {
+			typedRequest.action === "toggleHighlighterMode") {
 			return true;
 		}
 	}

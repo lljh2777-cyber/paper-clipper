@@ -17,7 +17,4 @@
 	min-height: 0;
 	overflow-y: auto;
 	.metadata-properties { min-height: calc(var(--metadata-input-height) + 10px); }
-	#note-content-container { min-height: 60px; }
-	.clipper-footer { flex-shrink: 0; }
-	#image-archive-status { margin: 0; max-height: 56px; line-height: 20px; overflow-y: auto; }
 }

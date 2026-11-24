@@ -1,12 +1,10 @@
 import { showModal, hideModal } from './modal-utils';
-import { importTemplateFile } from './import-export';
 import { getMessage, translatePage } from './i18n';
 
 export async function showImportModal(
 	modalId: string,
 	importFunction: (content: string) => Promise<void>,
 	fileExtension: string = '.json',
-	isTemplateImport: boolean = false,
 	modalTitleKey: string = 'import'
 ): Promise<void> {
 	const modal = document.getElementById(modalId);
@@ -39,130 +37,50 @@ export async function showImportModal(
 	// Clear the textarea when showing the modal
 	jsonTextarea.value = '';
 
-	// Show modal and translate
-	showModal(modal);
-	await translatePage();
+	const signal = showModal(modal);
+	const options = { signal };
+	let busy = false;
 
-	// Remove existing event listeners
-	dropZone.removeEventListener('dragover', handleDragOver);
-	dropZone.removeEventListener('drop', handleDrop);
-	dropZone.removeEventListener('click', openFilePicker);
-	cancelBtn.removeEventListener('click', handleCancel);
-	confirmBtn.removeEventListener('click', handleConfirm);
-
-	// Add event listeners
-	dropZone.addEventListener('dragover', handleDragOver);
-	dropZone.addEventListener('drop', handleDrop);
-	dropZone.addEventListener('click', openFilePicker);
-	cancelBtn.addEventListener('click', handleCancel);
-	confirmBtn.addEventListener('click', handleConfirm);
-
-	let fileInput: HTMLInputElement | null = null;
-
-	function handleDragOver(e: DragEvent): void {
-		e.preventDefault();
-		e.stopPropagation();
-	}
-
-	function handleDrop(e: DragEvent): void {
-		e.preventDefault();
-		e.stopPropagation();
-		const files = e.dataTransfer?.files;
-		if (files && files.length > 0) {
-			Array.prototype.forEach.call(files, (file) => {
-				handleFile(file)
-			})
-		}
-	}
-
-	function openFilePicker(e: Event): void {
-		e.preventDefault();
-		e.stopPropagation();
-		fileInput = document.createElement('input');
-		fileInput.type = 'file';
-		fileInput.multiple = true
-		fileInput.accept = fileExtension;
-		fileInput.onchange = handleFileInputChange;
-		fileInput.click();
-	}
-
-	function handleFileInputChange(event: Event): void {
-		const files = (event.target as HTMLInputElement).files
-		if (files && files.length > 0) {
-			Array.prototype.forEach.call(files, (file) => {
-				handleFile(file)
-			})
-		}
-		// Clean up the file input
-		if (fileInput) {
-			fileInput.remove();
-			fileInput = null;
-		}
-	}
-
-	function handleFile(file: File): void {
-		if (isTemplateImport) {
-			importTemplateFile(file);
-			cleanupModal();
-			hideModal(modal);
-		} else {
-			const reader = new FileReader();
-			reader.onload = (event: ProgressEvent<FileReader>) => {
-				const content = event.target?.result as string;
-				if (jsonTextarea) {
-					jsonTextarea.value = content;
-				}
-				// Immediately import the file
-				importFunction(content).then(() => {
-					cleanupModal();
-					hideModal(modal);
-				}).catch((error) => {
-					console.error('Error parsing imported template:', error);
-					alert(getMessage('failedToImportTemplate'));
-				});
-			};
-			reader.readAsText(file);
-		}
-	}
-
-	function handleCancel(): void {
-		cleanupModal();
-		hideModal(modal);
-	}
-
-	function handleConfirm(): void {
-		if (jsonTextarea) {
-			const jsonContent = jsonTextarea.value.trim();
-			if (jsonContent) {
-				importFunction(jsonContent).then(() => {
-					cleanupModal();
-					hideModal(modal);
-				}).catch((error) => {
-					console.error('Import failed:', error);
-					alert(getMessage('importFailed'));
-				});
+	const submit = async (inputs: (File | string)[]) => {
+		if (busy || signal.aborted) return;
+		busy = true;
+		try {
+			for (const input of inputs) {
+				const content = typeof input === 'string' ? input : await input.text();
+				if (signal.aborted) return;
+				await importFunction(content);
 			}
+			if (!signal.aborted) hideModal(modal);
+		} catch (error) {
+			console.error('Import failed:', error);
+			if (!signal.aborted) alert(getMessage('importFailed'));
+		} finally {
+			busy = false;
 		}
+	};
+
+	function importFiles(files: FileList | null) {
+		if (files?.length) void submit(Array.from(files));
 	}
 
-	function cleanupModal(): void {
-		// Remove event listeners
-		if (dropZone) {
-			dropZone.removeEventListener('dragover', handleDragOver);
-			dropZone.removeEventListener('drop', handleDrop);
-			dropZone.removeEventListener('click', openFilePicker);
-		}
-		if (cancelBtn) {
-			cancelBtn.removeEventListener('click', handleCancel);
-		}
-		if (confirmBtn) {
-			confirmBtn.removeEventListener('click', handleConfirm);
-		}
-
-		// Clean up the file input if it exists
-		if (fileInput) {
-			fileInput.remove();
-			fileInput = null;
-		}
-	}
+	const picker = document.createElement('input');
+	picker.type = 'file';
+	picker.accept = fileExtension;
+	picker.multiple = true;
+	picker.addEventListener('change', () => {
+		importFiles(picker.files);
+		picker.value = '';
+	}, options);
+	dropZone.addEventListener('click', () => { if (!busy) picker.click(); }, options);
+	dropZone.addEventListener('dragover', event => event.preventDefault(), options);
+	dropZone.addEventListener('drop', event => {
+		event.preventDefault();
+		importFiles(event.dataTransfer?.files ?? null);
+	}, options);
+	cancelBtn.addEventListener('click', () => hideModal(modal), options);
+	confirmBtn.addEventListener('click', () => {
+		const content = jsonTextarea.value.trim();
+		if (content) void submit([content]);
+	}, options);
+	await translatePage();
 }

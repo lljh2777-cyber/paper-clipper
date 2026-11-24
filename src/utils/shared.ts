@@ -6,6 +6,7 @@
 import { sanitizeFileName, getDomain, escapeDoubleQuotes } from './string-utils';
 import { Property } from '../types/types';
 import dayjs from 'dayjs';
+import { firstPublicationDate } from './publication-date';
 
 // ---------------------------------------------------------------------------
 // Variable building
@@ -57,7 +58,7 @@ export function buildVariables(params: BuildVariablesParams): Record<string, str
 		'{{highlights}}': params.highlights || '',
 		'{{image}}': params.image || '',
 		'{{noteName}}': noteName.trim(),
-		'{{published}}': (params.published || '').split(',')[0].trim(),
+		'{{published}}': firstPublicationDate(params.published || ''),
 		'{{site}}': (params.site || '').trim(),
 		'{{title}}': (params.title || '').trim(),
 		'{{url}}': currentUrl.trim(),

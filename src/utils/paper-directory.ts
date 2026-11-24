@@ -1,4 +1,6 @@
 import { ImageArchiveError, prepareImageFiles } from './image-archive';
+import { exists, writeFile } from './paper-file-writer';
+import { publicationDay } from './publication-date';
 import type { ManualExportCheckContext } from './manual-export-report';
 import type { PaperAttachment } from './paper-attachments';
 import { normalizeDoi, paperFolderName, paperTranslationMetadata, type PaperIdentity } from './paper-bundle';
@@ -10,9 +12,8 @@ export interface WritableDirectory extends FileSystemDirectoryHandle {
 	requestPermission(options: { mode: 'readwrite' }): Promise<PermissionState>;
 }
 type PickerWindow = Window & { showDirectoryPicker?: (options: { id: string; mode: 'readwrite' }) => Promise<WritableDirectory> };
-export class PaperDirectoryError extends Error {
-	constructor(public readonly reason: 'unsupported' | 'missing' | 'permission' | 'exists' | 'duplicate' | 'index' | 'write' | 'identity' | 'handoff' | 'busy' | 'expired', public readonly folder = '') { super(reason); }
-}
+import { PaperDirectoryError } from './paper-directory-error';
+export { PaperDirectoryError } from './paper-directory-error';
 
 export function paperDirectoryFailure(error: unknown): { key: string; detail: string } {
 	if (error instanceof ImageArchiveError) return { key: 'paperDirectoryError_images', detail: String(error.imageNumber) };
@@ -46,11 +47,11 @@ export const getPaperDirectory = () => directoryStore('read');
 export const forgetPaperDirectory = () => directoryStore('forget');
 export const supportsPaperDirectory = () => typeof (window as PickerWindow).showDirectoryPicker === 'function';
 
-export async function choosePaperDirectory(): Promise<WritableDirectory> {
+export async function choosePaperDirectory(scope: 'default' | 'once' = 'default'): Promise<WritableDirectory> {
 	const picker = (window as PickerWindow).showDirectoryPicker;
 	if (!picker) throw new PaperDirectoryError('unsupported');
-	const handle = await picker.call(window, { id: 'paper-clipper', mode: 'readwrite' });
-	await directoryStore('write', handle);
+	const handle = await picker.call(window, { id: scope === 'once' ? 'paper-clipper-once' : 'paper-clipper', mode: 'readwrite' });
+	if (scope === 'default') await directoryStore('write', handle);
 	return handle;
 }
 export async function authorizePaperDirectory(handle?: WritableDirectory): Promise<WritableDirectory> {
@@ -72,26 +73,14 @@ export function paperIdentity(meta: { name?: string | null; property?: string | 
 	} catch { /* A missing source URL does not justify inferring a DOI. */ }
 	const dois = [...new Set(candidates.map(normalizeDoi).filter((value): value is string => !!value))];
 	if (dois.length > 1) throw new PaperDirectoryError('identity');
-	const date = meta.find(tag => tag.name?.toLowerCase() === 'citation_publication_date')?.content ??
-		properties.find(property => property.name.toLowerCase() === 'published')?.value ?? published;
-	return { doi: dois[0] ?? null, published: typeof date === 'string' && /^\d{4}(?:$|[-/T\s])/.test(date.trim()) ? date.trim() : null };
-}
-
-async function exists(parent: FileSystemDirectoryHandle, name: string): Promise<boolean> {
-	try { await parent.getDirectoryHandle(name); return true; }
-	catch (error) {
-		if (error instanceof DOMException && error.name === 'NotFoundError') return false;
-		if (error instanceof DOMException && error.name === 'TypeMismatchError') return true;
-		throw error;
+	const dates = [meta.find(tag => tag.name?.toLowerCase() === 'citation_publication_date')?.content,
+		properties.find(property => property.name.toLowerCase() === 'published')?.value, published];
+	for (const date of dates) {
+		if (typeof date !== 'string') continue;
+		const value = publicationDay(date) ?? (/^\d{4}(?:$|[-/T\s])/.test(date.trim()) ? date.trim() : null);
+		if (value) return { doi: dois[0] ?? null, published: value };
 	}
-}
-async function writeFile(directory: FileSystemDirectoryHandle, name: string, contents: string | Uint8Array): Promise<void> {
-	const file = await directory.getFileHandle(name, { create: true });
-	const writer = await file.createWritable();
-	try {
-		await writer.write(typeof contents === 'string' ? contents : new Uint8Array(contents).buffer);
-		await writer.close();
-	} catch (error) { await writer.abort().catch(() => {}); throw error; }
+	return { doi: dois[0] ?? null, published: null };
 }
 
 // Only immediate archive metadata is inspected. Never read notes/translations or

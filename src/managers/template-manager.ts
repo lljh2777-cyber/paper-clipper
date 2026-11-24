@@ -18,56 +18,55 @@ export function setEditingTemplateIndex(index: number): void {
 }
 
 export async function loadTemplates(): Promise<Template[]> {
-	try {
-		const data = await browser.storage.sync.get(['template_list']);
-		let templateIds = data.template_list as string[] || [];
-
-		// Filter out any null or undefined values
-		templateIds = templateIds.filter(id => id != null);
-
-		if (templateIds.length === 0) {
-			templates = [];
-		} else {
-			const loadedTemplates = await Promise.all(templateIds.map(async (id: string) => {
-				try {
-					const result = await browser.storage.sync.get(`template_${id}`);
-					const compressedChunks = result[`template_${id}`] as string[];
-					if (compressedChunks) {
-						const decompressedData = decompressFromUTF16(compressedChunks.join(''));
-						const template = JSON.parse(decompressedData);
-						if (template && Array.isArray(template.properties)) {
-							return template;
-						}
-					}
-					console.warn(`Template ${id} is invalid or missing`);
-					return null;
-				} catch (error) {
-					console.error(`Error parsing template ${id}:`, error);
-					return null;
-				}
-			}));
-
-			templates = loadedTemplates.filter((t: Template | null): t is Template => t !== null);
-		}
-
-		if (templates.length === 0) {
-			console.log('No valid templates found, creating default template');
-			const defaultTemplate = createDefaultTemplate();
-			templates = [defaultTemplate];
-			await saveTemplateSettings();
-		}
-
-		// After loading templates, update global property types
-		await updateGlobalPropertyTypes(templates);
-
-		return templates;
-	} catch (error) {
-		console.error('Error loading templates:', error);
-		const defaultTemplate = createDefaultTemplate();
-		templates = [defaultTemplate];
-		await saveTemplateSettings();
-		return templates;
+	// The index and its payloads must come from the same sync snapshot.
+	let data = await browser.storage.sync.get(null);
+	if (data.template_list === undefined) {
+		data = await navigator.locks.request('paper-clipper-settings-import', async () => {
+			const latest = await browser.storage.sync.get(null);
+			if (latest.template_list !== undefined) return latest;
+			if (Object.keys(latest).some(key => key.startsWith(STORAGE_KEY_PREFIX) && latest[key] != null)) {
+				throw new Error('Template index is missing. Recover the index before editing templates.');
+			}
+			const first = createDefaultTemplate();
+			const initial = { template_list: [first.id], [STORAGE_KEY_PREFIX + first.id]: encodeTemplate(first) };
+			await browser.storage.sync.set(initial);
+			return initial;
+		});
 	}
+	if (!Array.isArray(data.template_list)) throw new Error('Invalid template index');
+	// Publish no partial list: a later autosave must never discard an unreadable entry.
+	templates = data.template_list.filter(id => id != null).map(id => {
+		if (typeof id !== 'string') throw new Error('Invalid template ID');
+		return decodeTemplate(id, data[STORAGE_KEY_PREFIX + id]);
+	});
+	await updateGlobalPropertyTypes(templates);
+	return templates;
+}
+
+export function decodeTemplate(id: string, chunks: unknown): Template {
+	if (!Array.isArray(chunks) || !chunks.every(chunk => typeof chunk === 'string')) {
+		throw new Error('Missing template data: ' + id);
+	}
+	const template = JSON.parse(decompressFromUTF16(chunks.join('')));
+	checkStoredTemplate(id, template);
+	return template;
+}
+
+export function checkStoredTemplate(id: string, value: unknown): asserts value is Template {
+	const template = value as Partial<Template> | null;
+	if (!template || template.id !== id || typeof template.name !== 'string' ||
+		typeof template.noteNameFormat !== 'string' || typeof template.noteContentFormat !== 'string' ||
+		!Array.isArray(template.properties) || !template.properties.every((p: Property) =>
+			p && typeof p.name === 'string' && typeof p.value === 'string')) {
+		throw new Error('Invalid template data: ' + id);
+	}
+}
+
+export function encodeTemplate(template: Template): string[] {
+	const data = compressToUTF16(JSON.stringify(template));
+	const chunks: string[] = [];
+	for (let start = 0; start < data.length; start += CHUNK_SIZE) chunks.push(data.slice(start, start + CHUNK_SIZE));
+	return chunks;
 }
 
 export async function saveTemplateSettings(): Promise<string[]> {
@@ -81,10 +80,11 @@ export async function saveTemplateSettings(): Promise<string[]> {
 			template.noteNameFormat = '{{title}}';
 		}
 
-		const [chunks, warning] = await prepareTemplateForSave(template);
+		const chunks = encodeTemplate(template);
 		templateChunks[STORAGE_KEY_PREFIX + template.id] = chunks;
-		if (warning) {
-			warnings.push(warning);
+		const length = chunks.reduce((total, chunk) => total + chunk.length, 0);
+		if (length > SIZE_WARNING_THRESHOLD) {
+			warnings.push(`Warning: Template "${template.name}" is approaching the storage limit.`);
 		}
 	}
 
@@ -96,20 +96,6 @@ export async function saveTemplateSettings(): Promise<string[]> {
 		console.error('Error saving templates:', error);
 		throw error;
 	}
-}
-
-async function prepareTemplateForSave(template: Template): Promise<[string[], string | null]> {
-	const compressedData = compressToUTF16(JSON.stringify(template));
-	const chunks = [];
-	for (let i = 0; i < compressedData.length; i += CHUNK_SIZE) {
-		chunks.push(compressedData.slice(i, i + CHUNK_SIZE));
-	}
-
-	// Check if the template size is approaching the limit
-	if (compressedData.length > SIZE_WARNING_THRESHOLD) {
-		return [chunks, `Warning: Template "${template.name}" is ${(compressedData.length / 1024).toFixed(2)}KB, which is approaching the storage limit.`];
-	}
-	return [chunks, null];
 }
 
 export function createDefaultTemplate(): Template {

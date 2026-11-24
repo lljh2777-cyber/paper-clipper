@@ -1,11 +1,44 @@
 import { prepareMath } from './paper-math.mjs';
 import { cellCitation } from './cell-citations.mjs';
+import { citationPublicationDay } from './publication-date';
 
 const descriptionSelector = 'figure .c-article-section__figure-description';
 const citationSelector = '.reference-citations a.reference-citations__ctrl[data-xml-rid]';
 const cellLegendSelector = 'figure.graphic figcaption .figure__caption__text__content';
 const bibliographySelector = '.biblioentry .citations[id]';
 const extendedImageSelector = '.c-article-supplementary__item h3 a[data-supp-info-image]';
+
+function preparePlosReferences(document: Document, url: string): void {
+	const targets = new Map<string, string>();
+	for (const entry of Array.from(document.querySelectorAll('ol.references > li[id]'))) {
+		const anchor = entry.querySelector(':scope > a.link-target[id]');
+		const order = entry.querySelector(':scope > span.order');
+		if (!anchor || !order || !/^\d+\.$/.test(order.textContent?.trim() ?? '')) continue;
+		targets.set('#' + anchor.id, '#' + entry.id);
+		order.remove();
+		// PLOS mixes bare citation text with a list of lookup controls. Defuddle
+		// copies only element children when rebuilding a footnote containing blocks.
+		// Keep the citation inline, including its emphasis and real lookup links.
+		for (const tools of Array.from(entry.querySelectorAll(':scope > ul.reflinks, :scope > ul.find-nolinks'))) {
+			const links = Array.from(tools.querySelectorAll('a[href]')).filter(link => {
+				const href = link.getAttribute('href')!.trim();
+				if (!href || href.startsWith('#')) return false;
+				try { return /^https?:$/.test(new URL(href, url).protocol); }
+				catch { return false; }
+			});
+			tools.replaceWith(...links.flatMap(link => [document.createTextNode(' '), link]));
+		}
+		for (const paragraph of Array.from(entry.querySelectorAll(':scope > p'))) {
+			paragraph.replaceWith(...Array.from(paragraph.childNodes), document.createTextNode(' '));
+		}
+	}
+	for (const link of Array.from(document.querySelectorAll('a.ref-tip[href]'))) {
+		const target = targets.get(link.getAttribute('href')!);
+		if (!target || !/^\[?\d+\]?$/.test(link.textContent?.trim() ?? '')) continue;
+		link.setAttribute('href', target);
+		link.classList.remove('ref-tip');
+	}
+}
 
 function preparePmc(document: Document): void {
 	// Only remove the header byline when every displayed name is already in
@@ -131,24 +164,45 @@ function prepareCellCitations(document: Document): void {
 	}
 }
 
-export function prepareDocumentForExtraction(document: Document, url: string): Document {
+export function prepareDocumentForExtraction(source: Document, url: string): Document {
+	let document = source;
+	function editable(): Document {
+		if (document === source) document = source.cloneNode(true) as Document;
+		return document;
+	}
 	if (document.querySelector('mjx-container')) {
-		document = document.cloneNode(true) as Document;
-		prepareMath(document);
+		prepareMath(editable());
 	}
 	let hostname: string;
 	try {
 		hostname = new URL(url).hostname;
 	} catch { return document; }
+	// Defuddle reads Open Graph and schema.org dates, but skips Highwire
+	// citation tags. Expose the publisher's calendar date on the parsing copy.
+	if (!document.querySelector('head meta[property="article:published_time" i][content]:not([content=""])')) {
+		const published = citationPublicationDay(document, hostname);
+		if (published) {
+			const copy = editable();
+			const tag = copy.createElement('meta');
+			tag.setAttribute('property', 'article:published_time');
+			tag.setAttribute('content', published);
+			copy.head.prepend(tag);
+		}
+	}
+	if (hostname === 'journals.plos.org' && document.querySelector('ol.references > li[id] > a.link-target[id]')) {
+		const prepared = editable();
+		preparePlosReferences(prepared, url);
+		return prepared;
+	}
 	if (hostname === 'pmc.ncbi.nlm.nih.gov') {
 		if (!document.querySelector('article .front-matter .ameta > .cg, article figure.fig .obj_head')) return document;
-		const prepared = document.cloneNode(true) as Document;
+		const prepared = editable();
 		preparePmc(prepared);
 		return prepared;
 	}
 	if (/(^|\.)cell\.com$/.test(hostname)) {
 		if (!document.querySelector([citationSelector, cellLegendSelector, `${bibliographySelector} .citation-content`].join(', '))) return document;
-		const prepared = document.cloneNode(true) as Document;
+		const prepared = editable();
 		prepareCellCitations(prepared);
 		prepareCellFigures(prepared);
 		prepareCellBibliography(prepared);
@@ -156,7 +210,7 @@ export function prepareDocumentForExtraction(document: Document, url: string): D
 	}
 	if (!/(^|\.)nature\.com$/.test(hostname)) return document;
 	if (!document.querySelector(`${descriptionSelector}, ${extendedImageSelector}`)) return document;
-	const prepared = document.cloneNode(true) as Document;
+	const prepared = editable();
 	prepareNatureExtendedImages(prepared, url);
 	for (const description of Array.from(prepared.querySelectorAll(descriptionSelector))) {
 		const figure = description.closest('figure');

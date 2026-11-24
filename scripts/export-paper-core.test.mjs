@@ -43,7 +43,7 @@ test('dry run validates without creating output', async () => {
 	const output = path.join(directory, 'dry');
 	const result = await exportCore(output, { dryRun: true });
 	assert.equal(result.status, 'would-export');
-	assert.equal(result.sourceFiles, 20);
+	assert.equal(result.sourceFiles, 19);
 	await assert.rejects(stat(output), { code: 'ENOENT' });
 });
 

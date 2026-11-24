@@ -6,12 +6,13 @@ import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import { unzipSync, strFromU8 } from 'fflate';
 import { marked } from 'marked';
-import { authorizedDownloadExtension, configureZipDownloads, openSavePage, readCompletedZip } from './fixtures/manual-save.mjs';
+import { configurePaperFolder, countZipFiles, readZipFile, openSavePage, readCompletedZip } from './fixtures/manual-save.mjs';
 import { natureFiguresHtml, natureFiguresUrl } from './fixtures/nature-figures.mjs';
+import { checkPlosFigureSave } from './fixtures/plos-figure-save.mjs';
 
 // Browser plugin not available: exercise the built extension in isolated Playwright.
 const directory = await mkdtemp(path.join(tmpdir(), 'paper-image-zip-qa-'));
-const extension = await authorizedDownloadExtension(directory);
+const extension = path.resolve('dev');
 const context = await chromium.launchPersistentContext(path.join(directory, 'profile'), {
 	channel: 'chromium', headless: true, acceptDownloads: true,
 	args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
@@ -31,7 +32,8 @@ try {
 	const origin = `chrome-extension://${new URL(worker.url()).hostname}`;
 	await worker.evaluate(() => chrome.storage.local.set({ language: 'en' }));
 	const article = await context.newPage();
-	const downloads = await configureZipDownloads(context, article, directory);
+	await configurePaperFolder(context, origin);
+	await article.bringToFront();
 	await article.goto(cellPage);
 	await article.evaluate(() => {
 		document.querySelector('figure').id = 'Fig1';
@@ -78,7 +80,7 @@ try {
 		await save.page.screenshot({ path: path.join(directory, `review-${width}.png`) });
 	}
 	await reviewSaved(save);
-	const download = await readCompletedZip(worker, save, downloads);
+	const download = await readCompletedZip(worker, save);
 	assert.equal(download.fileName, '2026_Edited_synthetic_paper__10.1234_synthetic.zip');
 	const zip = unzipSync(download.bytes);
 	assert.equal(Object.keys(zip).length, 5);
@@ -127,7 +129,7 @@ try {
 		await popup.locator('#more-btn').click();
 		const saving = await openSavePage(context, () => popup.locator('#save-image-archive').click());
 		await reviewSaved(saving, fallback);
-		const completed = await readCompletedZip(worker, saving, downloads);
+		const completed = await readCompletedZip(worker, saving);
 		assert.notEqual(completed.fileName, download.fileName);
 		const archive = unzipSync(completed.bytes);
 		assert.match(strFromU8(archive[Object.keys(archive).find(name => name.endsWith('/paper.md'))]), /\[1b\]\(<images\/image-1\.png>\)/);
@@ -159,8 +161,8 @@ try {
 	await popup.close();
 	releaseImage();
 	await reviewSaved(independent);
-	await readCompletedZip(worker, independent, downloads);
-	assert.deepEqual(await readFile(path.join(downloads, download.fileName)), download.bytes);
+	await readCompletedZip(worker, independent);
+	assert.deepEqual(await readZipFile(worker, download.fileName), download.bytes);
 	await article.bringToFront();
 	const openingAgain = context.waitForEvent('page');
 	await worker.evaluate(url => chrome.tabs.create({ url, active: false }), `${origin}/popup.html`);
@@ -171,12 +173,12 @@ try {
 	await context.route('https://images.example.org/bad.png', route => route.fulfill({ status: 403, body: 'Not authorized' }));
 	const failedNote = '![x](https://images.example.org/bad.png)';
 	await popup.locator('#note-content-field').fill(failedNote);
-	const beforeFailure = await worker.evaluate(async () => (await chrome.downloads.search({})).length);
+	const beforeFailure = await countZipFiles(worker);
 	await popup.locator('#more-btn').click();
 	const failed = await openSavePage(context, () => popup.locator('#save-image-archive').click());
 	await failed.page.locator('#retry-save').waitFor({ state: 'visible' });
 	await popup.locator('#image-archive-status').filter({ hasText: 'No output folder or ZIP was created' }).waitFor();
-	assert.equal(await worker.evaluate(async () => (await chrome.downloads.search({})).length), beforeFailure);
+	assert.equal(await countZipFiles(worker), beforeFailure);
 	assert.equal(await popup.locator('#note-content-field').inputValue(), failedNote);
 	await failed.page.setViewportSize({ width: 390, height: 844 });
 	assert.equal(await failed.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
@@ -187,7 +189,7 @@ try {
 	await failed.page.locator('#retry-save').click();
 	// The reopened editor captured the caption whose paragraph structure was
 	// replaced above, outside this check's scope. Missing coverage is not a warning.
-	const retried = await readCompletedZip(worker, failed, downloads);
+	const retried = await readCompletedZip(worker, failed);
 	assert.equal(await worker.evaluate(async () => (await chrome.storage.session.get('paperSaveLastResult')).paperSaveLastResult.state), 'saved');
 	const retryZip = unzipSync(retried.bytes);
 	const retryImages = [];
@@ -195,13 +197,13 @@ try {
 		if (token.type === 'image') retryImages.push({ text: token.text, href: token.href });
 	});
 	assert.deepEqual(retryImages, [{ text: 'x', href: 'images/image-1.png' }]);
-	assert.equal(await worker.evaluate(async () => (await chrome.downloads.search({})).length), beforeFailure + 1);
+	assert.equal(await countZipFiles(worker), beforeFailure + 1);
 	// Reopening the editor restores terminal feedback without persisting a manuscript.
 	await article.bringToFront();
 	const reopening = context.waitForEvent('page');
 	await worker.evaluate(url => chrome.tabs.create({ url, active: false }), `${origin}/popup.html`);
 	const reopened = await reopening;
-	await reopened.locator('#image-archive-status').filter({ hasText: 'Last save result: ZIP saved:' }).waitFor();
+	await reopened.locator('#paper-save-methods').filter({ hasText: 'ZIP' }).waitFor();
 	await reopened.close();
 	// The real popup must associate its responsive image with the source figure
 	// ID and keep the comma outside italic labels before background ZIP export.
@@ -216,7 +218,7 @@ try {
 	await naturePopup.waitForFunction(() => document.querySelector('#note-content-field')?.value.includes('GAMMA'));
 	await naturePopup.locator('#more-btn').click();
 	const natureSave = await openSavePage(context, () => naturePopup.locator('#save-image-archive').click());
-	const natureDownload = await readCompletedZip(worker, natureSave, downloads);
+	const natureDownload = await readCompletedZip(worker, natureSave);
 	const natureZip = unzipSync(natureDownload.bytes);
 	const natureRoot = natureDownload.fileName.slice(0, -4);
 	const natureMd = strFromU8(natureZip[`${natureRoot}/paper.md`]);
@@ -252,6 +254,7 @@ try {
 		await natureOffline.goBack();
 	}
 	await natureOffline.close();
+	await checkPlosFigureSave(context, worker, origin, png);
 	await naturePopup.close();
 	assert.deepEqual(errors, []);
 	console.log(JSON.stringify({ passed: true, screenshots: directory, checks: ['real-menu-background-download', 'local-images', 'deduplication', 'editor-preserved', 'cell-high-resolution-128px', 'reported-original-fallback', 'popup-close-during-zip-save', 'no-activation-or-overwrite', 'failed-image-no-zip', 'safe-retry-after-popup-close', 'last-result-restored', 'mobile-layout', 'nature-caption-emphasis', 'responsive-and-extended-figure-local-navigation-offline'] }));

@@ -1,6 +1,6 @@
 {
 	"name": "paper-clipper-dev",
-	"version": "1.7.1",
+	"version": "1.7.2",
 	"private": true,
 	"description": "Unofficial, HTML-first academic paper archiver for Obsidian and AI agents. Based on Obsidian Web Clipper.",
 	"bin": {
@@ -22,6 +22,7 @@
 		"dev:firefox": "webpack --watch --env BROWSER=firefox --mode development",
 		"dev:safari": "webpack --watch --env BROWSER=safari --mode development",
 		"build:chrome": "webpack --env BROWSER=chrome --mode production",
+		"postbuild:chrome": "node scripts/check-chrome-release.mjs",
 		"build:firefox": "webpack --env BROWSER=firefox --mode production",
 		"build:safari": "webpack --env BROWSER=safari --mode production",
 		"build": "npm run build:chrome && npm run build:firefox && npm run build:safari",

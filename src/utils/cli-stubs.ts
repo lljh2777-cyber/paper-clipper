@@ -43,7 +43,8 @@ export const generalSettings: Settings = {
 	},
 	history: [],
 	ratings: [],
-	saveBehavior: 'addToObsidian',
+	useDefaultPaperDirectory: true,
+	saveBehavior: 'savePaperDirectory',
 };
 
 export const loadSettings = async () => {};

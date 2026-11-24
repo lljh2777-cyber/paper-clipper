@@ -4,9 +4,7 @@
 
 import { createEngine } from 'knap';
 import { clipperFilters, type ClipperTemplateContext } from './filters';
-import { processSimpleVariable } from './variables/simple';
-import { processSelector, resolveSelector } from './variables/selector';
-import { processSchema } from './variables/schema';
+import { resolveSelector } from './variables/selector';
 import { isLegacyPrompt } from './variables/prompt';
 import { isModelVariable } from './variables/model';
 import { resolveSchemaVariable } from './resolver';
@@ -107,7 +105,6 @@ export type SelectorProcessor = (match: string, currentUrl: string) => Promise<s
  * @param variables - Variables available in the template
  * @param currentUrl - Current page URL for filter processing
  * @param customAsyncResolver - Optional async resolver override (defaults to browser selector resolver)
- * @param customSelectorProcessor - Optional selector processor override for post-processing
  * @returns Compiled template string
  */
 export async function compileTemplate(
@@ -115,8 +112,7 @@ export async function compileTemplate(
 	text: string,
 	variables: { [key: string]: any },
 	currentUrl: string,
-	customAsyncResolver?: AsyncResolver,
-	customSelectorProcessor?: SelectorProcessor
+	customAsyncResolver?: AsyncResolver
 ): Promise<string> {
 	// Strip text fragment from URL
 	currentUrl = currentUrl.replace(/#:~:text=[^&]+(&|$)/, '');
@@ -164,49 +160,4 @@ export async function compileTemplate(
 	}
 
 	return result.output;
-}
-
-/**
- * Process variables and apply filters.
- * Handles special variable types: selector, schema, prompt.
- *
- * This is called after the AST-based renderer to handle any remaining
- * variable interpolations that need special processing.
- */
-export async function processVariables(
-	tabId: number,
-	text: string,
-	variables: { [key: string]: any },
-	currentUrl: string,
-	customSelectorProcessor?: SelectorProcessor
-): Promise<string> {
-	const regex = /{{([\s\S]*?)}}/g;
-	let result = text;
-	let match;
-
-	while ((match = regex.exec(result)) !== null) {
-		const fullMatch = match[0];
-		const trimmedMatch = match[1].trim();
-
-		let replacement: string;
-
-		if (trimmedMatch.startsWith('selector:') || trimmedMatch.startsWith('selectorHtml:')) {
-			if (customSelectorProcessor) {
-				replacement = await customSelectorProcessor(fullMatch, currentUrl);
-			} else {
-				replacement = await processSelector(tabId, fullMatch, currentUrl);
-			}
-		} else if (trimmedMatch.startsWith('schema:')) {
-			replacement = await processSchema(fullMatch, variables, currentUrl);
-		} else if (isLegacyPrompt(trimmedMatch) || isModelVariable(trimmedMatch)) {
-			replacement = '';
-		} else {
-			replacement = await processSimpleVariable(trimmedMatch, variables, currentUrl);
-		}
-
-		result = result.substring(0, match.index) + replacement + result.substring(match.index + fullMatch.length);
-		regex.lastIndex = match.index + replacement.length;
-	}
-
-	return result;
 }

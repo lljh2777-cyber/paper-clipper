@@ -1,4 +1,13 @@
 {
+	"paperCopyMarkdown": { "message": "Copy Markdown" },
+	"paperUseDefaultFolder": { "message": "Use default folder" },
+	"paperDestinationSettingFailed": { "message": "Could not save the folder preference." },
+	"paperMethodMarkdownSaved": { "message": "Markdown file" },
+	"paperSaveMethods": { "message": "Used for this paper: $1" },
+	"paperSaveDetails": { "message": "Save details" },
+	"paperMethodZip": { "message": "ZIP" },
+	"paperMethodMarkdown": { "message": "Markdown download requested" },
+	"paperMethodClipboard": { "message": "Copied to clipboard" },
 	"paperMathStopped": { "message": "$1 formula(s) could not be safely converted. Formula #$2 ($3): $4." },
 	"paperMathLazy": { "message": "Only a lazy placeholder remains; no MathML or TeX source is available" },
 	"paperMathXml": { "message": "The MathML source is invalid XML" },
@@ -63,15 +72,7 @@
 	"paperSaveImageError_download": { "message": "Image $1 could not be downloaded. No output folder or ZIP was created. Check the connection, then retry here. For expired or restricted image links, return to the article and capture it again." },
 	"paperSaveImageError_unsupported": { "message": "Not saved: unsupported image address, format, or HTML media. No output folder or ZIP was created. Review the image references in the editor." },
 	"paperSaveImageError_limit": { "message": "Not saved: image count or size limit exceeded. No output folder or ZIP was created. Review the images in the editor." },
-	"paperZipAuthorize": { "message": "Allow ZIP downloads" },
-	"paperZipNeedsPermission": { "message": "ZIP saving needs one-time browser download permission to confirm completion. Directory saving does not need this permission." },
-	"paperZipDownloading": { "message": "Saving ZIP; waiting for browser download completion." },
 	"paperZipSaved": { "message": "ZIP saved: $1" },
-	"paperZipReview": { "message": "The browser paused or flagged this download. Review it in the browser Downloads page. The ZIP is not confirmed saved yet." },
-	"paperZipError_permission": { "message": "Download permission was not granted. No ZIP download started. Use the authorization button to try again." },
-	"paperZipError_unavailable": { "message": "This browser does not support confirmed ZIP downloads. Use default-directory saving in a supported browser." },
-	"paperZipError_interrupted": { "message": "The browser interrupted or cancelled the ZIP download. Check browser Downloads and any incomplete file. Retry is offered only for recoverable interruptions; it creates a separate download and never overwrites an existing ZIP." },
-	"paperZipError_unknown": { "message": "ZIP completion could not be confirmed. Check browser Downloads before starting another save; a download or partial file may still exist. Automatic retry is disabled." },
 	"manualChecksAttention": { "message": "Content differences found; review checks.json. Full-text completeness is not assessed." },
 	"manualChecksScoped": { "message": "Scoped checks passed; see checks.json. Full-text completeness is not assessed." },
 	"manualChecksUnassessed": { "message": "Source preservation is not assessed; see checks.json." },
@@ -85,20 +86,23 @@
 	"paperDirectoryError_expired": { "message": "This save request was already opened or has expired. No save was replayed. Return to the editor to start again." },
 	"paperDirectoryError_unexpected": { "message": "An unexpected save error occurred. Check the destination before retrying; a partial folder may remain. Your editor contents were not changed." },
 	"paperDirectoryError_images": { "message": "Not saved: image preparation failed (image $1; 0 means validation). No output folder was created. Check image links, formats and size limits." },
-	"savePaperDirectory": { "message": "Save to default directory" },
+	"saveChosenDirectory": { "message": "Choose folder once…" },
+	"paperChooseOncePrompt": { "message": "Choose a folder for this save." },
+	"saveMarkdownWithImageLinks": { "message": "Markdown file (.md, image links)" },
+	"savePaperDirectory": { "message": "Save Markdown + images to a local folder" },
 	"paperDirectoryLabel": { "message": "Default paper directory" },
 	"choosePaperDirectory": { "message": "Choose or change directory" },
 	"forgetPaperDirectory": { "message": "Forget directory (keep files)" },
 	"paperDirectoryNotSet": { "message": "Not configured" },
 	"paperDirectorySaving": { "message": "Saving paper…" },
 	"paperDirectorySaved": { "message": "Saved: $1" },
-	"paperDirectoryError_unsupported": { "message": "Directory access is unavailable in this browser. ZIP export is still available." },
+	"paperDirectoryError_unsupported": { "message": "This browser does not support folder access. Use Copy Markdown." },
 	"paperDirectoryError_missing": { "message": "Choose a default paper directory in Settings first." },
 	"paperDirectoryError_permission": { "message": "Directory write permission is unavailable. Authorize access in the save page or select the directory again in Settings." },
 	"paperDirectoryError_exists": { "message": "Not saved: $1 already exists. Existing files were not changed." },
 	"paperDirectoryError_identity": { "message": "Not saved: the DOI values disagree. Check the paper and its metadata." },
 	"paperDirectoryError_write": { "message": "Save failed: $1 may contain incomplete files. No completion was recorded; existing papers were not replaced." },
-	"saveImageArchive": { "message": "Download Markdown + images ZIP" },
+	"saveImageArchive": { "message": "Paper archive (.zip, with images)" },
 	"imageArchiveProgress": { "message": "Downloading images: $1 / $2" },
 	"imageArchiveReady": { "message": "ZIP download requested ($1 images)." },
 	"imageArchiveError_download": { "message": "ZIP not created: image $1 could not be downloaded. It may require authentication, a redirect, or a fresh link. Your note is unchanged." },
@@ -220,7 +224,7 @@
 		"message": "Copy as JSON"
 	},
 	"copyToClipboard": {
-		"message": "Copy to clipboard"
+		"message": "Copy"
 	},
 	"createNewNote": {
 		"message": "Create new note"
@@ -387,6 +391,9 @@
 	},
 	"failedToSaveFile": {
 		"message": "Failed to save file"
+	},
+	"paperFeedbackBody": {
+		"message": "Public article URL or DOI:\n\nWhat went wrong?\n\nError message or screenshot (optional):\n"
 	},
 	"feedback": {
 		"message": "Feedback"

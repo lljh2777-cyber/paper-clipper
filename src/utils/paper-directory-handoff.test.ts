@@ -121,11 +121,12 @@ it.each(['saved-warning', 'skipped'] as const)('retains the %s terminal result o
 	const update = vi.fn();
 	const job = await openPaperDirectorySave(input, update);
 	const id = session[key].id;
-	await reportPaperDirectorySave(id, { state, message: 'Terminal details' });
+	await reportPaperDirectorySave(id, { state, message: 'Terminal details' }, input.source);
 	receive()(message(id, state), sender(id), vi.fn());
 	await job.finished;
 	expect(update).toHaveBeenLastCalledWith(message(id, state).status);
-	expect(await lastPaperSaveResult()).toBe('Terminal details');
+	expect(await lastPaperSaveResult(input.source)).toBe('Terminal details');
+	expect(await lastPaperSaveResult(input.source + '/different')).toBeUndefined();
 	expect(browser.tabs.onRemoved.removeListener).toHaveBeenCalledOnce();
 });
 
@@ -167,9 +168,9 @@ it('retains a specific failure when its save page closes, and clears that failur
 });
 it('keeps only the latest terminal message in session storage, even when the editor has closed', async () => {
 	vi.mocked(browser.runtime.sendMessage).mockRejectedValue(new Error('Editor closed'));
-	await reportPaperDirectorySave('first', { state: 'failed', message: 'Image failed; no files written.' });
+	await reportPaperDirectorySave('first', { state: 'failed', message: 'Image failed; no files written.' }, input.source);
 	await reportPaperDirectorySave('next', { state: 'saving', message: 'In progress' });
-	expect(await lastPaperSaveResult()).toBe('Image failed; no files written.');
+	expect(await lastPaperSaveResult(input.source)).toBe('Image failed; no files written.');
 	await reportPaperDirectorySave('next', { state: 'saved', message: 'Saved: paper.zip. Scoped checks only.' });
 	expect(session.paperSaveLastResult).toEqual({ id: 'next', state: 'saved', message: 'Saved: paper.zip. Scoped checks only.' });
 	expect(JSON.stringify(session)).not.toContain(input.markdown);

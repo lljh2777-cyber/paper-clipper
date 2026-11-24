@@ -137,6 +137,7 @@ async function initializeVersionDisplay(): Promise<void> {
 	const versionNumber = document.getElementById('version-number');
 	const updateAvailable = document.getElementById('update-available');
 	const usingLatestVersion = document.getElementById('using-latest-version');
+	if (usingLatestVersion) usingLatestVersion.hidden = process.env.NODE_ENV !== 'development';
 
 	if (versionNumber) {
 		versionNumber.textContent = manifest.version;
@@ -173,8 +174,6 @@ export function initializeGeneralSettings(): void {
 		updateVaultList();
 		initializeShowMoreActionsToggle();
 		initializeBetaFeaturesToggle();
-		initializeLegacyModeToggle();
-		initializeSilentOpenToggle();
 		initializeVaultInput();
 		initializeOpenBehaviorDropdown();
 		initializeKeyboardShortcuts();
@@ -232,8 +231,6 @@ function saveSettingsFromForm(): void {
 	const openBehaviorDropdown = document.getElementById('open-behavior-dropdown') as HTMLSelectElement;
 	const showMoreActionsToggle = document.getElementById('show-more-actions-toggle') as HTMLInputElement;
 	const betaFeaturesToggle = document.getElementById('beta-features-toggle') as HTMLInputElement;
-	const legacyModeToggle = document.getElementById('legacy-mode-toggle') as HTMLInputElement;
-	const silentOpenToggle = document.getElementById('silent-open-toggle') as HTMLInputElement;
 	const highlighterToggle = document.getElementById('highlighter-toggle') as HTMLInputElement;
 	const alwaysShowHighlightsToggle = document.getElementById('highlighter-visibility') as HTMLInputElement;
 	const highlightBehaviorSelect = document.getElementById('highlighter-behavior') as HTMLSelectElement;
@@ -243,8 +240,6 @@ function saveSettingsFromForm(): void {
 		openBehavior: (openBehaviorDropdown?.value as Settings['openBehavior']) ?? generalSettings.openBehavior,
 		showMoreActionsButton: showMoreActionsToggle?.checked ?? generalSettings.showMoreActionsButton,
 		betaFeatures: betaFeaturesToggle?.checked ?? generalSettings.betaFeatures,
-		legacyMode: legacyModeToggle?.checked ?? generalSettings.legacyMode,
-		silentOpen: silentOpenToggle?.checked ?? generalSettings.silentOpen,
 		highlighterEnabled: highlighterToggle?.checked ?? generalSettings.highlighterEnabled,
 		alwaysShowHighlights: alwaysShowHighlightsToggle?.checked ?? generalSettings.alwaysShowHighlights,
 		highlightBehavior: highlightBehaviorSelect?.value ?? generalSettings.highlightBehavior
@@ -310,18 +305,6 @@ async function initializeKeyboardShortcuts(): Promise<void> {
 function initializeBetaFeaturesToggle(): void {
 	initializeSettingToggle('beta-features-toggle', generalSettings.betaFeatures, (checked) => {
 		saveSettings({ ...generalSettings, betaFeatures: checked });
-	});
-}
-
-function initializeLegacyModeToggle(): void {
-	initializeSettingToggle('legacy-mode-toggle', generalSettings.legacyMode, (checked) => {
-		saveSettings({ ...generalSettings, legacyMode: checked });
-	});
-}
-
-function initializeSilentOpenToggle(): void {
-	initializeSettingToggle('silent-open-toggle', generalSettings.silentOpen, (checked) => {
-		saveSettings({ ...generalSettings, silentOpen: checked });
 	});
 }
 

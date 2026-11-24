@@ -20,7 +20,9 @@ excludes trademarks, icons, marketing copy and other marketing assets from its
 MIT grant. The browser extension UI now uses Paper Clipper names and document
 icons instead of upstream logos and official-product descriptions. Its project,
 help and feedback links identify this repository; upstream attribution remains.
-The document icon is rendered from Lucide FileText (see below), not Obsidian art.
+The in-extension document icon is rendered from Lucide FileText (see below).
+The Chrome Web Store icon at `assets/chrome/icon128-chrome-store.png` was
+created for Paper Clipper and is included in the Chromium package as `icons/icon128.png`.
 
 Historical marketing files under `assets/` and the native `xcode/` wrapper are
 retained for provenance and are not part of the Chromium webpack package. Their

@@ -102,6 +102,11 @@ describe('buildVariables', () => {
 		expect(vars['{{published}}']).toBe('2024-01-15');
 	});
 
+	test('preserves the year after the comma in an English publication date', () => {
+		const vars = buildVariables(makeParams({ published: 'October 24, 2013' }));
+		expect(vars['{{published}}']).toBe('October 24, 2013');
+	});
+
 	test('defaults optional fields to empty strings', () => {
 		const vars = buildVariables(makeParams());
 		expect(vars['{{selection}}']).toBe('');

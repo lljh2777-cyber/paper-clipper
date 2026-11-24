@@ -7,7 +7,12 @@
 		<script src="browser-polyfill.min.js"></script>
 	</head>
 	<body id="popup-container">
-		<div class="paper-brand"><img src="icons/paper-clipper.svg" width="20" height="20" alt=""><span>Paper Clipper</span></div>
+		<div class="paper-brand">
+			<img src="icons/paper-clipper.svg" width="20" height="20" alt=""><span>Paper Clipper</span>
+			<a class="paper-feedback" target="_blank" rel="noopener noreferrer">
+				<i data-lucide="message-circle" aria-hidden="true"></i><span data-i18n="feedback">Feedback</span>
+			</a>
+		</div>
 		<div id="popup-header">
 			<div id="template-container">
 				<select id="template-select">
@@ -55,12 +60,9 @@
 				<textarea id="note-content-field" rows="4" data-i18n="notesAboutPage"></textarea>
 			</div>
 			<div class="clipper-footer">
-				<div class="vault-path-container">
-					<div id="vault-container" style="display: none;">
-						<select id="vault-select"></select>
-					</div>
-					<input id="path-name-field" type="text" data-i18n="folder"/>
-				</div>
+				<label class="paper-destination"><span data-i18n="paperUseDefaultFolder">Use default folder</span>
+					<span class="checkbox-container mod-small"><input type="checkbox" role="switch" id="use-default-paper-directory" checked></span>
+				</label>
 				<div class="action-buttons" id="action-buttons">
 					<button id="clip-btn" class="mod-cta"><!-- Text set by determineMainAction --></button>
 					<div class="menu-btn">
@@ -75,6 +77,11 @@
 						<a class="share-content clickable-icon" data-i18n-title="share"><i data-lucide="share"></i></a>
 					</div>
 				</div>
+				<div id="paper-save-methods" role="status"></div>
+				<details id="paper-save-details" hidden>
+					<summary data-i18n="paperSaveDetails"></summary>
+					<div id="image-archive-status" role="status"></div>
+				</details>
 			</div>
 		</div>
 		<script type="module" src="popup.js"></script>

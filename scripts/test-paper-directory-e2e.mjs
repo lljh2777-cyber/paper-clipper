@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { unzipSync, strFromU8 } from 'fflate';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -9,7 +10,7 @@ import { openSavePage } from './fixtures/manual-save.mjs';
 // Browser plugin not available. Use isolated Chromium; never authorize a personal directory.
 // A synthetic picker returns a real OPFS handle. Native OS picker consent still needs manual QA.
 const directory = await mkdtemp(path.join(tmpdir(), 'paper-directory-qa-'));
-const extension = fileURLToPath(new URL('../dev', import.meta.url));
+const extension = process.argv[2] ? path.resolve(process.argv[2]) : fileURLToPath(new URL('../dev', import.meta.url));
 const context = await chromium.launchPersistentContext(path.join(directory, 'profile'), {
 	channel: 'chromium', headless: true,
 	args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
@@ -45,8 +46,6 @@ try {
 	});
 	await settings.locator('#choose-paper-directory').click();
 	await settings.locator('#paper-directory-name').filter({ hasText: 'Literature_translation' }).waitFor();
-	await settings.locator('#save-behavior-dropdown').selectOption('savePaperDirectory');
-	await settings.waitForFunction(async () => (await chrome.storage.sync.get('general_settings')).general_settings?.saveBehavior === 'savePaperDirectory');
 	await settings.reload();
 	await settings.locator('#paper-directory-name').filter({ hasText: 'Literature_translation' }).waitFor();
 	assert.equal(await settings.locator('#save-behavior-dropdown').inputValue(), 'savePaperDirectory');
@@ -64,10 +63,11 @@ try {
 	let popup = await next;
 	popup.on('pageerror', error => errors.push(error.message));
 	await popup.waitForFunction(() => document.querySelector('#note-content-field')?.value.includes('Synthetic paper body.'));
+	assert.equal(await popup.locator('#paper-save-methods').isVisible(), false);
 	const markdown = `# English source\n\n![Figure](${smallImage})\n\nCaption.`;
 	await popup.locator('#note-name-field').fill('Synthetic paper');
 	await popup.locator('#note-content-field').fill(markdown);
-	assert.equal(await popup.locator('#clip-btn').innerText(), '保存到默认目录');
+	assert.equal(await popup.locator('#clip-btn').innerText(), '保存正文（.md）和图片到本地文件夹');
 	let releasePopupImage;
 	imageGate = new Promise(resolve => { releasePopupImage = resolve; });
 	const popupSave = await openSavePage(context, () => popup.locator('#clip-btn').click());
@@ -82,7 +82,8 @@ try {
 	await worker.evaluate(url => chrome.tabs.create({ url, active: false }), `${origin}/popup.html`);
 	popup = await reopening;
 	popup.on('pageerror', error => errors.push(error.message));
-	await popup.locator('#image-archive-status').filter({ hasText: '上次保存结果：已保存：Literature_translation/2025_Synthetic_paper__10.1234_example' }).waitFor();
+	await popup.locator('#paper-save-methods').filter({ hasText: '本篇已用方式：保存正文（.md）和图片到本地文件夹' }).waitFor();
+	assert.equal(await popup.locator('#paper-save-details').evaluate(el => el.open), false);
 	await popup.waitForFunction(() => document.querySelector('#note-content-field')?.value.includes('Synthetic paper body.'));
 	await popup.locator('#note-name-field').fill('Synthetic paper');
 	await popup.locator('#note-content-field').fill(markdown);
@@ -113,6 +114,81 @@ try {
 	assert.equal(bundle.metadata.doi, '10.1234/example');
 	assert.deepEqual(bundle.dimensions, [128, 128]);
 	assert.equal(bundle.imageReport.items[0].selection, 'preferred');
+	await popup.locator('#more-btn').click();
+	assert.equal(await popup.locator('#more-dropdown [data-i18n="addToObsidian"]').count(), 0);
+	const fileAction = popup.locator('#more-dropdown [data-i18n="saveMarkdownWithImageLinks"]');
+	assert.match(await fileAction.innerText(), /图片.*链接/);
+	const single = await openSavePage(context, () => fileAction.click());
+	await single.closed;
+	const singleMarkdown = await settings.evaluate(async () => {
+		const folder = await (await navigator.storage.getDirectory()).getDirectoryHandle('Literature_translation');
+		return (await (await folder.getFileHandle('Synthetic paper.md')).getFile()).text();
+	});
+	assert.ok(singleMarkdown.includes(markdown));
+	await popup.locator('#use-default-paper-directory').uncheck();
+	const once = await openSavePage(context, () => popup.locator('#clip-btn').click());
+	await once.page.locator('#authorize-save').waitFor();
+	await once.page.evaluate(() => {
+		window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle('This paper only', { create: true });
+	});
+	await once.page.locator('#authorize-save').click();
+	await once.closed;
+	for (const action of ['saveMarkdownWithImageLinks', 'saveImageArchive']) {
+		await popup.locator('#more-btn').click();
+		const job = await openSavePage(context, () => popup.locator('[data-i18n="' + action + '"]').click());
+		await job.page.locator('#authorize-save').waitFor();
+		await job.page.evaluate(() => {
+			window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle('This paper only');
+		});
+		await job.page.locator('#authorize-save').click();
+		await job.closed;
+	}
+	const chosen = await settings.evaluate(async () => {
+		const root = await (await navigator.storage.getDirectory()).getDirectoryHandle('This paper only');
+		const md = await (await root.getFileHandle('Synthetic paper.md')).getFile();
+		const zip = await (await root.getFileHandle('2025_Synthetic_paper__10.1234_example.zip')).getFile();
+		return { md: await md.text(), zip: [...new Uint8Array(await zip.arrayBuffer())] };
+	});
+	assert.equal(chosen.md, singleMarkdown);
+	const zipped = unzipSync(Uint8Array.from(chosen.zip));
+	assert.equal(strFromU8(zipped['2025_Synthetic_paper__10.1234_example/paper.md']), bundle.original);
+	assert.equal(await popup.locator('#more-dropdown .menu-item').count(), 3);
+
+	await popup.locator('#paper-save-methods').filter({ hasText: '保存正文（.md）和图片到本地文件夹 · Markdown' }).waitFor();
+	await popup.setViewportSize({ width: 350, height: 540 });
+	const bodyBox = await popup.locator('#note-content-field').boundingBox();
+	const buttonBox = await popup.locator('#clip-btn').boundingBox();
+	const methodsBox = await popup.locator('#paper-save-methods').boundingBox();
+	assert.ok(bodyBox.height >= 60 && bodyBox.y + bodyBox.height <= buttonBox.y);
+	assert.ok(methodsBox.y >= buttonBox.y + buttonBox.height && methodsBox.y + methodsBox.height <= 540);
+	assert.equal(await popup.locator('#note-content-field').inputValue(), markdown);
+	const otherPaper = await context.newPage();
+	await otherPaper.goto('https://paper.example.org/another-article');
+	const otherOpening = context.waitForEvent('page');
+	await worker.evaluate(url => chrome.tabs.create({ url, active: false }), `${origin}/popup.html`);
+	const otherEditor = await otherOpening;
+	await otherEditor.waitForFunction(() => document.querySelector('#note-content-field')?.value.includes('Synthetic paper body.'));
+	assert.equal(await otherEditor.locator('#paper-save-methods').isVisible(), false);
+	assert.equal(await otherEditor.locator('#paper-save-details').isVisible(), false);
+	assert.equal(await otherEditor.locator('#use-default-paper-directory').isChecked(), false);
+	await otherEditor.close();
+	await otherPaper.close();
+	const chosenFiles = await settings.evaluate(async () => {
+		const chosenRoot = await (await navigator.storage.getDirectory()).getDirectoryHandle('This paper only');
+		const paper = await chosenRoot.getDirectoryHandle('2025_Synthetic_paper__10.1234_example');
+		const names = [];
+		for await (const name of paper.keys()) names.push(name);
+		const md = await (await (await paper.getFileHandle('paper.md')).getFile()).text();
+		const image = await (await (await paper.getDirectoryHandle('images')).getFileHandle('image-1.png')).getFile();
+		return { names, md, imageSize: image.size };
+	});
+	assert.deepEqual(chosenFiles.names.sort(), bundle.entries.sort());
+	assert.equal(chosenFiles.md, bundle.original);
+	assert.ok(chosenFiles.imageSize > 0);
+	await settings.reload();
+	await settings.locator('#paper-directory-name').filter({ hasText: 'Literature_translation' }).waitFor();
+	await article.bringToFront();
+	await popup.locator('#use-default-paper-directory').check();
 	await popup.locator('#note-name-field').fill('Renamed paper');
 	const collision = await openSavePage(context, () => popup.locator('#clip-btn').click());
 	await popup.locator('#image-archive-status').filter({ hasText: '已存在' }).waitFor();
@@ -132,7 +208,7 @@ try {
 	await version.closed;
 	const versions = await settings.evaluate(async () => {
 		const root = await (await navigator.storage.getDirectory()).getDirectoryHandle('Literature_translation');
-		const folders = []; for await (const [name] of root.entries()) folders.push(name);
+		const folders = []; for await (const [name, handle] of root.entries()) if (handle.kind === 'directory') folders.push(name);
 		const original = await root.getDirectoryHandle('2025_Synthetic_paper__10.1234_example');
 		return { folders, original: await (await (await original.getFileHandle('paper.md')).getFile()).text(),
 			translation: await (await (await original.getFileHandle('paper.zh-CN.md')).getFile()).text(),
@@ -206,10 +282,10 @@ try {
 			page.on('pageerror', error => errors.push(error.message));
 			return { page, closed: new Promise(resolve => page.once('close', resolve)) };
 		});
-		await embedded.locator('#clip-btn').click();
+		await embedded.locator('#clip-btn').filter({ hasText: '保存正文（.md）和图片到本地文件夹' }).click();
 		const save = await next.catch(async error => {
 			await article.screenshot({ path: path.join(directory, 'embedded-failure.png') });
-			throw new Error(`Save tab did not open: ${await embedded.locator('#image-archive-status').textContent()}`, { cause: error });
+			throw new Error(`Save tab did not open (button: ${await embedded.locator('#clip-btn').innerText()}, errors: ${errors.join(', ')}): ${await embedded.locator('#image-archive-status').textContent()}`, { cause: error });
 		});
 		await save.page.waitForURL(`${origin}/paper-save.html#*`);
 		assert.equal(await frame.evaluate(() => window.permissionCalls), 0);
@@ -239,7 +315,7 @@ try {
 	await worker.evaluate(() => { self.saveActivations = []; });
 	imageGate = undefined; releaseImage();
 	await save.closed;
-	await embedded.locator('#image-archive-status').filter({ hasText: '已保存：Embedded_papers/2025_Embedded_edited_title__10.1234_example' }).waitFor();
+	await embedded.locator('#image-archive-status').filter({ hasText: '已保存：Embedded_papers/2025_Embedded_edited_title__10.1234_example' }).waitFor({ state: 'attached' });
 	assert.match(await embedded.locator('#image-archive-status').textContent(), /checks.json/);
 	assert.equal(await activeId(), settingsId);
 	assert.deepEqual(await worker.evaluate(() => self.saveActivations), []);
@@ -283,7 +359,7 @@ try {
 	assert.equal(await save.page.locator('#authorize-save').isVisible(), true);
 	await save.page.locator('#authorize-save').click();
 	await save.closed;
-	await embedded.locator('#image-archive-status').filter({ hasText: '已保存：' }).waitFor();
+	await embedded.locator('#image-archive-status').filter({ hasText: '已保存：' }).waitFor({ state: 'attached' });
 	assert.deepEqual(await settings.evaluate(() => JSON.parse(localStorage.getItem('qa-permission-clicks'))), [true, true]);
 	assert.equal((await readEmbedded('Permission_test', 'Permission_papers')).metadata.archiveStatus, 'complete');
 	save = await openSave('Cancelled permission test');
@@ -308,5 +384,5 @@ try {
 		return (await (await folder.getFileHandle('paper.zh-CN.md')).getFile()).text();
 	}), '人工译文');
 	assert.deepEqual(errors, []);
-	console.log(JSON.stringify({ passed: true, screenshots: directory, checks: ['settings-picker-adapter', 'handle-persistence-after-reload', 'default-action', 'popup-close-during-background-save', 'last-result-restored', 'real-files-and-image', 'collision-protection', 'forget-keeps-files', 'missing-directory', 'responsive-settings', 'cross-origin-embedded-handoff', 'background-save-without-focus-change', 'success-closes-and-reports-checks-to-editor', 'failure-and-permission-activate-save-page', 'failure-preserved-after-close', 'edited-snapshot-preserved', 'no-iframe-permission-call', 'no-reload-replay', 'simulated-permission-denial-and-user-gesture', 'cancel-before-writes', 'responsive-save-page'] }));
+	console.log(JSON.stringify({ passed: true, screenshots: directory, checks: ['settings-picker-adapter', 'handle-persistence-after-reload', 'default-action', 'one-time-complete-folder', 'default-folder-retained', 'markdown-retains-image-links', 'popup-close-during-background-save', 'last-result-restored', 'real-files-and-image', 'collision-protection', 'forget-keeps-files', 'missing-directory', 'responsive-settings', 'cross-origin-embedded-handoff', 'background-save-without-focus-change', 'success-closes-and-reports-checks-to-editor', 'failure-and-permission-activate-save-page', 'failure-preserved-after-close', 'edited-snapshot-preserved', 'no-iframe-permission-call', 'no-reload-replay', 'simulated-permission-denial-and-user-gesture', 'cancel-before-writes', 'responsive-save-page'] }));
 } finally { await context.close(); }

@@ -102,7 +102,8 @@
 	flex-direction: column;
 	height: 100%;
 	max-height: 100%;
-	overflow: hidden;
+	min-height: 0;
+	overflow-y: auto;
 
 	#note-name-field {
 		border: none;
@@ -125,6 +126,7 @@
 	}
 
 	#note-content-container {
+		min-height: 60px;
 		border-top: 1px solid var(--divider-color);
 		display: flex;
 		flex-grow: 1;
@@ -142,6 +144,7 @@
 	}
 
 	.clipper-footer {
+		flex-shrink: 0;
 		width: 100%;
 		display: flex;
 		flex-direction: column;
@@ -154,19 +157,31 @@
 			font-size: var(--clipper-button-font-size);
 		}
 	}
-	.vault-path-container {
+	.paper-destination {
 		display: flex;
-		flex-direction: row;
-		gap: 0.625rem;
-		#vault-container {
-			flex-grow: 1;
-		}
-		#vault-select {
-			font-weight: var(--clipper-select-font-weight);
-			min-width: 100px;
-			cursor: default;
-		}
+		align-items: center;
+		justify-content: space-between;
+		font-size: var(--font-ui-small);
+		cursor: pointer;
+		.checkbox-container input { display: block; cursor: pointer; }
+		.checkbox-container:has(:checked) { background-color: var(--interactive-accent); }
+		.checkbox-container:has(:checked)::after { transform: translateX(calc(var(--toggle-width) - var(--toggle-thumb-width) - var(--toggle-border-width))); }
 	}
+
+}
+
+#paper-save-methods, #paper-save-details {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.4;
+	overflow-wrap: anywhere;
+}
+#paper-save-methods:empty { display: none; }
+#paper-save-details summary { cursor: pointer; }
+#image-archive-status {
+	max-height: 3.5em;
+	overflow-y: auto;
+	white-space: pre-line;
 }
 
 #html-export-status {
@@ -398,4 +413,19 @@
 	font-size: var(--font-ui-small);
 	font-weight: 600;
 	img { flex-shrink: 0; }
+	.paper-feedback {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		margin-inline-start: auto;
+		padding: 3px 6px;
+		color: var(--text-muted);
+		font-weight: normal;
+		text-decoration: none;
+		svg { width: 16px; height: 16px; }
+		&:hover, &:focus-visible {
+			color: var(--text-normal);
+			text-decoration: underline;
+		}
+	}
 }

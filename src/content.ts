@@ -10,7 +10,6 @@ import { assertMathPreserved, retainMathForSnapshot } from './utils/paper-math.m
 import { createMarkdownContent } from 'defuddle/full';
 import { flattenShadowDom } from './utils/flatten-shadow-dom';
 import { serializeChildren } from './utils/dom-utils';
-import { saveFile } from './utils/file-utils';
 import { debugLog } from './utils/debug';
 import { updateSidebarWidth, addResizeHandle, cleanupResizeHandlers } from './utils/iframe-resize';
 import { parseForClip } from './utils/clip-utils';
@@ -189,13 +188,7 @@ declare global {
 					const defuddled = parseForClip(await captureDocumentWithMath(document));
 					const markdown = createMarkdownContent(defuddled.content, document.URL);
 					const title = defuddled.title || document.title || 'Untitled';
-					const fileName = title.replace(/[/\\?%*:|"<>]/g, '-');
-					await saveFile({
-						content: markdown,
-						fileName,
-						mimeType: 'text/markdown',
-					});
-					sendResponse({ success: true });
+					sendResponse({ success: true, title, markdown, source: document.URL });
 				} catch (err) {
 					console.error('Failed to save markdown file:', err);
 					sendResponse({ success: false, error: (err as Error).message });
