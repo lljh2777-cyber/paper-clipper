@@ -2,7 +2,7 @@
 
 Reload the extension and refresh the article. In the editor footer, expand
 **Supplementary files (ZIP / directory)** and check the files to include before
-choosing **Download Markdown + images ZIP** or **Save to default directory**.
+choosing **Paper archive (.zip, with images)** or **Save Markdown + images to a local folder**.
 Everything starts unchecked. Changing the captured page/template resets the
 selection. No attachment requests occur while listing or selecting files.
 
@@ -56,7 +56,7 @@ an existing translated folder.
 - PDF and ZIP/Office contents are not parsed, executed, unpacked or virus-scanned.
   `contentSafety: not-assessed` is intentional. Download only trusted material;
   a valid file signature is not proof that opening it is safe.
-- No change to plain Markdown downloads, Add to Obsidian, CLI/queue acquisition,
+- No change to plain Markdown downloads, CLI/queue acquisition,
   existing archives, browser login state or content-quality thresholds.
 
 ## Verification

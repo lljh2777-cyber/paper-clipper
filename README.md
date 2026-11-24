@@ -6,21 +6,21 @@ Resolve a title, DOI or URL, obtain accessible publisher HTML, convert it to
 Markdown, check supported content structures, and optionally archive local images
 and a DOI-deduplicated note into a chosen Vault. Existing notes are not overwritten.
 
-[Install Paper Clipper in Chrome](#install-paper-clipper-in-chrome) · [Report a Paper Clipper issue](https://github.com/lljh2777-cyber/paper-clipper/issues)
+[Install Paper Clipper from the Chrome Web Store](https://chromewebstore.google.com/detail/paper-clipper/alghjloeaggjifbfmhgpccclibeeciph) · [Report a Paper Clipper issue](https://github.com/lljh2777-cyber/paper-clipper/issues)
+
+For the Chrome extension, see the [Privacy Policy](PRIVACY.md) for what it reads,
+where data goes and how to remove it. The [Chrome permissions guide](docs/chrome-permissions.md)
+explains each permission and when it is used.
 
 Start with [Paper Agent](docs/paper-agent.md) for the command-line interface,
 local Codex Skill, installation instructions, limitations and validation results.
 
-For manual clipping without a local service, use the extension's save menu:
-**Download Markdown + images ZIP**. Extract the enclosing folder into your Vault
-to keep supported Markdown images beside the note. See
-[manual image archives](docs/manual-image-archive.md) for limits and failure handling.
-The existing Add to Obsidian and plain Markdown actions do not download images.
-
-For direct translation-ready folders, choose a [default paper directory](docs/default-paper-directory.md)
-in extension Settings, then use **Save to default directory**. This creates
-`paper.md`, `images/`, `checks.json` and `translation.json` without ZIP extraction and refuses
-existing same-name destinations. Directory authorization is local to the browser.
+**Save Markdown + images to a local folder** writes the paper as a `.md` file,
+saves its images alongside it, and includes the archive reports. The other formats are a ZIP containing the same
+structure, a single Markdown file with image links, and Markdown copied to the
+clipboard. **Use default folder** applies to all three file formats. Turn it off
+to choose the destination for each save. See [directory saves](docs/default-paper-directory.md)
+and [ZIP archives](docs/manual-image-archive.md).
 
 The primary interactive route is now the [usual-browser queue](docs/browser-queue.md):
 pair the modified extension once, keep the browser open (the queue page may close), then run
@@ -81,7 +81,13 @@ inputs are absent. See [Real-paper acceptance](docs/paper-acceptance.md).
 
 ## Install Paper Clipper in Chrome
 
-From the root of this repository, build the Chrome extension:
+Open [Paper Clipper in the Chrome Web Store](https://chromewebstore.google.com/detail/paper-clipper/alghjloeaggjifbfmhgpccclibeeciph), select **Add to Chrome**, and confirm the installation.
+
+Open a research article you have access to and choose **Paper Clipper** from Chrome’s Extensions menu. Review the captured text, then select **Save Markdown + images to a local folder** to read the article and its figures offline.
+
+### Build from source for development
+
+To test changes locally, run these commands from the repository root.
 
 ```sh
 npm ci
@@ -89,7 +95,7 @@ npm run build:chrome
 ```
 
 Open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**,
-and select the generated `dist/` folder. Chrome will list the extension as **Paper Clipper**.
+and select the generated `dist/` folder. This loads the version from your checkout.
 
 ## Feedback and contributions
 

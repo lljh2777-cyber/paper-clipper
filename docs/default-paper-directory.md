@@ -7,19 +7,17 @@ remain protected; attachment failure prevents creating a new output directory.
 Use [Archives](paper-library.md) from the extension or Settings to search the
 authorized root's recorded papers without opening or changing notes/translations.
 
-In the updated extension, open Settings > General > Behavior. Use the folder
-icon beside **Default paper directory** to choose a local directory such as
-`E:\Literature_translation` and grant access. Optionally set **Save behavior**
-to **Save to default directory** to make this the main button. Otherwise the
-same command is available in the save menu. ZIP is a separate output format on
-the same background-save path. Plain Markdown and Add to Obsidian are unchanged.
+**Save Markdown + images to a local folder** is the initial format. With **Use default folder**
+on, configure the parent folder on first save or in Settings. Turn the switch
+off to select a parent folder for each file save. The same switch applies to
+ZIP and single Markdown files. Copy Markdown goes directly to the clipboard.
 
-The selected directory is an extension-local File System Access handle stored
+The default directory is an extension-local File System Access handle stored
 in IndexedDB, not a typed absolute path and not a synced setting. The browser
 may ask for permission again after a restart, revocation or browser policy
 change. Re-selecting the folder restores access. Forgetting the directory only
 clears this preference and never deletes files. Browsers without a directory
-picker can continue to use ZIP export. This does not change the browser's global
+picker can use Copy Markdown. This does not change the browser's global
 Downloads location. Only the directory name can be displayed, not its full path.
 
 ### Background Saving
@@ -56,8 +54,9 @@ editor, whose contents remain unchanged. Closing it mid-write can leave partial
 output, under the same protection rules below. If it closes without a completion
 message, the editor reports an unconfirmed result, never a false success. A
 specific known failure remains visible even after the failed save page closes.
-Reopening the editor shows the last terminal result in this browser session,
-labelled **Last save result**, not as a result for the current article.
+Below the save button, the editor lists the methods used for the current article URL
+in local clip history. File saves are recorded when the extension finishes writing the output. The latest save details in this browser
+session can be expanded when they belong to the current article.
 
 Image download failures offer **Retry save** in the save page. This uses the
 same edited snapshot and runs only on an explicit click; no output directory
@@ -136,8 +135,7 @@ performed and no existing paper is rewritten to add a report.
   recoverable partial directory, marked `failed` when metadata can still be
   written. The error names the directory; no success is reported.
 - Directory permission only covers the selected folder. No local server,
-  browser Cookie reading, or personal-Vault migration is added. ZIP separately
-  requests optional browser download permission to confirm completion.
+  browser Cookie reading, or personal-Vault migration is added.
 
 ## Verification
 
@@ -152,7 +150,7 @@ bytes, metadata, collision refusal, forgetting without deletion, and desktop/
 narrow settings layout. It never grants access to personal folders. The native
 OS picker, real external-folder grants and permission persistence after browser
 restart require manual acceptance. Firefox/Safari direct-folder writes are not
-validated; neither are Firefox/Safari confirmed ZIP downloads.
+validated.
 
 The embedded regression uses a real cross-origin extension iframe, and forbids
 filesystem permission calls from that frame. It covers edited snapshot handoff,

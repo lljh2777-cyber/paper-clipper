@@ -20,7 +20,7 @@ need to be deleted to build or test this feature.
 
 1. In the browser where the paper is already accessible, open `chrome://extensions`.
 2. Enable Developer mode and choose **Load unpacked**.
-3. Select `E:\Paper_Clipper\obsidian-clipper\dist` (not the repository root).
+3. Select the `dist` folder inside the repository.
 4. If that directory is already loaded, use its Reload button instead.
 5. Refresh the paper and open the locally loaded Clipper.
 
@@ -70,7 +70,7 @@ $capture = Get-Content -Raw -Encoding UTF8 -LiteralPath "$html.json" | ConvertFr
 npm run clip:paper -- $capture.url --html $html -o output/browser-fetch/papers/novae-from-extension.md
 ```
 
-Run from `E:\Paper_Clipper\obsidian-clipper`. `npm run build:cli` builds the converter
+Run from the repository root. `npm run build:cli` builds the converter
 if it is not already available. An existing output is protected; use `--overwrite`
 only when intentionally replacing it. Failed checks do not replace a previous
 accepted Markdown file.

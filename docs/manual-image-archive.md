@@ -1,42 +1,24 @@
 # Manual Markdown And Image ZIP
 
 To save the same local images directly into a translation-ready directory,
-configure [Default Paper Directory](default-paper-directory.md). ZIP remains
-an independent option without directory authorization.
+configure [Default Paper Directory](default-paper-directory.md). The ZIP uses the same destination switch as the unpacked folder.
 
 Explicitly selected [supplementary files](paper-attachments.md) can now accompany
 either output in `supplements/`, with a separate receipt. They are unchecked by
-default; plain Markdown and Add to Obsidian are unchanged.
+default.
 
 Reload the updated extension, open a paper, and open Paper Clipper. Review or
-edit the note, then use the arrow next to **Add to Obsidian** and choose
-**Download Markdown + images ZIP**. The editor hands its current snapshot to a
+edit the note, then use the arrow next to the main save button and choose
+**Paper archive (.zip, with images)**. The editor hands its current snapshot to a
 background save tab. You can close the popup/sidebar after handoff; keep the
 browser and save tab open until it finishes. No local service, pairing key or
 Vault permission is needed.
 
-The first ZIP save asks for optional browser **downloads** permission in the
-save page. Click **Allow ZIP downloads** to grant it. Subsequent saves run in the
-background without activating that page, and auto-close after the browser
-reports the ZIP download complete when there are no review warnings. This permission is not required for direct
-directory saving and does not grant access to a Vault or browser Cookies.
-The extension monitors only the download ID it created, never scans download
-history, and uses `uniquify` to avoid replacing an existing ZIP.
-
-Failures and missing permission activate the save page. An image download
-failure offers explicit retry of the same snapshot before any ZIP is published.
-A recoverable browser interruption offers a new download of the already prepared
-ZIP, without repeating image downloads. Security blocks and uncertain completion
-do not offer blind retries. Check the browser Downloads page for any interrupted
-file, pause or security warning; the extension never accepts a dangerous download
-on your behalf. After ten minutes without a confirmed terminal result, it reports
-an unknown outcome, not success. Closing a failed save page preserves its specific
-error; reopening the editor shows the last terminal result in the browser session.
-
-Automated Chromium tests use an isolated extension copy with this optional grant
-pre-authorized and actual browser downloads. Native permission prompts, real
-download security dialogs, Firefox and Safari need manual acceptance. Unit tests
-cover denial, interrupted/unknown results, completion races and safe retry.
+Turn **Use default folder** on to use the configured paper folder, or off to
+choose a folder for this save. Paper Clipper writes the ZIP after preparing its
+contents. If a filename is taken, it adds a numbered suffix. A successful save
+is recorded after the file closes. The save tab displays any permission request,
+failure or content review warning. Image download failures can be retried there.
 
 ZIP and default-directory saves share the `year_short-title__DOI` folder layout
 (spaces and unsafe filename characters become underscores). The ZIP filename
@@ -47,7 +29,7 @@ an inferred DOI. Each folder contains `paper.md`, `images/` (even without images
 starts at `not-started`, and names the future `paper.zh-CN.md` without creating it.
 
 Extraction is manual. ZIP export cannot inspect or deduplicate your destination
-folders. Repeated ZIP filenames are uniquified by the browser, but their internal
+folders. Repeated ZIP filenames receive a numbered suffix, but their internal
 folder names can match. Do not merge or overwrite an existing translated folder;
 extract into a separate location or use the default-directory duplicate controls.
 
@@ -67,8 +49,7 @@ Data IDs and declared figure-page links also resolve to their archived images.
 Duplicate IDs and multiple matching image variants stay remote rather than
 choosing an uncertain destination.
 It does not prove article completeness or replace the Core's DOI, preservation
-and Vault checks. Existing Add to Obsidian and plain Markdown downloads are
-unchanged and still retain remote images.
+and Vault checks. Single-file Markdown downloads retain image links.
 
 ## Image resolution
 
@@ -170,7 +151,7 @@ for this browser session. Ordinary success still closes silently. Unknown
 publishers are not rejected or interrupted solely for missing coverage.
 Existing formula-extraction and image-download failure gates are unchanged;
 image failure still prevents publishing a ZIP or creating a paper directory.
-Plain Markdown downloads and Add to Obsidian do not generate this report.
+Single-file Markdown downloads omit this report.
 
 Synthetic tests cover missing captions, reference text/links/counts, formulas and
 extended images, edited/custom-template outputs, absent coverage, stale report
@@ -195,8 +176,10 @@ formulas, rich captions and numbered-equation handling.
 - HTTP(S) public hostname URLs only. No embedded URL credentials, literal IP
   addresses, local hostnames, data/blob/file URLs, SVG, HTML media or Obsidian
   wiki embeds. Such media produces an explicit error instead of a partial ZIP.
-- Downloads omit cookies and referrer, and reject redirects. Signed URLs are
-  used intact. Authentication-dependent, expired, redirecting or blocked image
+- Downloads omit cookies and referrer. For PLOS figures from the current paper,
+  the browser allows redirects only between the journal and its designated image
+  storage host. The storage path must match the article and figure IDs. All other
+  image requests reject redirects. Authentication-dependent, expired or blocked image
   requests may fail even when the webpage can display the image. Browser
   network protections apply; this route does not perform Core's DNS pinning.
 - Any detected image failure aborts the ZIP. The editor and existing Vault
