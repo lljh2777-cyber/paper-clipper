@@ -1,6 +1,7 @@
 import { strToU8 } from 'fflate';
 
 const extensions = new Set(['pdf', 'csv', 'tsv', 'txt', 'xlsx', 'docx', 'zip']);
+export const ATTACHMENT_DOWNLOAD_CONCURRENCY = 4;
 export interface PaperAttachment { url: string; label: string }
 export class AttachmentError extends Error {
 	constructor(public readonly reason: 'unsupported' | 'limit' | 'download' | 'blocked', public readonly attachmentNumber = 0) { super(reason); }
@@ -63,40 +64,87 @@ export async function preparePaperAttachments(selected: PaperAttachment[] = []) 
 	const files: Record<string, Uint8Array> = Object.create(null);
 	const destinations = new Map<string, string>();
 	const items: { file: string; label: string; bytes: number; sha256: string }[] = [];
-	let total = 0;
+	const seen = new Set<string>();
+	const tasks: { attachmentNumber: number; item: PaperAttachment; url: URL }[] = [];
 	for (const [index, item] of selected.entries()) {
+		let url: URL;
 		try {
-			const url = attachmentUrl(item.url);
-			if (destinations.has(url.href)) continue;
-			const max = Math.min(50 * 1024 * 1024, 100 * 1024 * 1024 - total);
-			if (max <= 0) throw new AttachmentError('limit');
-			const response = await fetch(url.href, { credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer', signal: AbortSignal.timeout(30000) });
-			if (!response.ok || !response.body) {
-				await response.body?.cancel();
-				throw new AttachmentError([401, 403].includes(response.status) ? 'blocked' : 'download');
-			}
-			if (Number(response.headers.get('content-length')) > max) { await response.body.cancel(); throw new AttachmentError('limit'); }
-			const reader = response.body.getReader();
-			const chunks: Uint8Array[] = []; let size = 0;
+			url = attachmentUrl(item.url);
+		} catch (error) {
+			throw new AttachmentError(error instanceof AttachmentError ? error.reason : 'unsupported', index + 1);
+		}
+		if (seen.has(url.href)) continue;
+		seen.add(url.href);
+		tasks.push({ attachmentNumber: index + 1, item, url });
+	}
+	if (!tasks.length) return { files, destinations, count: 0 };
+
+	const controller = new AbortController();
+	let nextIndex = 0;
+	let total = 0;
+	const downloaded = new Array<{ file: string; url: string; bytes: Uint8Array; receipt: { file: string; label: string; bytes: number; sha256: string } }>(tasks.length);
+	const errors = new Map<number, AttachmentError>();
+
+	async function worker() {
+		while (true) {
+			if (controller.signal.aborted) return;
+			const taskIndex = nextIndex++;
+			if (taskIndex >= tasks.length) return;
+			const { attachmentNumber, item, url } = tasks[taskIndex];
 			try {
-				while (true) {
-					const { value, done } = await reader.read(); if (done) break;
-					size += value.length; if (size > max) throw new AttachmentError('limit'); chunks.push(value);
+				const max = Math.min(50 * 1024 * 1024, 100 * 1024 * 1024 - total);
+				if (max <= 0) throw new AttachmentError('limit', attachmentNumber);
+				const signal = AbortSignal.any([AbortSignal.timeout(30000), controller.signal]);
+				const response = await fetch(url.href, { credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer', signal });
+				if (!response.ok || !response.body) {
+					await response.body?.cancel();
+					throw new AttachmentError([401, 403].includes(response.status) ? 'blocked' : 'download', attachmentNumber);
 				}
-			} finally { await reader.cancel(); }
-			const bytes = new Uint8Array(size); let offset = 0;
-			for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
-			const extension = url.pathname.split('.').pop()!.toLowerCase();
-			try { validateFile(bytes, response.headers.get('content-type') ?? '', extension); }
-			catch { throw new AttachmentError('unsupported'); }
-			let basename: string;
-			try { basename = decodeURIComponent(url.pathname.split('/').pop()!); } catch { basename = 'supplement'; }
-			basename = basename.replace(/\.[^.]*$/, '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 65) || 'supplement';
-			const file = `supplements/attachment-${index + 1}-${basename}.${extension}`;
-			files[file] = bytes; destinations.set(url.href, file); total += size;
-			const sha256 = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))).map(b => b.toString(16).padStart(2, '0')).join('');
-			items.push({ file, label: typeof item.label === 'string' ? item.label.slice(0, 180) : '', bytes: size, sha256 });
-		} catch (error) { throw new AttachmentError(error instanceof AttachmentError ? error.reason : 'download', index + 1); }
+				if (Number(response.headers.get('content-length')) > max) { await response.body.cancel(); throw new AttachmentError('limit', attachmentNumber); }
+				const reader = response.body.getReader();
+				const chunks: Uint8Array[] = []; let size = 0;
+				try {
+					while (true) {
+						const { value, done } = await reader.read(); if (done) break;
+						size += value.length; if (size > max) throw new AttachmentError('limit', attachmentNumber); chunks.push(value);
+					}
+				} finally { await reader.cancel(); }
+				if (controller.signal.aborted) return;
+				const bytes = new Uint8Array(size); let offset = 0;
+				for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+				const extension = url.pathname.split('.').pop()!.toLowerCase();
+				try { validateFile(bytes, response.headers.get('content-type') ?? '', extension); }
+				catch { throw new AttachmentError('unsupported', attachmentNumber); }
+				total += size;
+				if (total > 100 * 1024 * 1024) throw new AttachmentError('limit', attachmentNumber);
+				let basename: string;
+				try { basename = decodeURIComponent(url.pathname.split('/').pop()!); } catch { basename = 'supplement'; }
+				basename = basename.replace(/\.[^.]*$/, '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 65) || 'supplement';
+				const file = `supplements/attachment-${attachmentNumber}-${basename}.${extension}`;
+				const sha256 = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))).map(b => b.toString(16).padStart(2, '0')).join('');
+				downloaded[taskIndex] = {
+					file, url: url.href, bytes,
+					receipt: { file, label: typeof item.label === 'string' ? item.label.slice(0, 180) : '', bytes: size, sha256 },
+				};
+			} catch (error) {
+				if (!controller.signal.aborted) {
+					errors.set(attachmentNumber, new AttachmentError(error instanceof AttachmentError ? error.reason : 'download', attachmentNumber));
+					controller.abort();
+				}
+				return;
+			}
+		}
+	}
+
+	await Promise.all(Array.from({ length: Math.min(ATTACHMENT_DOWNLOAD_CONCURRENCY, tasks.length) }, () => worker()));
+	if (errors.size > 0) {
+		const first = Math.min(...errors.keys());
+		throw errors.get(first)!;
+	}
+	for (const entry of downloaded) {
+		files[entry.file] = entry.bytes;
+		destinations.set(entry.url, entry.file);
+		items.push(entry.receipt);
 	}
 	if (items.length) files['supplement-report.json'] = strToU8(JSON.stringify({ schemaVersion: 1,
 		scope: 'explicitly-selected-files-http-type-signature', contentSafety: 'not-assessed', items,

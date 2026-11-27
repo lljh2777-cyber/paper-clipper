@@ -1,3 +1,5 @@
+@use 'menu-styles';
+
 :root {
 	--popup-width: 350px;
 	--popup-width-expanded: 500px;
@@ -198,6 +200,44 @@
 
 #export-page-html {
 	flex-shrink: 0;
+}
+
+.popup-tools-wrapper {
+	position: relative;
+	display: flex;
+	align-items: center;
+}
+
+#popup-tools-menu {
+	@include menu-styles.surface;
+	display: none;
+	position: absolute;
+	top: calc(100% + 4px);
+	inset-inline-end: 0;
+	z-index: 1000;
+	flex-direction: column;
+	min-width: 185px;
+	max-width: min(260px, calc(100vw - 16px));
+
+	&.show {
+		display: flex;
+	}
+
+	.menu-item {
+		width: 100%;
+		border: none;
+		background: transparent;
+		text-align: start;
+		text-decoration: none;
+		color: var(--text-normal);
+		font: inherit;
+		font-size: var(--font-ui-smaller);
+		@include menu-styles.item;
+		&:disabled {
+			opacity: 0.45;
+			cursor: not-allowed;
+		}
+	}
 }
 
 #more-dropdown {

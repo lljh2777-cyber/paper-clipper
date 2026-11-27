@@ -1,9 +1,10 @@
-import { createIcons, Search, RefreshCw, FolderOpen } from 'lucide';
+import { createIcons, Search, RefreshCw, FolderOpen, Copy, Check, AlertTriangle } from 'lucide';
 import { getPaperDirectory } from '../utils/paper-directory';
-import { readArchiveCatalog, searchArchives, type ArchiveCatalog, type ReadableDirectory } from '../utils/paper-library';
+import { readArchiveCatalog, searchArchives, type ArchiveCatalog, type ArchiveFilter, type ReadableDirectory } from '../utils/paper-library';
 import { getMessage, setupLanguageAndDirection, translatePage } from '../utils/i18n';
 
 const query = document.getElementById('library-query') as HTMLInputElement;
+const filter = document.getElementById('library-filter') as HTMLSelectElement;
 const sort = document.getElementById('library-sort') as HTMLSelectElement;
 const status = document.getElementById('library-status')!;
 const results = document.getElementById('library-results')!;
@@ -22,7 +23,7 @@ let busy = false;
 function render() {
 	results.replaceChildren(); more.hidden = true;
 	if (!catalog) return;
-	const filtered = searchArchives(catalog.entries, query.value, sort.value as 'newest' | 'title' | 'year');
+	const filtered = searchArchives(catalog.entries, query.value, sort.value as 'newest' | 'title' | 'year', filter.value as ArchiveFilter);
 	status.textContent = getMessage('paperLibraryCount', [String(filtered.length), String(catalog.entries.length), String(catalog.skipped), String(catalog.issues.length)]);
 	if (!filtered.length) status.textContent += '\n' + getMessage(catalog.entries.length ? 'paperLibraryNoMatches' : 'paperLibraryEmpty');
 	if (catalog.truncated) status.textContent += '\n' + getMessage('paperLibraryTruncated');
@@ -35,11 +36,49 @@ function render() {
 			getMessage(`paperLibraryArchive_${entry.archiveStatus}`), getMessage('paperLibraryTranslation', entry.translationStatus)]) {
 			const label = document.createElement('span'); label.textContent = value; meta.append(label);
 		}
-		if (entry.doi) { const doi = document.createElement('span'); doi.className = 'archive-doi'; doi.textContent = entry.doi; meta.append(doi); }
+		if (entry.preservationStatus === 'attention-required') {
+			const warning = document.createElement('span');
+			warning.className = 'archive-warning';
+			const icon = document.createElement('i');
+			icon.setAttribute('data-lucide', 'alert-triangle');
+			warning.append(icon, document.createTextNode(getMessage('paperLibraryPreservationWarning')));
+			meta.append(warning);
+		}
+		if (entry.doi) {
+			const doiValue = entry.doi;
+			const doiGroup = document.createElement('span');
+			doiGroup.className = 'archive-doi-group';
+			const doi = document.createElement('span'); doi.className = 'archive-doi'; doi.textContent = doiValue;
+			const copyButton = document.createElement('button');
+			copyButton.type = 'button';
+			copyButton.className = 'archive-copy-doi';
+			copyButton.setAttribute('aria-label', `${getMessage('paperLibraryCopyDoi')}: ${doiValue}`);
+			const copyLabel = getMessage('paperLibraryCopyDoi');
+			const copiedLabel = getMessage('paperLibraryCopied');
+			const copyIcon = document.createElement('i'); copyIcon.setAttribute('data-lucide', 'copy');
+			const copyText = document.createElement('span'); copyText.textContent = copyLabel;
+			copyButton.append(copyIcon, copyText);
+			let resetTimer: number | undefined;
+			copyButton.addEventListener('click', async () => {
+				try {
+					await navigator.clipboard.writeText(doiValue);
+					copyButton.dataset.copied = 'true';
+					copyText.textContent = copiedLabel;
+					window.clearTimeout(resetTimer);
+					resetTimer = window.setTimeout(() => {
+						copyButton.dataset.copied = 'false';
+						copyText.textContent = copyLabel;
+					}, 1500);
+				} catch { /* Clipboard permission denied; leave DOI text selectable. */ }
+			});
+			doiGroup.append(doi, copyButton);
+			meta.append(doiGroup);
+		}
 		const folder = document.createElement('p'); folder.className = 'archive-folder'; folder.textContent = `${directory!.name}/${entry.folder}`;
 		row.append(meta, folder); fragment.append(row);
 	}
 	results.append(fragment); more.hidden = filtered.length <= visible;
+	createIcons({ icons: { Search, RefreshCw, FolderOpen, Copy, Check, AlertTriangle } });
 }
 
 async function scan(action: 'refresh' | 'choose' | 'authorize' = 'refresh') {
@@ -72,10 +111,12 @@ async function initialize() {
 	await setupLanguageAndDirection(); await translatePage();
 	query.setAttribute('aria-label', getMessage('paperLibrarySearch'));
 	query.placeholder = getMessage('paperLibrarySearch');
+	filter.setAttribute('aria-label', getMessage('paperLibraryFilter'));
 	sort.setAttribute('aria-label', getMessage('paperLibrarySort'));
 	refresh.setAttribute('aria-label', getMessage('paperLibraryRefresh'));
-	createIcons({ icons: { Search, RefreshCw, FolderOpen } });
+	createIcons({ icons: { Search, RefreshCw, FolderOpen, Copy, Check, AlertTriangle } });
 	query.addEventListener('input', () => { visible = 50; render(); });
+	filter.addEventListener('change', () => { visible = 50; render(); });
 	sort.addEventListener('change', () => { visible = 50; render(); });
 	more.addEventListener('click', () => { visible += 50; render(); });
 	refresh.addEventListener('click', () => { void scan(); });

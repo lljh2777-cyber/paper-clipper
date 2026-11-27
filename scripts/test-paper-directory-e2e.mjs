@@ -93,6 +93,7 @@ try {
 		const read = async name => (await (await folder.getFileHandle(name)).getFile()).text();
 		const original = await read('paper.md');
 		const metadata = JSON.parse(await read('translation.json'));
+		const bibtex = await read('citation.bib');
 		const imageReport = JSON.parse(await read('image-report.json'));
 		const checks = JSON.parse(await read('checks.json'));
 		const image = await (await (await folder.getDirectoryHandle('images')).getFileHandle('image-1.png')).getFile();
@@ -102,9 +103,11 @@ try {
 		// A pre-existing translation must survive subsequent saves and forgetting the root.
 		const writer = await (await folder.getFileHandle('paper.zh-CN.md', { create: true })).createWritable();
 		await writer.write('人工译文'); await writer.close();
-		return { original, metadata, imageReport, checks, dimensions, entries };
+		return { original, metadata, bibtex, imageReport, checks, dimensions, entries };
 	});
-	assert.deepEqual(bundle.entries.sort(), ['checks.json', 'image-report.json', 'images', 'paper.md', 'translation.json']);
+	assert.deepEqual(bundle.entries.sort(), ['checks.json', 'citation.bib', 'image-report.json', 'images', 'paper.md', 'translation.json']);
+	assert.match(bundle.bibtex, /doi = \{10\.1234\/example\}/);
+	assert.match(bundle.bibtex, /year = \{2025\}/);
 	assert.equal(bundle.checks.changes.editor, 'changed');
 	assert.equal(bundle.checks.artifact.value, bundle.metadata.sourceVersion.value);
 	assert.equal(bundle.metadata.acquisition.preservation, bundle.checks.preservation);
@@ -152,7 +155,8 @@ try {
 	assert.equal(chosen.md, singleMarkdown);
 	const zipped = unzipSync(Uint8Array.from(chosen.zip));
 	assert.equal(strFromU8(zipped['2025_Synthetic_paper__10.1234_example/paper.md']), bundle.original);
-	assert.equal(await popup.locator('#more-dropdown .menu-item').count(), 3);
+	assert.equal(await popup.locator('#more-dropdown .menu-item').count(), 4);
+	assert.equal(await popup.locator('#copy-bibtex').count(), 1);
 
 	await popup.locator('#paper-save-methods').filter({ hasText: '保存正文（.md）和图片到本地文件夹 · Markdown' }).waitFor();
 	await popup.setViewportSize({ width: 350, height: 540 });

@@ -20,15 +20,7 @@
 				</select>
 			</div>
 			<div class="popup-actions">
-				<a href="paper-queue.html" target="_blank" class="clickable-icon" title="Paper queue" aria-label="Paper queue"><i data-lucide="clipboard-list"></i></a>
 				<a href="paper-library.html" target="_blank" class="clickable-icon" data-i18n-title="paperLibrary" aria-label="Archives"><i data-lucide="archive"></i></a>
-				<button type="button" id="export-page-html" class="clickable-icon" data-i18n-title="exportPageHtml" aria-label="Export page HTML" disabled>
-					<i data-lucide="file-down"></i>
-				</button>
-				<a href="#" id="show-variables" class="clickable-icon" 
-					data-i18n-title="showPageVariables">
-					<i data-lucide="ellipsis"></i>
-				</a>
 				<a href="#" id="highlighter-mode" class="clickable-icon"
 					data-i18n-title="highlightPage">
 					<i data-lucide="highlighter"></i>
@@ -41,6 +33,25 @@
 					data-i18n-title="openEmbedded">
 					<i data-lucide="picture-in-picture-2"></i>
 				</a>
+				<div class="popup-tools-wrapper">
+					<button type="button" id="popup-tools-btn" class="clickable-icon" data-i18n-title="paperMoreTools" aria-label="More tools" aria-haspopup="menu" aria-expanded="false">
+						<i data-lucide="ellipsis"></i>
+					</button>
+					<div class="menu" id="popup-tools-menu" role="menu">
+						<button type="button" id="export-page-html" class="menu-item" role="menuitem" disabled>
+							<div class="menu-item-icon"><i data-lucide="file-down"></i></div>
+							<div class="menu-item-title" data-i18n="exportPageHtml">Export page HTML</div>
+						</button>
+						<a href="#" id="show-variables" class="menu-item" role="menuitem">
+							<div class="menu-item-icon"><i data-lucide="list"></i></div>
+							<div class="menu-item-title" data-i18n="showPageVariables">Show page variables</div>
+						</a>
+						<a href="paper-queue.html" target="_blank" class="menu-item" role="menuitem">
+							<div class="menu-item-icon"><i data-lucide="clipboard-list"></i></div>
+							<div class="menu-item-title" data-i18n="paperQueue">Paper queue</div>
+						</a>
+					</div>
+				</div>
 				<a href="#" id="open-settings" class="clickable-icon" 
 					data-i18n-title="settings">
 					<i data-lucide="settings"></i>

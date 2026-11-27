@@ -30,6 +30,7 @@ import { exportPageHtml } from '../utils/page-html-export';
 import { notifySidePanelState, requestEmbeddedPanelToggle } from '../utils/side-panel-lifecycle';
 import type { FormulaReport } from '../utils/paper-math.mjs';
 import { ManualExportSnapshot, prepareManualExportChecks } from '../utils/manual-export-checks';
+import { formatBibtex } from '../utils/paper-bibtex';
 
 interface ReaderModeResponse {
 	success: boolean;
@@ -262,6 +263,34 @@ document.addEventListener('DOMContentLoaded', async function() {
 	form.searchParams.set('body', getMessage('paperFeedbackBody'));
 	feedback.href = form.href;
 	loadedSettings = await loadSettings();
+	initializeIcons(document.getElementById('popup-header') ?? document);
+	const toolsButton = document.getElementById('popup-tools-btn') as HTMLButtonElement | null;
+	const toolsMenu = document.getElementById('popup-tools-menu');
+	const setToolsMenuOpen = (open: boolean) => {
+		if (!toolsButton || !toolsMenu) return;
+		toolsMenu.classList.toggle('show', open);
+		toolsButton.setAttribute('aria-expanded', String(open));
+	};
+	if (toolsButton && toolsMenu) {
+		toolsButton.title = getMessage('paperMoreTools');
+		toolsButton.setAttribute('aria-label', toolsButton.title);
+		toolsButton.addEventListener('click', (e) => {
+			e.stopPropagation();
+			document.getElementById('more-dropdown')?.classList.remove('show');
+			setToolsMenuOpen(!toolsMenu.classList.contains('show'));
+		});
+		toolsMenu.addEventListener('click', (e) => {
+			if ((e.target as Element).closest('.menu-item')) setToolsMenuOpen(false);
+		});
+		document.addEventListener('click', (e) => {
+			if (!toolsMenu.contains(e.target as Node) && !toolsButton.contains(e.target as Node)) {
+				setToolsMenuOpen(false);
+			}
+		});
+		document.addEventListener('keydown', (e) => {
+			if (e.key === 'Escape') setToolsMenuOpen(false);
+		});
+	}
 	const exportButton = document.getElementById('export-page-html') as HTMLButtonElement | null;
 	if (exportButton) {
 		exportButton.title = getMessage('exportPageHtml');
@@ -447,6 +476,11 @@ function setupEventListeners(tabId: number) {
 	if (moreButton && moreDropdown) {
 		moreButton.addEventListener('click', (e) => {
 			e.stopPropagation();
+			const toolsMenu = document.getElementById('popup-tools-menu');
+			if (toolsMenu?.classList.contains('show')) {
+				toolsMenu.classList.remove('show');
+				document.getElementById('popup-tools-btn')?.setAttribute('aria-expanded', 'false');
+			}
 			moreDropdown.classList.toggle('show');
 		});
 
@@ -1075,7 +1109,7 @@ async function toggleReaderMode(tabId: number) {
 	}
 }
 
-async function copyToClipboard(content: string, page: NonNullable<typeof manualExportPage>) {
+async function copyToClipboard(content: string, page: NonNullable<typeof manualExportPage>): Promise<boolean> {
 	if (page === manualExportPage) showSaveStatus('');
 	try {
 		try {
@@ -1087,9 +1121,11 @@ async function copyToClipboard(content: string, page: NonNullable<typeof manualE
 
 		await incrementStat('copyToClipboard', undefined, undefined, page.snapshot.source, page.data.title)
 			.catch(error => console.warn('Could not record clipboard history', error));
+		return true;
 	} catch (error) {
 		console.error('Failed to copy to clipboard:', error);
 		if (page === manualExportPage) showSaveStatus(getMessage('failedToCopyText'));
+		return false;
 	}
 }
 
@@ -1148,6 +1184,26 @@ async function restoreSaveFeedback(page: NonNullable<typeof manualExportPage>) {
 	if (detail && !document.getElementById('image-archive-status')!.textContent) showSaveStatus(detail, false);
 }
 
+function buildCurrentBibtex(page: NonNullable<typeof manualExportPage>, title: string, properties: Property[], explicitDoi?: string | null): string {
+	let doi = explicitDoi;
+	if (doi === undefined) {
+		try {
+			doi = paperIdentity(page.data.metaTags, properties, page.snapshot.source, page.data.published).doi;
+		} catch {
+			doi = null;
+		}
+	}
+	return formatBibtex({
+		title: title || page.data.title,
+		author: page.data.author,
+		published: page.data.published,
+		source: page.snapshot.source,
+		doi,
+		metaTags: page.data.metaTags,
+		properties,
+	});
+}
+
 async function handleManualSave(format: PaperSaveFormat) {
 	if (imageArchiveBusy) return;
 	imageArchiveBusy = true;
@@ -1179,6 +1235,7 @@ async function handleManualSave(format: PaperSaveFormat) {
 			input.attachments = selectedPaperAttachments();
 			input.checkContext = await prepareManualExportChecks(page.snapshot, input.markdown);
 			input.figureLinks = collectFigureLinks(page.snapshot.document, source, input.markdown);
+			input.bibtex = buildCurrentBibtex(page, title, properties, input.identity.doi);
 		}
 		const tab = await getTabInfo(page.tabId);
 		if (page !== manualExportPage || currentTabId !== page.tabId || tab.url !== source || (isSidePanel && !isIframe && (!tab.active || tab.windowId !== editorWindowId))) {
@@ -1225,19 +1282,31 @@ function determineMainAction() {
 	mainButton.textContent = getMessage(saveLabel(primary));
 	mainButton.onclick = saveActions[primary];
 	for (const action of ['savePaperDirectory', 'saveImageArchive', 'saveMarkdownWithImageLinks', 'copyToClipboard'] as const) {
-		if (action !== primary) addSecondaryAction(secondaryActions, action, saveActions[action]);
+		if (action !== primary) {
+			addSecondaryMenuItem(secondaryActions, {
+				id: action === 'saveImageArchive' ? 'save-image-archive' : action === 'savePaperDirectory' ? 'save-paper-directory' : undefined,
+				icon: getActionIcon(action),
+				i18nKey: saveLabel(action),
+				handler: saveActions[action],
+			});
+		}
 	}
+	addSecondaryMenuItem(secondaryActions, {
+		id: 'copy-bibtex',
+		icon: 'quote',
+		i18nKey: 'paperCopyBibtex',
+		handler: copyBibtex,
+	});
 }
 
-function addSecondaryAction(container: Element, actionType: Settings['saveBehavior'], handler: () => void) {
+function addSecondaryMenuItem(container: Element, options: { id?: string; icon: string; i18nKey: string; handler: () => void }) {
 	const menuItem = document.createElement('div');
 	menuItem.className = 'menu-item';
-	if (actionType === 'saveImageArchive') menuItem.id = 'save-image-archive';
-	if (actionType === 'savePaperDirectory') menuItem.id = 'save-paper-directory';
+	if (options.id) menuItem.id = options.id;
 	menuItem.setAttribute('role', 'button');
 	menuItem.tabIndex = 0;
 	menuItem.addEventListener('keydown', event => {
-		if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); handler(); }
+		if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); options.handler(); }
 	});
 
 	// Create menu item icon container
@@ -1245,20 +1314,20 @@ function addSecondaryAction(container: Element, actionType: Settings['saveBehavi
 	menuItemIcon.className = 'menu-item-icon';
 	
 	const iconElement = document.createElement('i');
-	iconElement.setAttribute('data-lucide', getActionIcon(actionType));
+	iconElement.setAttribute('data-lucide', options.icon);
 	menuItemIcon.appendChild(iconElement);
 	
 	// Create menu item title
 	const menuItemTitle = document.createElement('div');
 	menuItemTitle.className = 'menu-item-title';
-	menuItemTitle.setAttribute('data-i18n', saveLabel(actionType));
-	menuItemTitle.textContent = getMessage(saveLabel(actionType));
+	menuItemTitle.setAttribute('data-i18n', options.i18nKey);
+	menuItemTitle.textContent = getMessage(options.i18nKey);
 	
 	// Assemble menu item
 	menuItem.appendChild(menuItemIcon);
 	menuItem.appendChild(menuItemTitle);
 	
-	menuItem.addEventListener('click', handler);
+	menuItem.addEventListener('click', options.handler);
 	container.appendChild(menuItem);
 	initializeIcons(menuItem);
 }
@@ -1282,6 +1351,18 @@ async function copyContent() {
 	const content = noteContentField.value;
 	const frontmatter = await generateFrontmatter(properties);
 	await copyToClipboard(frontmatter + content, page);
+}
+
+async function copyBibtex() {
+	const page = manualExportPage;
+	if (!page) return;
+	document.getElementById('more-dropdown')?.classList.remove('show');
+	const properties = getPropertiesFromDOM();
+	const title = (document.getElementById('note-name-field') as HTMLInputElement).value;
+	const bibtex = buildCurrentBibtex(page, title, properties);
+	if (await copyToClipboard(bibtex, page) && page === manualExportPage) {
+		showSaveStatus(getMessage('paperBibtexCopied'));
+	}
 }
 
 // Update the resize event listener to use the debounced version

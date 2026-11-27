@@ -7,10 +7,11 @@ permission has expired. **Choose directory** grants read access to another root
 for the current tab only; it does not replace the saved default or persist an
 archive index. Refresh or reopen to see external changes.
 
-Search title, DOI (including doi.org URLs), publication year or folder name.
+Search title, DOI (including doi.org URLs), publication year or folder name,
+and filter by attention/archive issues or recorded translation status.
 Sort by archive date, title or year. Each result shows the folder path relative
-to the selected root, DOI and recorded archive/translation states. Results are
-shown 50 at a time. This page does not launch local files or a native file manager.
+to the selected root, DOI (with a copy button), any recorded preservation warning,
+and recorded archive/translation states. Results are shown 50 at a time. This page does not launch local files or a native file manager.
 
 Only immediate child `translation.json` files are read, at most 128 KiB each,
 using schema 1 and `sourceFile: paper.md`. Notes, translations, images and nested

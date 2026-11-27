@@ -84,13 +84,14 @@ try {
 	assert.match(await failed.page.locator('#save-status').innerText(), /supplementary file 1 could not be downloaded/);
 	assert.match(await failed.page.locator('#save-status').innerText(), /No archive was published/);
 	assert.equal(await countZipFiles(worker), 1);
-	assert.deepEqual(requests, [pdfUrl]);
+	assert.ok(requests.includes(pdfUrl));
 	await popup.close();
 	failPdf = false;
 	await failed.page.locator('#retry-save').click();
 	const completed = await readCompletedZip(worker, failed);
 	assert.notEqual(completed.fileName, first.fileName);
-	assert.deepEqual(requests, [pdfUrl, pdfUrl, csvUrl]);
+	assert.equal(requests.filter(url => url === pdfUrl).length, 2);
+	assert.ok(requests.includes(csvUrl));
 	const zip = unzipSync(completed.bytes);
 	const root = Object.keys(zip)[0].split('/')[0];
 	assert.equal(root, '2026_Synthetic_supplementary_paper__10.1234_attachments');

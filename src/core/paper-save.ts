@@ -106,7 +106,7 @@ async function save() {
 		let filename: string;
 		let contents: string | Uint8Array;
 		if (format === 'zip') {
-			archive ??= await createImageArchive(input!.markdown, title, source, progress, input!.imageSources, input!.checkContext, input!.identity, input!.figureLinks, input!.attachments);
+			archive ??= await createImageArchive(input!.markdown, title, source, progress, input!.imageSources, input!.checkContext, input!.identity, input!.figureLinks, input!.attachments, input!.bibtex);
 			filename = archive.fileName;
 			contents = archive.bytes;
 			checks = archive.checks;

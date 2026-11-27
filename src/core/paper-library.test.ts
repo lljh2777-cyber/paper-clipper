@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { getPaperDirectory } from '../utils/paper-directory';
 import { readArchiveCatalog } from '../utils/paper-library';
 
-vi.mock('lucide', () => ({ createIcons: vi.fn(), Search: {}, RefreshCw: {}, FolderOpen: {} }));
+vi.mock('lucide', () => ({ createIcons: vi.fn(), Search: {}, RefreshCw: {}, FolderOpen: {}, Copy: {}, Check: {}, AlertTriangle: {} }));
 vi.mock('../utils/i18n', () => ({ getMessage: (key: string) => key, setupLanguageAndDirection: vi.fn(), translatePage: vi.fn() }));
 vi.mock('../utils/paper-directory', () => ({ getPaperDirectory: vi.fn() }));
 vi.mock('../utils/paper-library', async original => ({ ...await original<typeof import('../utils/paper-library')>(), readArchiveCatalog: vi.fn() }));
@@ -14,16 +14,29 @@ beforeEach(() => {
 	vi.resetAllMocks(); vi.resetModules();
 	document.documentElement.innerHTML = readFileSync('src/paper-library.html', 'utf8');
 	vi.stubGlobal('showDirectoryPicker', picker);
+	vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
 	permission.mockResolvedValue('granted');
 	vi.mocked(getPaperDirectory).mockResolvedValue(handle as never);
-	vi.mocked(readArchiveCatalog).mockResolvedValue({ entries: [{ folder: 'one', title: '<img src=x onerror=alert(1)>', doi: '10.1234/test', year: '2026', createdAt: '', archiveStatus: 'complete', translationStatus: 'not-started' }], issues: [], skipped: 0, truncated: false });
+	vi.mocked(readArchiveCatalog).mockResolvedValue({ entries: [
+		{ folder: 'one', title: '<img src=x onerror=alert(1)>', doi: '10.1234/test', year: '2026', createdAt: '', archiveStatus: 'complete', translationStatus: 'not-started', preservationStatus: 'attention-required' },
+		{ folder: 'two', title: 'Reviewed paper', doi: null, year: '2025', createdAt: '', archiveStatus: 'complete', translationStatus: 'reviewed', preservationStatus: 'passed-within-scope' },
+	], issues: [], skipped: 0, truncated: false });
 });
 afterEach(() => vi.unstubAllGlobals());
 
 it('renders metadata as text and filters immediately without reading files again', async () => {
 	await import('./paper-library');
-	await vi.waitFor(() => expect(document.querySelectorAll('.archive-row')).toHaveLength(1));
+	await vi.waitFor(() => expect(document.querySelectorAll('.archive-row')).toHaveLength(2));
 	expect(document.querySelector('#library-results img')).toBeNull();
+	expect(document.querySelectorAll('.archive-warning')).toHaveLength(1);
+	(document.querySelector('.archive-copy-doi') as HTMLButtonElement).click();
+	await vi.waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith('10.1234/test'));
+	const filter = document.getElementById('library-filter') as HTMLSelectElement;
+	filter.value = 'reviewed'; filter.dispatchEvent(new Event('change'));
+	expect(document.querySelectorAll('.archive-row')).toHaveLength(1);
+	filter.value = 'attention'; filter.dispatchEvent(new Event('change'));
+	expect(document.querySelectorAll('.archive-row')).toHaveLength(1);
+	filter.value = 'all'; filter.dispatchEvent(new Event('change'));
 	const query = document.getElementById('library-query') as HTMLInputElement;
 	query.value = 'missing'; query.dispatchEvent(new Event('input'));
 	expect(document.querySelectorAll('.archive-row')).toHaveLength(0);
@@ -40,7 +53,7 @@ it('requests only read permission on an explicit click and clears stale results 
 	expect(request).not.toHaveBeenCalled(); expect(readArchiveCatalog).not.toHaveBeenCalled();
 	request.mockImplementation(async () => { permission.mockResolvedValue('granted'); return 'granted'; });
 	authorize.click();
-	await vi.waitFor(() => expect(document.querySelectorAll('.archive-row')).toHaveLength(1));
+	await vi.waitFor(() => expect(document.querySelectorAll('.archive-row')).toHaveLength(2));
 	expect(request).toHaveBeenCalledWith({ mode: 'read' });
 	permission.mockResolvedValue('denied');
 	(document.getElementById('library-refresh') as HTMLButtonElement).click();

@@ -73,6 +73,12 @@ try {
 		await worker.evaluate(language => chrome.storage.local.set({ language }), language);
 		await page.setViewportSize({ width, height: 700 });
 		await page.goto(origin + '/' + surface + '.html');
+		await page.locator('#popup-tools-btn').click();
+		await page.locator('#popup-tools-menu.show').waitFor();
+		assert.equal(await page.locator('#popup-tools-menu .menu-item').count(), 3);
+		assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+		await page.keyboard.press('Escape');
+		assert.equal(await page.locator('#popup-tools-menu.show').count(), 0);
 		const link = page.getByRole('link', { name: label, exact: true });
 		await link.locator('svg').waitFor();
 		const brand = await page.locator('.paper-brand').boundingBox();

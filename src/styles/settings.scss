@@ -19,7 +19,8 @@
 	gap: 12px 20px;
 	a { display: inline-flex; align-items: center; gap: 6px; color: var(--text-accent); text-decoration: none; }
 	a:hover { text-decoration: underline; }
-	.btn { width: auto; color: var(--text-on-accent); }
+	.btn { width: auto; color: var(--text-normal); }
+	.btn.mod-cta { color: var(--text-on-accent); }
 	svg { width: 16px; height: 16px; }
 }
 .warning-container {

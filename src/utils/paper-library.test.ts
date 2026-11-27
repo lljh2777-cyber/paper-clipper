@@ -17,15 +17,20 @@ function fixture(files: Record<string, unknown>) {
 	return { directory, read, entries };
 }
 const metadata = { schemaVersion: 1, sourceFile: 'paper.md', title: 'Novae paper', doi: 'https://doi.org/10.1234/EXAMPLE',
-	published: '2025-01-02', createdAt: '2026-10-22T01:00:00Z', archiveStatus: 'complete', status: 'not-started' };
+	published: '2025-01-02', createdAt: '2026-10-22T01:00:00Z', archiveStatus: 'complete', status: 'not-started',
+	acquisition: { preservation: 'passed-within-scope' } };
 
 it('reads only immediate translation.json metadata without create flags, notes or translations', async () => {
-	const { directory, read } = fixture({ renamed: metadata, old: { ...metadata, title: 'Earlier paper', published: '2024', createdAt: '2025-01-01', archiveStatus: 'failed' } });
+	const { directory, read } = fixture({ renamed: metadata, old: { ...metadata, title: 'Earlier paper', published: '2024', createdAt: '2025-01-01', archiveStatus: 'failed', status: 'needs-review', acquisition: { preservation: 'attention-required' } } });
 	const result = await readArchiveCatalog(directory);
 	expect(directory.queryPermission).toHaveBeenCalledWith({ mode: 'read' });
 	expect(read.mock.calls).toEqual([['translation.json'], ['translation.json']]);
-	expect(result.entries[0]).toMatchObject({ folder: 'renamed', doi: '10.1234/example', year: '2025', archiveStatus: 'complete', translationStatus: 'not-started' });
+	expect(result.entries[0]).toMatchObject({ folder: 'renamed', doi: '10.1234/example', year: '2025', archiveStatus: 'complete', translationStatus: 'not-started', preservationStatus: 'passed-within-scope' });
+	expect(result.entries[1]).toMatchObject({ folder: 'old', preservationStatus: 'attention-required' });
 	expect(searchArchives(result.entries, 'https://doi.org/10.1234/EXAMPLE', 'newest')).toHaveLength(2);
+	expect(searchArchives(result.entries, '', 'newest', 'attention').map(e => e.folder)).toEqual(['old']);
+	expect(searchArchives(result.entries, '', 'newest', 'not-started').map(e => e.folder)).toEqual(['renamed']);
+	expect(searchArchives(result.entries, '', 'newest', 'needs-review').map(e => e.folder)).toEqual(['old']);
 	expect(searchArchives(result.entries, 'NOVAE 2025', 'title').map(e => e.folder)).toEqual(['renamed']);
 	expect(searchArchives(result.entries, 'renamed', 'year')).toHaveLength(1);
 	expect(searchArchives(result.entries, '', 'title').map(e => e.folder)).toEqual(['old', 'renamed']);

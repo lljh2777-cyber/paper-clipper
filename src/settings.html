@@ -45,8 +45,8 @@
 						<div class="paper-project">
 							<p data-i18n="projectAttribution">Independent project based on Obsidian Web Clipper. Not affiliated with or endorsed by Obsidian.</p>
 							<nav class="paper-project-links" aria-label="Paper Clipper">
-								<a href="paper-queue.html" target="_blank" class="btn mod-cta" id="paper-queue-link"><i data-lucide="clipboard-list"></i><span data-i18n="paperQueue">Paper queue</span></a>
-								<a href="paper-library.html" target="_blank" class="btn" id="paper-library-link"><i data-lucide="archive"></i><span data-i18n="paperLibrary">Archives</span></a>
+								<a href="paper-library.html" target="_blank" class="btn mod-cta" id="paper-library-link"><i data-lucide="archive"></i><span data-i18n="paperLibrary">Archives</span></a>
+								<a href="paper-queue.html" target="_blank" class="btn" id="paper-queue-link"><i data-lucide="clipboard-list"></i><span data-i18n="paperQueue">Paper queue</span></a>
 								<a href="https://github.com/lljh2777-cyber/paper-clipper" target="_blank" rel="noreferrer" data-i18n="projectSource">Project source</a>
 								<a href="https://github.com/lljh2777-cyber/paper-clipper/issues" target="_blank" rel="noreferrer" data-i18n="reportIssue">Report an issue</a>
 								<a href="https://github.com/obsidianmd/obsidian-clipper" target="_blank" rel="noreferrer" data-i18n="upstreamSource">Upstream source</a>
@@ -54,6 +54,53 @@
 							</nav>
 						</div>
 						<form id="general-settings-form">
+							<div class="setting-group">
+								<div class="setting-item setting-item-heading"><h3 data-i18n="behavior">Behavior</h3></div>
+								<div class="setting-items">
+									<div class="setting-item mod-horizontal">
+										<div class="setting-item-info">
+											<label for="save-behavior-dropdown" data-i18n="saveBehaviorLabel">Save behavior</label>
+											<div class="setting-item-description" data-i18n="saveBehaviorDescription">
+												Choose the default option for saving pages. Alternate options appear in the dropdown menu next to the main button.
+											</div>
+										</div>
+										<div class="setting-item-control">
+											<select id="save-behavior-dropdown">
+												<option value="savePaperDirectory" selected data-i18n="savePaperDirectory">Save Markdown + images to a local folder</option>
+												<option value="saveImageArchive" data-i18n="saveImageArchive">Paper archive (.zip, with images)</option>
+												<option value="saveMarkdownWithImageLinks" data-i18n="saveMarkdownWithImageLinks">Markdown file (.md, image links)</option>
+												<option value="copyToClipboard" data-i18n="paperCopyMarkdown">Copy Markdown</option>
+											</select>
+										</div>
+									</div>
+									<div class="setting-item mod-horizontal" id="paper-directory-setting">
+										<div class="setting-item-info">
+											<div data-i18n="paperDirectoryLabel">Default paper directory</div>
+											<div id="paper-directory-name" class="setting-item-description"></div>
+											<div id="paper-directory-status" class="setting-item-description" role="status"></div>
+										</div>
+										<div class="setting-item-control">
+											<button type="button" id="choose-paper-directory" class="clickable-icon" data-i18n-title="choosePaperDirectory" aria-label="Choose directory"><i data-lucide="folder-open"></i></button>
+											<button type="button" id="forget-paper-directory" class="clickable-icon" data-i18n-title="forgetPaperDirectory" aria-label="Forget directory"><i data-lucide="x"></i></button>
+										</div>
+									</div>
+									<div class="setting-item mod-horizontal">
+										<div class="setting-item-info">
+											<label for="open-behavior-dropdown" data-i18n="openBehaviorTitle">Default open behavior</label>
+											<div class="setting-item-description" data-i18n="openBehaviorDescription">
+												Choose how Paper Clipper opens by default.
+											</div>
+										</div>
+										<div class="setting-item-control">
+											<select id="open-behavior-dropdown">
+												<option value="popup" selected data-i18n="popup">Popup</option>
+												<option value="embedded" data-i18n="embedded">Embedded</option>
+												<option value="reader" data-i18n="reader">Reader</option>
+											</select>
+										</div>
+									</div>
+								</div>
+							</div>
 							<div class="setting-group">
 								<div class="setting-items">
 									<div id="usage-chart-container">
@@ -118,17 +165,9 @@
 											<div class="setting-item-description" data-i18n="helpDescription">Learn how to use Paper Clipper and get help troubleshooting.</div>
 										</div>
 										<div class="setting-item-control">
-											<a href="https://github.com/lljh2777-cyber/paper-clipper/blob/main/docs/browser-queue.md" id="help-open-btn" class="btn" target="_blank" data-i18n="open">Open</a>
+											<a href="https://github.com/lljh2777-cyber/paper-clipper#install-paper-clipper-in-chrome" id="help-open-btn" class="btn" target="_blank" data-i18n="open">Open</a>
 										</div>
 									</div>
-								</div>
-							</div>
-							<div class="setting-group">
-								<div class="setting-item setting-item-heading"><h3 data-i18n="vaults">Vaults</h3></div>
-								<div class="setting-items">
-								<div class="setting-item-description" data-i18n="vaultsDescription">By default, clipped notes are saved to the currently open vault. You can add vaults here if you want the option to save to different vaults. Vault names must exactly match the name of the Obsidian vault. Press <strong>enter</strong> to add a&nbsp;vault.</div>
-								<input type="text" id="vault-input" data-i18n="addVaultPlaceholder" placeholder="Press enter to add a vault" autocomplete="off" spellcheck="false" />
-								<ul id="vault-list" class="setting-item-list"></ul>
 								</div>
 							</div>
 							<div class="setting-group" id="hotkeys-subsection">
@@ -140,51 +179,6 @@
 								</div>
 							</div>
 							<div class="setting-group">
-								<div class="setting-item setting-item-heading"><h3 data-i18n="behavior">Behavior</h3></div>
-								<div class="setting-items">
-									<div class="setting-item mod-horizontal">
-										<div class="setting-item-info">
-											<label for="save-behavior-dropdown" data-i18n="saveBehaviorLabel">Save behavior</label>
-											<div class="setting-item-description" data-i18n="saveBehaviorDescription">
-												Choose the default option for saving pages. Alternate options appear in the dropdown menu next to the main button.
-											</div>
-										</div>
-										<div class="setting-item-control">
-											<select id="save-behavior-dropdown">
-												<option value="savePaperDirectory" selected data-i18n="savePaperDirectory">Save Markdown + images to a local folder</option>
-												<option value="saveImageArchive" data-i18n="saveImageArchive">Paper archive (.zip, with images)</option>
-												<option value="saveMarkdownWithImageLinks" data-i18n="saveMarkdownWithImageLinks">Markdown file (.md, image links)</option>
-												<option value="copyToClipboard" data-i18n="paperCopyMarkdown">Copy Markdown</option>
-											</select>
-										</div>
-									</div>
-									<div class="setting-item mod-horizontal" id="paper-directory-setting">
-										<div class="setting-item-info">
-											<div data-i18n="paperDirectoryLabel">Default paper directory</div>
-											<div id="paper-directory-name" class="setting-item-description"></div>
-											<div id="paper-directory-status" class="setting-item-description" role="status"></div>
-										</div>
-										<div class="setting-item-control">
-											<button type="button" id="choose-paper-directory" class="clickable-icon" data-i18n-title="choosePaperDirectory" aria-label="Choose directory"><i data-lucide="folder-open"></i></button>
-											<button type="button" id="forget-paper-directory" class="clickable-icon" data-i18n-title="forgetPaperDirectory" aria-label="Forget directory"><i data-lucide="x"></i></button>
-										</div>
-									</div>
-									<div class="setting-item mod-horizontal">
-										<div class="setting-item-info">
-											<label for="open-behavior-dropdown" data-i18n="openBehaviorTitle">Default open behavior</label>
-											<div class="setting-item-description" data-i18n="openBehaviorDescription">
-												Choose how Paper Clipper opens by default.
-											</div>
-										</div>
-										<div class="setting-item-control">
-											<select id="open-behavior-dropdown">
-												<option value="popup" selected data-i18n="popup">Popup</option>
-												<option value="embedded" data-i18n="embedded">Embedded</option>
-												<option value="reader" data-i18n="reader">Reader</option>
-											</select>
-										</div>
-									</div>
-								</div>
 								<div class="setting-item setting-item-heading"><h3 data-i18n="advanced">Advanced</h3></div>
 								<div class="setting-items">
 									<div class="setting-item mod-horizontal">
@@ -227,6 +221,14 @@
 											<button type="button" id="import-all-settings-btn" data-i18n="import">Import</button>
 										</div>
 									</div>
+								</div>
+							</div>
+							<div class="setting-group">
+								<div class="setting-item setting-item-heading"><h3 data-i18n="vaults">Vaults</h3></div>
+								<div class="setting-items">
+								<div class="setting-item-description" data-i18n="vaultsDescription">By default, clipped notes are saved to the currently open vault. You can add vaults here if you want the option to save to different vaults. Vault names must exactly match the name of the Obsidian vault. Press <strong>enter</strong> to add a&nbsp;vault.</div>
+								<input type="text" id="vault-input" data-i18n="addVaultPlaceholder" placeholder="Press enter to add a vault" autocomplete="off" spellcheck="false" />
+								<ul id="vault-list" class="setting-item-list"></ul>
 								</div>
 							</div>
 						</form>

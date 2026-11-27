@@ -101,3 +101,37 @@ it('keeps containers opaque and rejects disguised login pages and invalid text d
 	fetcher.mockResolvedValue(new Response('<!doctype html><html>Login</html>', { headers: { 'Content-Type': 'text/csv' } }));
 	await expect(preparePaperAttachments([{ ...item, url: 'https://journal.example.org/source.csv' }])).rejects.toMatchObject({ reason: 'unsupported' });
 });
+
+it('downloads multiple attachments concurrently with deterministic numbering', async () => {
+	let inFlight = 0;
+	let maxInFlight = 0;
+	const resolvers: Record<string, () => void> = {};
+	const fetcher = vi.fn((url: string) => new Promise<Response>(resolve => {
+		inFlight++;
+		maxInFlight = Math.max(maxInFlight, inFlight);
+		resolvers[url] = () => {
+			inFlight--;
+			resolve(new Response(`col\n${url.slice(-5)}`, { headers: { 'Content-Type': 'text/csv' } }));
+		};
+	}));
+	vi.stubGlobal('fetch', fetcher);
+	const list = Array.from({ length: 5 }, (_, i) => ({
+		url: `https://journal.example.org/table-${i + 1}.csv`,
+		label: `Table S${i + 1}`,
+	}));
+	const pending = preparePaperAttachments(list);
+	await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(4));
+	expect(maxInFlight).toBe(4);
+	for (const index of [4, 3, 2, 1]) resolvers[`https://journal.example.org/table-${index}.csv`]();
+	await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(5));
+	resolvers['https://journal.example.org/table-5.csv']();
+	const result = await pending;
+	const receipt = JSON.parse(strFromU8(result.files['supplement-report.json']));
+	expect(receipt.items.map((entry: { file: string }) => entry.file)).toEqual([
+		'supplements/attachment-1-table-1.csv',
+		'supplements/attachment-2-table-2.csv',
+		'supplements/attachment-3-table-3.csv',
+		'supplements/attachment-4-table-4.csv',
+		'supplements/attachment-5-table-5.csv',
+	]);
+});

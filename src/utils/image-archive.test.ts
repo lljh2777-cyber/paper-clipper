@@ -124,4 +124,35 @@ describe('manual image ZIP', () => {
 		expect(prepared.files['images/image-1.png']).toEqual(png);
 		expect(JSON.parse(strFromU8(prepared.files['image-report.json'])).items[0].selection).toBe('original-fallback');
 	});
+	it('downloads multiple images concurrently while preserving deterministic numbering and optional citation.bib', async () => {
+		let inFlight = 0;
+		let maxInFlight = 0;
+		const resolvers: Record<string, () => void> = {};
+		const fetcher = vi.fn((url: string) => new Promise<Response>(resolve => {
+			inFlight++;
+			maxInFlight = Math.max(maxInFlight, inFlight);
+			const body = new Uint8Array([...png, Number(url.slice(-1))]);
+			resolvers[url] = () => {
+				inFlight--;
+				resolve(new Response(body, { headers: { 'Content-Type': 'image/png' } }));
+			};
+		}));
+		vi.stubGlobal('fetch', fetcher);
+		const markdown = Array.from({ length: 6 }, (_, i) => `![Img ${i + 1}](https://example.org/${i + 1})`).join('\n');
+		const pending = createImageArchive(markdown, 'Paper', 'https://example.org', undefined, {}, undefined,
+			{ doi: '10.1234/conc', published: '2026-01-01' }, {}, [], '@article{key2026, title = {Paper}}\n');
+		await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(5));
+		expect(maxInFlight).toBe(5);
+		// Resolve out of order: 5, 4, 3, 2, 1, then 6.
+		for (const index of [5, 4, 3, 2, 1]) resolvers[`https://example.org/${index}`]();
+		await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(6));
+		resolvers['https://example.org/6']();
+		const archive = await pending;
+		const files = unzipSync(archive.bytes);
+		const root = archive.fileName.slice(0, -4);
+		expect(files[`${root}/images/image-1.png`][png.length]).toBe(1);
+		expect(files[`${root}/images/image-5.png`][png.length]).toBe(5);
+		expect(files[`${root}/images/image-6.png`][png.length]).toBe(6);
+		expect(strFromU8(files[`${root}/citation.bib`])).toBe('@article{key2026, title = {Paper}}\n');
+	});
 });

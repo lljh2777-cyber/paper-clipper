@@ -3,7 +3,7 @@ main { max-width: 1150px; }
 .library-heading h2 { margin: 0; }
 #library-directory, .library-note, .archive-folder, .archive-meta { color: #5c6268; overflow-wrap: anywhere; }
 .library-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.library-search { display: flex; align-items: center; gap: 8px; flex: 1 1 300px; padding: 0 10px; border: 1px solid #9da6ad; border-radius: 4px; }
+.library-search { display: flex; align-items: center; gap: 8px; flex: 1 1 240px; padding: 0 10px; border: 1px solid #9da6ad; border-radius: 4px; }
 input, select { min-height: 40px; font: inherit; font-size: 14px; color: inherit; background: transparent; }
 input { width: 100%; min-width: 0; border: 0; }
 select { border: 1px solid #9da6ad; border-radius: 4px; padding: 0 8px; max-width: 100%; }
@@ -14,13 +14,20 @@ option { color: #222629; background: #fff; }
 #library-results { padding: 0; margin: 20px 0; list-style: none; }
 .archive-row { border-top: 1px solid #dce1e5; padding: 16px 0; }
 .archive-row h3 { font-size: 16px; line-height: 1.5; margin: 0 0 6px; overflow-wrap: anywhere; }
-.archive-meta { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 13px; line-height: 1.6; }
+.archive-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; font-size: 13px; line-height: 1.6; }
 .archive-folder { font-size: 13px; margin: 6px 0 0; user-select: all; }
+.archive-doi-group { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: 100%; }
 .archive-doi { color: #137d78; overflow-wrap: anywhere; }
+.archive-warning { display: inline-flex; align-items: center; gap: 4px; color: #9a5b13; font-weight: 500; }
+.archive-warning svg { width: 14px; height: 14px; flex-shrink: 0; }
+.archive-copy-doi { display: inline-flex; align-items: center; gap: 4px; min-height: 24px; padding: 2px 8px; font: inherit; font-size: 12px; color: inherit; background: transparent; border: 1px solid #9da6ad; border-radius: 4px; cursor: pointer; }
+.archive-copy-doi svg { width: 12px; height: 12px; flex-shrink: 0; }
+.archive-copy-doi[data-copied=true] { color: #137d78; border-color: #137d78; }
 [hidden] { display: none !important; }
 @media (prefers-color-scheme: dark) {
 	#library-directory, .library-note, .archive-folder, .archive-meta { color: #b0b8bd; }
 	.archive-row { border-color: #41484d; }
-	.archive-doi { color: #75d0c7; }
+	.archive-doi, .archive-copy-doi[data-copied=true] { color: #75d0c7; border-color: #75d0c7; }
+	.archive-warning { color: #f0b86b; }
 	#library-status[data-error=true], #library-issues { color: #ed9c85; }
 }

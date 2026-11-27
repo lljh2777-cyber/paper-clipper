@@ -5,10 +5,13 @@ export interface ReadableDirectory extends FileSystemDirectoryHandle {
 	queryPermission(options: { mode: 'read' }): Promise<PermissionState>;
 	requestPermission(options: { mode: 'read' }): Promise<PermissionState>;
 }
+export type ArchivePreservationStatus = 'passed-within-scope' | 'attention-required' | 'unverified' | 'unknown';
+export type ArchiveFilter = 'all' | 'attention' | 'not-started' | 'in-progress' | 'needs-review' | 'reviewed';
 export interface ArchiveEntry {
 	folder: string; title: string; doi: string | null; year: string; createdAt: string;
 	archiveStatus: 'complete' | 'writing' | 'failed' | 'unknown';
 	translationStatus: string;
+	preservationStatus: ArchivePreservationStatus;
 }
 export interface ArchiveCatalog {
 	entries: ArchiveEntry[]; issues: { folder: string; reason: 'invalid' | 'unreadable' | 'unsupported' }[];
@@ -16,6 +19,7 @@ export interface ArchiveCatalog {
 }
 
 const text = (value: unknown, limit: number) => typeof value === 'string' ? value.slice(0, limit) : '';
+const preservationStatuses = new Set<ArchivePreservationStatus>(['passed-within-scope', 'attention-required', 'unverified']);
 export async function readArchiveCatalog(directory: ReadableDirectory): Promise<ArchiveCatalog> {
 	if (await directory.queryPermission({ mode: 'read' }) !== 'granted') throw new DOMException('Read permission required', 'NotAllowedError');
 	const result: ArchiveCatalog = { entries: [], issues: [], skipped: 0, truncated: false };
@@ -41,11 +45,13 @@ export async function readArchiveCatalog(directory: ReadableDirectory): Promise<
 			const doi = normalizeDoi(metadata.doi);
 			if (metadata.doi != null && metadata.doi !== '' && !doi) throw new Error('Invalid DOI');
 			const created = text(metadata.createdAt, 64);
+			const preservation = metadata.acquisition && typeof metadata.acquisition === 'object' ? metadata.acquisition.preservation : undefined;
 			result.entries.push({ folder, title: text(metadata.title, 2000).trim() || folder, doi,
 				year: text(metadata.published, 64).match(/^\d{4}(?:$|[-/T\s])/)?.[0].slice(0, 4) ?? '',
 				createdAt: Number.isFinite(Date.parse(created)) ? new Date(created).toISOString() : '',
 				archiveStatus: ['complete', 'writing', 'failed'].includes(metadata.archiveStatus) ? metadata.archiveStatus : 'unknown',
 				translationStatus: text(metadata.status, 80) || 'unknown',
+				preservationStatus: preservationStatuses.has(preservation) ? preservation : 'unknown',
 			});
 		} catch (error) {
 			if (error instanceof DOMException && error.name === 'NotAllowedError') throw error;
@@ -55,10 +61,15 @@ export async function readArchiveCatalog(directory: ReadableDirectory): Promise<
 	return result;
 }
 
-export function searchArchives(entries: ArchiveEntry[], query: string, sort: 'newest' | 'title' | 'year'): ArchiveEntry[] {
+export function searchArchives(entries: ArchiveEntry[], query: string, sort: 'newest' | 'title' | 'year', filter: ArchiveFilter = 'all'): ArchiveEntry[] {
 	const normalized = normalizeDoi(query) ?? query.trim().toLowerCase();
 	const terms = normalized.split(/\s+/).filter(Boolean);
 	return entries.filter(entry => {
+		if (filter === 'attention') {
+			if (entry.archiveStatus === 'complete' && entry.preservationStatus !== 'attention-required') return false;
+		} else if (filter !== 'all' && entry.translationStatus !== filter) {
+			return false;
+		}
 		const content = [entry.title, entry.doi ?? '', entry.year, entry.folder].join('\n').toLowerCase();
 		return terms.every(term => content.includes(term));
 	}).sort((a, b) => (sort === 'title' ? a.title.localeCompare(b.title) : sort === 'year' ? b.year.localeCompare(a.year) : b.createdAt.localeCompare(a.createdAt)) || a.folder.localeCompare(b.folder));

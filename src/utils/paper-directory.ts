@@ -61,7 +61,7 @@ export async function authorizePaperDirectory(handle?: WritableDirectory): Promi
 	return handle;
 }
 
-export interface PaperDirectoryInput { markdown: string; title: string; source: string; identity: PaperIdentity; imageSources?: Record<string, string>; checkContext?: ManualExportCheckContext; figureLinks?: Record<string, string>; attachments?: PaperAttachment[] }
+export interface PaperDirectoryInput { markdown: string; title: string; source: string; identity: PaperIdentity; imageSources?: Record<string, string>; checkContext?: ManualExportCheckContext; figureLinks?: Record<string, string>; attachments?: PaperAttachment[]; bibtex?: string }
 
 export function paperIdentity(meta: { name?: string | null; property?: string | null; content: string | null }[],
 	properties: { name: string; value: unknown }[], source: string, published?: string): PaperIdentity {
@@ -116,7 +116,7 @@ export async function savePaperDirectory(parent: WritableDirectory, input: Paper
 	if (duplicates.length && !options.newVersion) throw new PaperDirectoryError('duplicate', duplicates.join('\n'));
 	if (await exists(parent, folder)) throw new PaperDirectoryError('exists', folder);
 	// Images and selected attachments must succeed before creating any output.
-	const prepared = await prepareImageFiles(input.markdown, input.source, progress, input.imageSources, input.checkContext, input.figureLinks, input.attachments);
+	const prepared = await prepareImageFiles(input.markdown, input.source, progress, input.imageSources, input.checkContext, input.figureLinks, input.attachments, input.bibtex);
 	const baseMetadata = await paperTranslationMetadata({ ...input, identity: { ...input.identity, doi } }, prepared, id);
 	return navigator.locks.request('paper-clipper-directory-write', async () => {
 		const previousArchives = await matchingArchives(parent, doi);

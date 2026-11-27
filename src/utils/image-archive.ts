@@ -8,6 +8,7 @@ import { unassessedManualExportChecks, markdownSha256, ManualExportCheckContext,
 
 const MAX_IMAGE = 20 * 1024 * 1024;
 const MAX_TOTAL = 100 * 1024 * 1024;
+export const IMAGE_DOWNLOAD_CONCURRENCY = 5;
 export class ImageArchiveError extends Error {
 	constructor(public readonly reason: 'unsupported' | 'limit' | 'download', public readonly imageNumber = 0) { super(reason); }
 }
@@ -49,8 +50,9 @@ function plosFigure(url: URL, source: string): string | undefined {
 		/^(inline|medium|large)$/.test(url.searchParams.get('size') ?? '')) return figure;
 }
 
-async function download(url: string, source: string, maxBytes: number) {
-	const signal = AbortSignal.timeout(15000);
+async function download(url: string, source: string, maxBytes: number, batchSignal?: AbortSignal) {
+	const timeout = AbortSignal.timeout(15000);
+	const signal = batchSignal ? AbortSignal.any([timeout, batchSignal]) : timeout;
 	const options: RequestInit = { credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer', signal };
 	const figure = plosFigure(new URL(url), source);
 	if (!figure) return readImage(await fetch(url, options), maxBytes);
@@ -112,7 +114,7 @@ async function readImage(response: Response, maxBytes: number): Promise<{ bytes:
 
 export async function prepareImageFiles(markdown: string, source: string,
 	onProgress: (done: number, total: number) => void = () => {}, imageSources: Record<string, string> = {},
-	checkContext?: ManualExportCheckContext, figureLinks: Record<string, string> = {}, attachments: PaperAttachment[] = []): Promise<{ files: Record<string, Uint8Array>; imageCount: number; checks: ManualExportChecks }> {
+	checkContext?: ManualExportCheckContext, figureLinks: Record<string, string> = {}, attachments: PaperAttachment[] = [], bibtex?: string): Promise<{ files: Record<string, Uint8Array>; imageCount: number; checks: ManualExportChecks }> {
 	if (markdown.length > 5 * 1024 * 1024) throw new ImageArchiveError('limit');
 	const checks = checkContext?.inputSha256 === await markdownSha256(markdown) ? checkContext.report : unassessedManualExportChecks();
 	const frontmatter = markdown.match(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/)?.[0] ?? '';
@@ -141,27 +143,71 @@ export async function prepareImageFiles(markdown: string, source: string,
 	const files: Record<string, Uint8Array> = Object.create(null);
 	const destinations = new Map<string, string>();
 	const selections: { file: string; selection: 'preferred' | 'original-fallback' | 'original' }[] = [];
-	let total = 0;
 	onProgress(0, urls.length);
-	for (const [index, url] of urls.entries()) {
-		try {
-			if (total >= MAX_TOTAL) throw new ImageArchiveError('limit');
-			const candidates = imageDownloadCandidates(url, source, imageSources);
-			let result: Awaited<ReturnType<typeof download>> | undefined;
-			let selected = 0;
-			for (const [candidateIndex, candidate] of candidates.entries()) {
-				try { result = await download(imageUrl(candidate, source), source, Math.min(MAX_IMAGE, MAX_TOTAL - total)); selected = candidateIndex; break; }
-				catch (error) { if (candidateIndex === candidates.length - 1) throw error; }
+	if (urls.length > 0) {
+		const controller = new AbortController();
+		let nextIndex = 0;
+		let completed = 0;
+		let total = 0;
+		const downloaded = new Array<{ bytes: Uint8Array; extension: string; selection: 'preferred' | 'original-fallback' | 'original' }>(urls.length);
+		const errors = new Map<number, ImageArchiveError>();
+
+		async function worker() {
+			while (true) {
+				if (controller.signal.aborted) return;
+				const index = nextIndex++;
+				if (index >= urls.length) return;
+				const url = urls[index];
+				try {
+					const remaining = MAX_TOTAL - total;
+					if (remaining <= 0) throw new ImageArchiveError('limit', index + 1);
+					const candidates = imageDownloadCandidates(url, source, imageSources);
+					let result: Awaited<ReturnType<typeof download>> | undefined;
+					let selected = 0;
+					for (const [candidateIndex, candidate] of candidates.entries()) {
+						if (controller.signal.aborted) return;
+						try {
+							result = await download(imageUrl(candidate, source), source, Math.min(MAX_IMAGE, remaining), controller.signal);
+							selected = candidateIndex;
+							break;
+						} catch (error) {
+							if (controller.signal.aborted) return;
+							if (candidateIndex === candidates.length - 1) throw error;
+						}
+					}
+					if (controller.signal.aborted) return;
+					const { bytes, extension } = result!;
+					total += bytes.length;
+					if (total > MAX_TOTAL) throw new ImageArchiveError('limit', index + 1);
+					downloaded[index] = {
+						bytes,
+						extension,
+						selection: candidates.length === 1 ? 'original' : selected === 0 ? 'preferred' : 'original-fallback',
+					};
+					completed++;
+					onProgress(completed, urls.length);
+				} catch (error) {
+					if (!controller.signal.aborted) {
+						errors.set(index + 1, new ImageArchiveError(error instanceof ImageArchiveError ? error.reason : 'download', index + 1));
+						controller.abort();
+					}
+					return;
+				}
 			}
-			const { bytes, extension } = result!;
-			total += bytes.length;
-			if (total > MAX_TOTAL) throw new ImageArchiveError('limit');
-			const destination = `images/image-${index + 1}.${extension}`;
-			files[destination] = bytes;
+		}
+
+		await Promise.all(Array.from({ length: Math.min(IMAGE_DOWNLOAD_CONCURRENCY, urls.length) }, () => worker()));
+		if (errors.size > 0) {
+			const first = Math.min(...errors.keys());
+			throw errors.get(first)!;
+		}
+		for (const [index, url] of urls.entries()) {
+			const item = downloaded[index];
+			const destination = `images/image-${index + 1}.${item.extension}`;
+			files[destination] = item.bytes;
 			destinations.set(url, destination);
-			selections.push({ file: destination, selection: candidates.length === 1 ? 'original' : selected === 0 ? 'preferred' : 'original-fallback' });
-			onProgress(index + 1, urls.length);
-		} catch (error) { throw new ImageArchiveError(error instanceof ImageArchiveError ? error.reason : 'download', index + 1); }
+			selections.push({ file: destination, selection: item.selection });
+		}
 	}
 	const supplements = await preparePaperAttachments(attachments);
 	Object.assign(files, supplements.files);
@@ -205,16 +251,19 @@ export async function prepareImageFiles(markdown: string, source: string,
 	if (selections.some(item => item.selection !== 'original')) files['image-report.json'] = strToU8(JSON.stringify({
 		schemaVersion: 1, policy: 'prefer-publisher-high-resolution', items: selections,
 	}, null, 2) + '\n');
+	if (bibtex?.trim()) {
+		files['citation.bib'] = strToU8(bibtex.endsWith('\n') ? bibtex : bibtex + '\n');
+	}
 	return { files, imageCount: urls.length, checks: finalChecks };
 }
 
 export async function createImageArchive(markdown: string, title: string, source: string,
 	onProgress: (done: number, total: number) => void = () => {}, imageSources: Record<string, string> = {},
-	checkContext?: ManualExportCheckContext, identity: PaperIdentity = { doi: null, published: null }, figureLinks: Record<string, string> = {}, attachments: PaperAttachment[] = []): Promise<{ bytes: Uint8Array; fileName: string; imageCount: number; checks: ManualExportChecks }> {
+	checkContext?: ManualExportCheckContext, identity: PaperIdentity = { doi: null, published: null }, figureLinks: Record<string, string> = {}, attachments: PaperAttachment[] = [], bibtex?: string): Promise<{ bytes: Uint8Array; fileName: string; imageCount: number; checks: ManualExportChecks }> {
 	const doi = normalizeDoi(identity.doi);
 	if (identity.doi && !doi) throw new Error('Invalid paper DOI');
 	identity = { ...identity, doi };
-	const prepared = await prepareImageFiles(markdown, source, onProgress, imageSources, checkContext, figureLinks, attachments);
+	const prepared = await prepareImageFiles(markdown, source, onProgress, imageSources, checkContext, figureLinks, attachments, bibtex);
 	const id = crypto.randomUUID();
 	const root = paperFolderName(title, identity, id);
 	const metadata = await paperTranslationMetadata({ title, source, identity }, prepared, id);

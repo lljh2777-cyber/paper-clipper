@@ -26,7 +26,8 @@ try {
 		]) {
 			const child = await root.getDirectoryHandle(folder, { create: true });
 			const files = { 'translation.json': JSON.stringify({ schemaVersion: 1, sourceFile: 'paper.md', title, doi, published: year,
-				createdAt: `${year || '2024'}-01-01T00:00:00Z`, archiveStatus: state, status: 'not-started' }), 'paper.md': 'English original, do not modify.', 'paper.zh-CN.md': 'Existing translation, do not modify.' };
+				createdAt: `${year || '2024'}-01-01T00:00:00Z`, archiveStatus: state, status: 'not-started',
+				acquisition: { preservation: state === 'complete' ? 'attention-required' : 'passed-within-scope' } }), 'paper.md': 'English original, do not modify.', 'paper.zh-CN.md': 'Existing translation, do not modify.' };
 			for (const [name, text] of Object.entries(files)) { const writer = await (await child.getFileHandle(name, { create: true })).createWritable(); await writer.write(text); await writer.close(); }
 		}
 		const broken = await root.getDirectoryHandle('broken', { create: true });
@@ -86,6 +87,13 @@ try {
 	assert.equal(await page.locator('.archive-row').count(), 0);
 	assert.match(await page.locator('#library-status').innerText(), /No matching archives/);
 	await page.locator('#library-query').fill('');
+	await page.locator('#library-filter').selectOption('attention');
+	assert.equal(await page.locator('.archive-row').count(), 3);
+	await page.locator('#library-filter').selectOption('reviewed');
+	assert.equal(await page.locator('.archive-row').count(), 0);
+	await page.locator('#library-filter').selectOption('all');
+	assert.equal(await page.locator('.archive-warning').count(), 1);
+	assert.equal(await page.locator('.archive-copy-doi').count(), 2);
 	await page.locator('#library-sort').selectOption('year');
 	assert.match(await page.locator('.archive-row').first().innerText(), /metabolites/);
 	await page.locator('#library-refresh').click();

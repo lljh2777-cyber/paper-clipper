@@ -83,7 +83,8 @@ try {
 	const download = await readCompletedZip(worker, save);
 	assert.equal(download.fileName, '2026_Edited_synthetic_paper__10.1234_synthetic.zip');
 	const zip = unzipSync(download.bytes);
-	assert.equal(Object.keys(zip).length, 5);
+	assert.equal(Object.keys(zip).length, 6);
+	assert.match(strFromU8(zip[Object.keys(zip).find(name => name.endsWith('/citation.bib'))]), /doi = \{10\.1234\/synthetic\}/);
 	const metadata = JSON.parse(strFromU8(zip[Object.keys(zip).find(name => name.endsWith('/translation.json'))]));
 	assert.equal(metadata.doi, '10.1234/synthetic');
 	assert.equal(metadata.archiveStatus, 'complete');
@@ -102,7 +103,7 @@ try {
 	assert.equal(md.match(/images\/image-1.png/g)?.length, 2);
 	const extracted = path.join(directory, 'extracted');
 	for (const [name, bytes] of Object.entries(zip)) {
-		assert.match(name, /^2026_Edited_synthetic_paper__10\.1234_synthetic\/(?:paper\.md|checks\.json|translation\.json|images\/|images\/image-1\.png)$/);
+		assert.match(name, /^2026_Edited_synthetic_paper__10\.1234_synthetic\/(?:paper\.md|checks\.json|citation\.bib|translation\.json|images\/|images\/image-1\.png)$/);
 		const target = path.join(extracted, name);
 		if (name.endsWith('/')) { await mkdir(target, { recursive: true }); continue; }
 		await mkdir(path.dirname(target), { recursive: true });
