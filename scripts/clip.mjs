@@ -26,9 +26,10 @@ Common options:
       --timeout <ms>         Timeout per fetch/conversion phase (default: 60000)
       --overwrite            Replace Markdown only after checks pass
       --download-assets      Save image attachments and use relative image paths
-      --vault <directory>    Archive accepted Markdown and local images into a Vault
-      --papers-dir <path>    Relative paper folder inside --vault (default: Papers)
-  -h, --help                 Show this help
+      --vault <directory>        Archive accepted Markdown and local images into a Vault
+      --papers-dir <path>        Relative paper folder inside --vault (default: Papers; in folder layout: root)
+      --archive-layout <layout>  Archive structure: vault (default) or folder (YEAR_ShortTitle__SafeDOI)
+  -h, --help                     Show this help
 
 URL-only options:
       --output <file.md>     Exact Markdown path instead of --output-dir
@@ -77,8 +78,10 @@ function urlFilename(url) {
 
 function withArchive(options, values) {
 	if (!values.vault) return options;
-	const config = parseArchiveOptions([path.join(options.outputDir, 'paper.md'), '--vault', values.vault,
-		'--papers-dir', values['papers-dir'] ?? 'Papers']);
+	const archiveArgs = [path.join(options.outputDir, 'paper.md'), '--vault', values.vault];
+	if (values['papers-dir'] !== undefined) archiveArgs.push('--papers-dir', values['papers-dir']);
+	if (values['archive-layout'] !== undefined) archiveArgs.push('--archive-layout', values['archive-layout']);
+	const config = parseArchiveOptions(archiveArgs);
 	const relative = path.relative(config.vault, options.outputDir);
 	if (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)) {
 		throw new Error('Conversion output must be outside the destination Vault. --overwrite never applies to Vault notes.');
@@ -99,14 +102,16 @@ export function parseOptions(args) {
 		'download-assets': { type: 'boolean', default: false },
 		vault: { type: 'string' },
 		'papers-dir': { type: 'string' },
+		'archive-layout': { type: 'string' },
 		help: { type: 'boolean', short: 'h' },
 	} });
 	if (values.help) return { help: true };
 	if (positionals.length !== 1 || !positionals[0].trim()) throw new Error('Provide one HTTP(S) URL, exported HTML file, or directory.');
-	for (const name of ['output-dir', 'output', 'template', 'profile', 'wait-for', 'vault', 'papers-dir']) {
+	for (const name of ['output-dir', 'output', 'template', 'profile', 'wait-for', 'vault', 'papers-dir', 'archive-layout']) {
 		if (values[name] !== undefined && !values[name].trim()) throw new Error(`--${name} cannot be empty.`);
 	}
 	if (values['papers-dir'] !== undefined && values.vault === undefined) throw new Error('--papers-dir requires --vault.');
+	if (values['archive-layout'] !== undefined && values.vault === undefined) throw new Error('--archive-layout requires --vault.');
 	const input = positionals[0];
 	const isDrivePath = /^[a-z]:/i.test(input);
 	const isUrl = !isDrivePath && /^[a-z][a-z0-9+.-]*:/i.test(input.trim());

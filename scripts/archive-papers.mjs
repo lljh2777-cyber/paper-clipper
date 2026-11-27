@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { lstat, mkdir, mkdtemp, open, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -15,11 +15,12 @@ Archive accepted paper outputs and their local images, without any network acces
 Inputs require the matching <paper.md>.report.json and retained conversion files.
 Directories are scanned only at the top level for those report/Markdown pairs.
 
-  --vault <directory>      Vault root (required; created only during a real run)
-  --papers-dir <relative>  Paper folder within the Vault (default: Papers)
-  --dry-run               Read/check/plan only; creates no files or directories
-  --json                  Print the full result as JSON
-  -h, --help              Show help
+  --vault <directory>        Vault root (required; created only during a real run)
+  --papers-dir <relative>    Paper folder within the Vault (default: Papers; in folder layout: root)
+  --archive-layout <layout>  Archive structure: vault (default) or folder (YEAR_ShortTitle__SafeDOI)
+  --dry-run                  Read/check/plan only; creates no files or directories
+  --json                     Print the full result as JSON
+  -h, --help                 Show help
 
 Duplicates are skipped by DOI, then canonical source URL. Conflicts fail visibly.
 Existing notes, annotations and attachments are never overwritten or deleted.
@@ -37,7 +38,7 @@ function archiveError(code, message, details = {}) {
 }
 
 export async function validateVaultDestination(options, sourceDirectories = []) {
-	if (!within(options.vault, options.papersDir) || options.papersDir === options.vault) throw new Error('Paper folder must be strictly inside the Vault.');
+	if (!within(options.vault, options.papersDir) || (options.layout !== 'folder' && options.papersDir === options.vault)) throw new Error('Paper folder must be strictly inside the Vault.');
 	await plainDirectories(options.vault);
 	await plainDirectories(options.papersDir);
 	await plainDirectories(path.join(options.vault, '.paper-clipper'));
@@ -87,15 +88,23 @@ export function splitFrontmatter(markdown) {
 
 export function parseOptions(args) {
 	const { values, positionals } = parseArgs({ args, allowPositionals: true, options: {
-		vault: { type: 'string' }, 'papers-dir': { type: 'string', default: 'Papers' },
+		vault: { type: 'string' }, 'papers-dir': { type: 'string' }, 'archive-layout': { type: 'string', default: 'vault' },
 		'dry-run': { type: 'boolean', default: false }, json: { type: 'boolean', default: false }, help: { type: 'boolean', short: 'h' },
 	} });
 	if (values.help) return { help: true };
 	if (!positionals.length || positionals.some(value => !value.trim()) || !values.vault?.trim()) throw new Error('Provide input papers/directories and --vault.');
-	const subdir = values['papers-dir'];
-	if (!subdir.trim() || path.isAbsolute(subdir) || subdir.split(/[\\/]/).some(part => !part || ['.', '..'].includes(part) || part.startsWith('.') || /[<>:"|?*\x00-\x1f]/.test(part) || /[. ]$/.test(part))) throw new Error('--papers-dir must be a safe relative directory, without traversal or hidden components.');
+	const layout = values['archive-layout'];
+	if (!['vault', 'folder'].includes(layout)) throw new Error('--archive-layout must be vault or folder.');
 	const vault = path.resolve(values.vault);
-	return { inputs: positionals.map(value => path.resolve(value)), vault, papersDir: path.resolve(vault, subdir), dryRun: values['dry-run'], json: values.json };
+	let papersDir;
+	if (values['papers-dir'] !== undefined) {
+		const subdir = values['papers-dir'];
+		if (!subdir.trim() || path.isAbsolute(subdir) || subdir.split(/[\\/]/).some(part => !part || ['.', '..'].includes(part) || part.startsWith('.') || /[<>:"|?*\x00-\x1f]/.test(part) || /[. ]$/.test(part))) throw new Error('--papers-dir must be a safe relative directory, without traversal or hidden components.');
+		papersDir = path.resolve(vault, subdir);
+	} else {
+		papersDir = layout === 'folder' ? vault : path.resolve(vault, 'Papers');
+	}
+	return { inputs: positionals.map(value => path.resolve(value)), vault, papersDir, layout, dryRun: values['dry-run'], json: values.json };
 }
 
 async function inputsIn(paths) {
@@ -138,6 +147,24 @@ async function existingNotes(vault) {
 	return notes;
 }
 
+async function existingFolderArchives(papersDir) {
+	const archives = [];
+	if (!await info(papersDir)) return archives;
+	for (const entry of await readdir(papersDir, { withFileTypes: true })) {
+		if (entry.name.startsWith('.')) continue;
+		const dir = path.join(papersDir, entry.name);
+		if (entry.isSymbolicLink()) throw new Error(`Archive contains an unsupported link: ${dir}`);
+		if (!entry.isDirectory()) continue;
+		const metaPath = path.join(dir, 'translation.json');
+		if (!await info(metaPath)) continue;
+		const metadata = await jsonFile(metaPath);
+		const doi = metadata.doi ? normalizeDoi(metadata.doi) : null;
+		const sources = metadata.sourceUrl ? [canonicalUrl(metadata.sourceUrl)] : [];
+		archives.push({ file: path.join(dir, metadata.sourceFile || 'paper.md'), doi, sources, title: metadata.title });
+	}
+	return archives;
+}
+
 function duplicate(metadata, notes) {
 	const sameUrl = notes.filter(note => note.sources.includes(metadata.source));
 	if (sameUrl.some(note => note.doi && metadata.doi && note.doi !== metadata.doi)) throw new Error('Canonical URL is already associated with a different DOI.');
@@ -150,6 +177,76 @@ function duplicate(metadata, notes) {
 function filename(metadata) {
 	const title = metadata.title.replace(/[<>:"/\\|?*\x00-\x1f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 85).replace(/[. ]+$/, '') || 'Paper';
 	return `${metadata.year ?? 'undated'} ${title}.md`;
+}
+
+const safeComponent = (value, length) => String(value ?? '').normalize('NFC').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
+	.replace(/\s+/g, '_').slice(0, length).replace(/[. _]+$/g, '') || 'paper';
+
+function folderArchiveName(metadata, id) {
+	const year = String(metadata.year ?? metadata.publication_date?.match(/^\d{4}/)?.[0] ?? 'unknown');
+	return `${year}_${safeComponent(metadata.title, 44)}__${metadata.doi ? safeComponent(metadata.doi, 80) : id}`;
+}
+
+const BIBTEX_STOP_WORDS = new Set(['a', 'an', 'the', 'on', 'of', 'in', 'for', 'to', 'with', 'and']);
+const BIBTEX_PROSE_ESCAPES = { '\\': '\\textbackslash{}', '{': '\\{', '}': '\\}', '%': '\\%', '&': '\\&', '#': '\\#', _: '\\_', $: '\\$', '~': '\\textasciitilde{}', '^': '\\textasciicircum{}' };
+const escapeBibtexProse = value => String(value).replace(/[\\{}%&#_$~^]/g, ch => BIBTEX_PROSE_ESCAPES[ch] ?? ch);
+const escapeBibtexVerbatim = value => String(value).replace(/[{}]/g, ch => (ch === '{' ? '\\{' : '\\}'));
+const asciiSlug = value => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+
+function formatCitationBib(metadata) {
+	const authors = Array.isArray(metadata.authors) ? metadata.authors.filter(Boolean) : [];
+	const firstAuthor = authors[0]?.trim() ?? '';
+	const surname = !firstAuthor ? '' : firstAuthor.includes(',') ? asciiSlug(firstAuthor.split(',')[0]) : asciiSlug(firstAuthor.split(/\s+/).at(-1));
+	const titleWords = String(metadata.title ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+	const titleWord = titleWords.find(word => !BIBTEX_STOP_WORDS.has(word)) ?? titleWords[0] ?? '';
+	const year = metadata.year ? String(metadata.year) : (metadata.publication_date?.match(/\b((?:1[0-9]|20)\d{2})\b/)?.[1] ?? '');
+	const key = `${surname || 'paper'}${year}${titleWord}` || 'paper';
+	const entryType = metadata.journal ? 'article' : 'misc';
+	const lines = [`@${entryType}{${key},`, `  title = {${escapeBibtexProse(metadata.title || 'Untitled')}},`];
+	if (authors.length) lines.push(`  author = {${authors.map(escapeBibtexProse).join(' and ')}},`);
+	if (metadata.journal) lines.push(`  journal = {${escapeBibtexProse(metadata.journal)}},`);
+	if (year) lines.push(`  year = {${escapeBibtexVerbatim(year)}},`);
+	if (metadata.doi) lines.push(`  doi = {${escapeBibtexVerbatim(metadata.doi)}},`);
+	if (metadata.source) lines.push(`  url = {${escapeBibtexVerbatim(metadata.source)}},`);
+	lines.push('}');
+	return lines.join('\n') + '\n';
+}
+
+function markdownImageSpan(image, destination) {
+	const alt = (image.alt ?? '').replace(/[\\[\]]/g, '\\$&').replace(/\r?\n/g, ' ');
+	const title = image.title ? ` "${image.title.replace(/[\\"]/g, '\\$&').replace(/\r?\n/g, ' ')}"` : '';
+	return `![${alt}](<${destination}>${title})`;
+}
+
+function prepareFolderPayload(paper) {
+	const usedNames = new Set();
+	const mappedByRelative = new Map();
+	const attachments = [];
+	for (const attachment of paper.attachments) {
+		const rawBase = path.basename(decodeURIComponent(attachment.relative)) || 'image';
+		const ext = path.extname(rawBase);
+		const stem = ext ? rawBase.slice(0, -ext.length) : rawBase;
+		let candidate = rawBase;
+		let counter = 2;
+		while (usedNames.has(candidate.toLowerCase())) candidate = `${stem}-${counter++}${ext}`;
+		usedNames.add(candidate.toLowerCase());
+		const diskRelative = `images/${candidate}`;
+		const urlRelative = `images/${encodeURIComponent(candidate)}`;
+		mappedByRelative.set(attachment.relative, urlRelative);
+		attachments.push({ source: attachment.source, relative: diskRelative, urlRelative, content: attachment.content });
+	}
+	let markdown = paper.markdown;
+	const replacements = [];
+	for (const image of collectImages(markdown)) {
+		const mapped = mappedByRelative.get(image.url);
+		if (!mapped) continue;
+		replacements.push({ start: image.start, end: image.end, text: image.format === 'html' ? `src="${mapped}"` : markdownImageSpan(image, mapped) });
+		if (image.remove) replacements.push({ ...image.remove, text: '' });
+	}
+	for (const replacement of replacements.sort((a, b) => b.start - a.start)) {
+		markdown = markdown.slice(0, replacement.start) + replacement.text + markdown.slice(replacement.end);
+	}
+	return { markdown, attachments };
 }
 
 async function prepare(input, options) {
@@ -222,12 +319,13 @@ async function prepare(input, options) {
 }
 
 export async function archivePapers(options) {
-	await validateVaultDestination(options);
+	const layout = options.layout ?? 'vault';
+	await validateVaultDestination({ ...options, layout });
 	const inputs = await inputsIn(options.inputs);
 	if (inputs.some(input => within(options.vault, input))) throw new Error('Source papers must be outside the destination Vault.');
 	const stateDir = path.join(options.vault, '.paper-clipper');
 	await plainDirectories(stateDir);
-	const report = { schemaVersion: 1, dryRun: options.dryRun, vault: options.vault, papersDir: options.papersDir,
+	const report = { schemaVersion: 1, dryRun: options.dryRun, layout, vault: options.vault, papersDir: options.papersDir,
 		startedAt: new Date().toISOString(), counts: { planned: 0, archived: 0, duplicate: 0, failed: 0 }, items: [] };
 	let lock;
 	let reportPath;
@@ -244,7 +342,7 @@ export async function archivePapers(options) {
 			await mkdir(path.join(stateDir, 'runs'), { recursive: true });
 			reportPath = path.join(await mkdtemp(path.join(stateDir, 'runs', 'run-')), 'report.json');
 		}
-		const notes = await existingNotes(options.vault);
+		const notes = layout === 'folder' ? await existingFolderArchives(options.papersDir) : await existingNotes(options.vault);
 		for (const input of inputs) {
 			const item = { input, status: 'failed' };
 			try {
@@ -259,6 +357,52 @@ export async function archivePapers(options) {
 				const found = duplicate(paper.metadata, notes);
 				if (found) {
 					item.status = 'duplicate'; item.output = found.file;
+				} else if (layout === 'folder') {
+					const folderName = folderArchiveName(paper.metadata, paper.id);
+					const destination = path.join(options.papersDir, folderName);
+					item.output = path.join(destination, 'paper.md');
+					if (await info(destination)) throw new Error('Destination already exists without a matching archive; refusing to replace it.');
+					if (!options.dryRun) {
+						const payload = prepareFolderPayload(paper);
+						await plainDirectories(options.papersDir);
+						await mkdir(options.papersDir, { recursive: true });
+						await plainDirectories(path.join(stateDir, 'staging'));
+						await mkdir(path.join(stateDir, 'staging'), { recursive: true });
+						const staging = await mkdtemp(path.join(stateDir, 'staging', 'paper-'));
+						item.staging = staging;
+						await mkdir(path.join(staging, 'images'), { recursive: true });
+						for (const attachment of payload.attachments) {
+							const target = path.resolve(staging, attachment.relative);
+							if (!within(staging, target)) throw new Error('Attachment escapes staging directory.');
+							await mkdir(path.dirname(target), { recursive: true });
+							await writeFile(target, attachment.content, { flag: 'wx' });
+						}
+						const archivedAt = new Date().toISOString();
+						await writeFile(path.join(staging, 'paper.md'), payload.markdown, { flag: 'wx' });
+						await writeFile(path.join(staging, 'citation.bib'), formatCitationBib(paper.metadata), { flag: 'wx' });
+						await writeFile(path.join(staging, 'checks.json'), JSON.stringify({
+							schemaVersion: 1, source: 'cli-archive', metadata: paper.metadata, quality: paper.quality, checks: paper.requirements,
+							originalInput: input, originalReport: paper.reportPath, archivedAt,
+							attachments: payload.attachments.map(asset => ({ relativePath: asset.relative, bytes: asset.content.length })),
+						}, null, 2) + '\n', { flag: 'wx' });
+						await writeFile(path.join(staging, 'translation.json'), JSON.stringify({
+							schemaVersion: 1, id: randomUUID(), doi: paper.metadata.doi, title: paper.metadata.title,
+							published: paper.metadata.publication_date ?? (paper.metadata.year ? String(paper.metadata.year) : null),
+							sourceUrl: paper.metadata.source, sourceFile: 'paper.md', translationFile: 'paper.zh-CN.md',
+							sourceVersion: { algorithm: 'sha256', value: createHash('sha256').update(payload.markdown, 'utf8').digest('hex') },
+							createdAt: archivedAt, status: 'not-started', model: null, completedSections: [], archiveStatus: 'complete',
+							acquisition: {
+								method: 'cli-archive', completeness: 'passed-checks', preservation: 'verified', coverage: 'checked',
+								images: payload.attachments.length, checksFile: 'checks.json',
+							},
+							translationChecks: 'not-run', humanReview: 'not-reviewed',
+						}, null, 2) + '\n', { flag: 'wx' });
+						if (await info(destination)) throw new Error('Destination appeared during archiving; refusing to replace it.');
+						await rename(staging, destination);
+						delete item.staging;
+					}
+					item.status = options.dryRun ? 'planned' : 'archived';
+					notes.push({ file: item.output, doi: paper.metadata.doi, sources: [paper.metadata.source], title: paper.metadata.title });
 				} else {
 					const destination = path.join(options.papersDir, `p-${paper.id}`);
 					item.output = path.join(destination, paper.name);

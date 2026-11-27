@@ -1,3 +1,4 @@
+import { MathMLToLaTeX } from 'mathml-to-latex';
 import { prepareMath } from './paper-math.mjs';
 import { cellCitation } from './cell-citations.mjs';
 import { citationPublicationDay } from './publication-date';
@@ -7,6 +8,83 @@ const citationSelector = '.reference-citations a.reference-citations__ctrl[data-
 const cellLegendSelector = 'figure.graphic figcaption .figure__caption__text__content';
 const bibliographySelector = '.biblioentry .citations[id]';
 const extendedImageSelector = '.c-article-supplementary__item h3 a[data-supp-info-image]';
+
+function prepareMathJaxTex(getSource: () => Document, editable: () => Document): void {
+	const delimiters: ReadonlyArray<readonly [string, string, 'inline' | 'block']> = [
+		['\\(', '\\)', 'inline'],
+		['\\[', '\\]', 'block'],
+		['$$', '$$', 'block'],
+	];
+	const source = getSource();
+	const candidateIndices: Array<{ index: number; display: 'inline' | 'block'; latex: string }> = [];
+	const elements = Array.from(source.querySelectorAll('.mathjax-tex'));
+	for (const [index, element] of elements.entries()) {
+		if (element.children.length || element.closest('pre, code, script, style, textarea, math')) continue;
+		const text = (element.textContent ?? '').trim();
+		const delimiter = delimiters.find(([start, end]) => text.startsWith(start) && text.endsWith(end));
+		if (!delimiter) continue;
+		const [start, end, display] = delimiter;
+		const latex = text.slice(start.length, -end.length).trim();
+		if (!latex) continue;
+		candidateIndices.push({ index, display, latex });
+	}
+	if (!candidateIndices.length) return;
+	const doc = editable();
+	const targetElements = Array.from(doc.querySelectorAll('.mathjax-tex'));
+	for (const { index, display, latex } of candidateIndices) {
+		const element = targetElements[index];
+		if (!element) continue;
+		// Static exports omit the library script that normally enables Defuddle's
+		// raw-TeX detection. Mark only explicitly labelled publisher math as MathML.
+		const math = doc.createElement('math');
+		math.setAttribute('xmlns', 'http://www.w3.org/1998/Math/MathML');
+		math.setAttribute('display', display);
+		math.setAttribute('data-latex', latex);
+		math.textContent = latex;
+		element.replaceChildren(math);
+	}
+}
+
+function prepareMathMLForReader(getSource: () => Document, editable: () => Document): void {
+	const source = getSource();
+	const replacements: Array<{ index: number; latex: string }> = [];
+	const mathElements = Array.from(source.querySelectorAll('math'));
+	for (const [index, math] of mathElements.entries()) {
+		if (math.closest('pre, code, script, style, textarea') || math.hasAttribute('data-latex') ||
+			math.hasAttribute('alttext') || math.hasAttribute('data-math') ||
+			math.querySelector('annotation, mlabeledtr') ||
+			math.parentElement?.querySelector('script[type^="math/tex"]')) continue;
+		const dots = Array.from(math.querySelectorAll('mo')).filter(node => node.textContent?.trim() === '\u22ef');
+		const nested = math.querySelector('mtable mtable');
+		if ((!dots.length && !nested) || math.textContent?.includes('\u2026')) continue;
+		// mathml-to-latex emits unsupported \\hdots for U+22EF and flattens nested
+		// tables later. Supply verified TeX while retaining the original MathML.
+		const latex = MathMLToLaTeX.convert(math.outerHTML);
+		const aliases = [...latex.matchAll(/\\hdots(?![a-zA-Z])/g)];
+		if (aliases.length !== dots.length) continue;
+		replacements.push({ index, latex: latex.replace(/\\hdots(?![a-zA-Z])/g, '\\cdots') });
+	}
+	if (!replacements.length) return;
+	const doc = editable();
+	const targetElements = Array.from(doc.querySelectorAll('math'));
+	for (const { index, latex } of replacements) {
+		targetElements[index]?.setAttribute('data-latex', latex);
+	}
+}
+
+function prepareFrontiers(document: Document, url: string): void {
+	for (const button of Array.from(document.querySelectorAll('.ArticleFigure button.ArticleFigure__figureButton'))) {
+		if (!button.querySelector('figure')) continue;
+		// Frontiers wraps both the figure and its caption inside a lightbox button.
+		button.replaceWith(...Array.from(button.childNodes));
+	}
+	for (const link of Array.from(document.querySelectorAll('a.ArticleReference[href]'))) {
+		const href = link.getAttribute('href');
+		if (!href?.startsWith('#') || href.length === 1 || !link.textContent?.trim() || link.closest('pre, code')) continue;
+		link.setAttribute('href', new URL(href, url).href);
+		link.classList.remove('ArticleReference');
+	}
+}
 
 function preparePlosReferences(document: Document, url: string): void {
 	const targets = new Map<string, string>();
@@ -173,6 +251,8 @@ export function prepareDocumentForExtraction(source: Document, url: string): Doc
 	if (document.querySelector('mjx-container')) {
 		prepareMath(editable());
 	}
+	prepareMathJaxTex(() => document, editable);
+	prepareMathMLForReader(() => document, editable);
 	let hostname: string;
 	try {
 		hostname = new URL(url).hostname;
@@ -192,6 +272,19 @@ export function prepareDocumentForExtraction(source: Document, url: string): Doc
 	if (hostname === 'journals.plos.org' && document.querySelector('ol.references > li[id] > a.link-target[id]')) {
 		const prepared = editable();
 		preparePlosReferences(prepared, url);
+		return prepared;
+	}
+	if (/(^|\.)frontiersin\.org$/.test(hostname)) {
+		const hasLightbox = Array.from(document.querySelectorAll('.ArticleFigure button.ArticleFigure__figureButton'))
+			.some(button => Boolean(button.querySelector('figure')));
+		const hasArticleRef = Array.from(document.querySelectorAll('a.ArticleReference[href]'))
+			.some(link => {
+				const href = link.getAttribute('href');
+				return Boolean(href?.startsWith('#') && href.length > 1 && link.textContent?.trim() && !link.closest('pre, code'));
+			});
+		if (!hasLightbox && !hasArticleRef) return document;
+		const prepared = editable();
+		prepareFrontiers(prepared, url);
 		return prepared;
 	}
 	if (hostname === 'pmc.ncbi.nlm.nih.gov') {

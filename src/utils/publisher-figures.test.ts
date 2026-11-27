@@ -230,3 +230,45 @@ describe('Publisher collapsed and linked figures', () => {
 		expect(prepareDocumentForExtraction(new DOMParser().parseFromString(sourceWith(extended), 'text/html'), 'https://nature.com.example.org').querySelector('img')).toBeNull();
 	});
 });
+
+describe('unified MathJax, MathML and Frontiers preprocessing', () => {
+	test('converts .mathjax-tex elements outside code and normalizes MathML \\hdots and nested tables idempotently', () => {
+		const input = `<!doctype html><html><head><title>Math test</title></head><body><article>
+			<p>Inline <span class="mathjax-tex">\\(x_i + 1\\)</span> and block <div class="mathjax-tex">\\[a^2 + b^2\\]</div></p>
+			<pre><span class="mathjax-tex">\\(ignored\\)</span></pre>
+			<math display="inline"><mi>x</mi><mo>⋯</mo><mi>y</mi></math>
+			<math display="block"><mtable><mtr><mtd><mtable><mtr><mtd><mn>1</mn></mtd></mtr></mtable></mtd></mtr></mtable></math>
+		</article></body></html>`;
+		const source = new DOMParser().parseFromString(input, 'text/html');
+		const before = source.documentElement.outerHTML;
+		const prepared = prepareDocumentForExtraction(source, 'https://example.org/math');
+		expect(source.documentElement.outerHTML).toBe(before);
+		expect(prepared.querySelectorAll('.mathjax-tex math[data-latex]')).toHaveLength(2);
+		expect(prepared.querySelector('pre .mathjax-tex math')).toBeNull();
+		const mathNodes = Array.from(prepared.querySelectorAll('article > math[data-latex]'));
+		expect(mathNodes).toHaveLength(2);
+		expect(mathNodes[0].getAttribute('data-latex')).toContain('\\cdots');
+		expect(mathNodes[0].getAttribute('data-latex')).not.toContain('\\hdots');
+		expect(mathNodes[1].getAttribute('data-latex')).toContain('\\begin{matrix}');
+		expect(prepareDocumentForExtraction(prepared, 'https://example.org/math')).toBe(prepared);
+	});
+
+	test('unwraps Frontiers lightbox figure buttons and resolves ArticleReference links idempotently', () => {
+		const frontiersUrl = 'https://www.frontiersin.org/journals/test/articles/10.3389/test.2024.0001/full';
+		const input = `<!doctype html><html><head><title>Frontiers</title></head><body><article>
+			<p>See <a class="ArticleReference" href="#B1">[1]</a> and <code><a class="ArticleReference" href="#B2">[2]</a></code>.</p>
+			<div class="ArticleFigure"><button class="ArticleFigure__figureButton"><figure><img src="https://example.org/fig.png" alt="Fig 1"><figcaption>Figure caption preserved.</figcaption></figure></button></div>
+		</article></body></html>`;
+		const source = new DOMParser().parseFromString(input, 'text/html');
+		const before = source.documentElement.outerHTML;
+		const prepared = prepareDocumentForExtraction(source, frontiersUrl);
+		expect(source.documentElement.outerHTML).toBe(before);
+		expect(prepared.querySelector('.ArticleFigure button.ArticleFigure__figureButton')).toBeNull();
+		expect(prepared.querySelector('.ArticleFigure figure figcaption')?.textContent).toBe('Figure caption preserved.');
+		const resolvedLink = prepared.querySelector('p > a');
+		expect(resolvedLink?.getAttribute('href')).toBe(`${frontiersUrl}#B1`);
+		expect(resolvedLink?.classList.contains('ArticleReference')).toBe(false);
+		expect(prepared.querySelector('code a.ArticleReference')?.getAttribute('href')).toBe('#B2');
+		expect(prepareDocumentForExtraction(prepared, frontiersUrl)).toBe(prepared);
+	});
+});

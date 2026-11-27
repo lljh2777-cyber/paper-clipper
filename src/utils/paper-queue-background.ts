@@ -5,8 +5,9 @@ const alarmName = 'paper-queue-poll';
 type Pairing = { endpoint: string; key: string; enabled?: boolean };
 type Pending = { jobId: string; lease: string; phase: 'capturing' | 'submitting' | 'pausing'; reason?: string };
 type PairingDraft = { endpoint: string; nonce: string; code: string; expiresAt: number };
-type View = { status: string; jobs: QueueJob[]; busy: boolean; error?: string; endpoint?: string; pairingCode?: string };
+type View = { status: string; jobs: QueueJob[]; busy: boolean; continueOnBlock?: boolean; error?: string; endpoint?: string; pairingCode?: string };
 const terminal = new Set(['saved', 'duplicate', 'failed', 'cancelled', 'existing-unverified']);
+const attention = new Set(['paused', 'needs-access']);
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 const code = (error: unknown) => error && typeof error === 'object' && 'status' in error ? error.status : undefined;
 
@@ -23,9 +24,23 @@ export class PaperQueueController {
 	private async remember(value?: Pending) {
 		if (value) await browser.storage.local.set({ paperQueuePending: value }); else await browser.storage.local.remove('paperQueuePending');
 	}
+	private async syncBadge(view: View) {
+		const action = (browser as unknown as { action?: { setBadgeText?: (details: { text: string }) => Promise<void>; setBadgeBackgroundColor?: (details: { color: string }) => Promise<void> } }).action;
+		if (typeof action?.setBadgeText !== 'function') return;
+		const needsAttention = view.status === 'Connected' && view.jobs.some(job => attention.has(job.status));
+		try {
+			if (needsAttention) {
+				await action.setBadgeBackgroundColor?.({ color: '#d97706' });
+				await action.setBadgeText({ text: '!' });
+			} else {
+				await action.setBadgeText({ text: '' });
+			}
+		} catch { /* Ignore badge failures on environments without an action bar. */ }
+	}
 	private async publish(change: Partial<View>) {
 		this.view = { ...this.view, ...change, busy: this.busy };
 		await browser.storage.session.set({ paperQueueView: this.view });
+		await this.syncBadge(this.view);
 	}
 	async status(): Promise<View> {
 		const draft = (await browser.storage.session.get('paperQueuePairingDraft')).paperQueuePairingDraft as PairingDraft | undefined;
@@ -73,10 +88,12 @@ export class PaperQueueController {
 			const pairing = await this.pairing();
 			if (!pairing) return;
 			const api = this.makeApi(pairing.endpoint, pairing.key);
-			let jobs: QueueJob[] = (await api('/v1/jobs')).jobs;
+			const initial = await api('/v1/jobs');
+			let jobs: QueueJob[] = initial.jobs;
+			const continueOnBlock = Boolean(initial.continueOnBlock);
 			await this.tabs.reconcile(jobs.map(job => job.id));
 			for (const job of jobs) if (terminal.has(job.status)) await this.tabs.finish(job.id);
-			await this.publish({ jobs, endpoint: pairing.endpoint, status: pairing.enabled === false ? 'Disconnected' : 'Connected', error: undefined });
+			await this.publish({ jobs, continueOnBlock, endpoint: pairing.endpoint, status: pairing.enabled === false ? 'Disconnected' : 'Connected', error: undefined });
 			let pending = await this.pending();
 			let job = pending && jobs.find(item => item.id === pending?.jobId);
 			if (pending && (!job || !['claimed', 'processing'].includes(job.status))) { await this.remember(); pending = undefined; }
@@ -150,7 +167,7 @@ export class PaperQueueController {
 				const result = await this.makeApi(endpoint, key)('/v1/jobs');
 				await browser.storage.session.remove('paperQueuePairingDraft');
 				await browser.storage.local.set({ paperQueuePairing: { endpoint, key, enabled: true } });
-				await this.publish({ status: 'Connected', endpoint, jobs: result.jobs, error: undefined });
+				await this.publish({ status: 'Connected', endpoint, jobs: result.jobs, continueOnBlock: Boolean(result.continueOnBlock), error: undefined });
 				await this.ensureAlarm();
 			} else if (request.op === 'forget') {
 				this.pairingAttempt++;
@@ -199,7 +216,10 @@ export function installPaperQueueBackground() {
 		clearTimeout(scheduled); scheduled = undefined;
 		controller.wake().then(async () => {
 			const state = await controller.status();
-			if (!state.busy && state.status === 'Connected' && state.jobs.some(job => ['queued', 'processing'].includes(job.status)) && !state.jobs.some(job => ['paused', 'needs-access', 'claimed'].includes(job.status))) scheduled = setTimeout(wake, 2500);
+			const hasPendingWork = state.jobs.some(job => ['queued', 'processing'].includes(job.status));
+			const isBlocked = state.jobs.some(job => job.status === 'claimed') ||
+				(!state.continueOnBlock && state.jobs.some(job => ['paused', 'needs-access'].includes(job.status)));
+			if (!state.busy && state.status === 'Connected' && hasPendingWork && !isBlocked) scheduled = setTimeout(wake, 2500);
 		}).catch(() => {});
 	};
 	browser.runtime.onMessage.addListener((request: unknown, sender) => {

@@ -10,7 +10,7 @@ import { canonicalUrl } from './paper-metadata.mjs';
 import { classifyQuery, resolvePaper } from './resolve-paper.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const common = ['output-dir', 'vault', 'papers-dir', 'download-assets', 'overwrite', 'min-words', 'require-section', 'timeout'];
+const common = ['output-dir', 'vault', 'papers-dir', 'archive-layout', 'download-assets', 'overwrite', 'min-words', 'require-section', 'timeout'];
 const browser = ['fetch', 'profile', 'login', 'headed', 'wait-for', 'settle'];
 const usage = `Usage: node scripts/save-paper.mjs "<title | DOI | URL>" [options]
 
@@ -20,9 +20,10 @@ stdout is one JSON result; progress goes to stderr. No AI or PDF conversion.
   --resolve-only            Resolve metadata only; no capture or filesystem writes
   --html <export.html>      Use one authorized Clipper HTML/JSON pair after resolution
   -o, --output-dir <dir>    Conversion/report directory (default: output/browser-fetch/agent)
-  --vault <dir>            Optional Vault destination; existing notes are never overwritten
-  --papers-dir <relative>  Vault paper subdirectory (default: Papers)
-  --download-assets        Opt into local image downloads, including with --html
+  --vault <dir>             Optional Vault/archive destination; existing notes are never overwritten
+  --papers-dir <relative>   Vault paper subdirectory (default: Papers; in folder layout: root)
+  --archive-layout <mode>   Archive structure: vault (default) or folder (YEAR_ShortTitle__SafeDOI)
+  --download-assets         Opt into local image downloads, including with --html
   --overwrite              Intentionally regenerate conversion output, never Vault notes
   --mailto <email>         Optional contact address sent to Crossref
   --resolve-timeout <ms>   Metadata request timeout (default: 15000)
@@ -56,7 +57,7 @@ function forward(values, names) {
 
 export function parseOptions(args) {
 	const { values, positionals, tokens } = parseArgs({ args, allowPositionals: true, tokens: true, options: {
-		...browserFlags, 'output-dir': { type: 'string', short: 'o' }, vault: { type: 'string' }, 'papers-dir': { type: 'string' },
+		...browserFlags, 'output-dir': { type: 'string', short: 'o' }, vault: { type: 'string' }, 'papers-dir': { type: 'string' }, 'archive-layout': { type: 'string' },
 		'download-assets': { type: 'boolean', default: false }, overwrite: { type: 'boolean', default: false },
 		'min-words': { type: 'string', default: '1000' }, 'require-section': { type: 'string', multiple: true, default: [] },
 		fetch: { type: 'string' }, html: { type: 'string' }, mailto: { type: 'string' },

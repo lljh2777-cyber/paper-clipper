@@ -6,6 +6,7 @@ import { PaperTaskTab, pairingRequest, QueueJob } from './paper-queue-client';
 vi.mock('./browser-polyfill', () => ({ default: {
 	storage: { local: { get: vi.fn(), set: vi.fn(), remove: vi.fn() }, session: { get: vi.fn(), set: vi.fn(), remove: vi.fn() } },
 	alarms: { get: vi.fn(), create: vi.fn(), clear: vi.fn() },
+	action: { setBadgeText: vi.fn(), setBadgeBackgroundColor: vi.fn() },
 	runtime: { id: 'extension', getURL: (path: string) => `chrome-extension://extension/${path}` },
 } }));
 vi.mock('./file-utils', () => ({ saveFile: vi.fn() }));
@@ -138,4 +139,24 @@ it('reset uses stored endpoint, preserves enabled state and handles uncertain re
 it('only the trusted queue page may send controls, not content scripts or other extensions', () => {
 	expect(isQueueSender({ id: 'extension', url: 'chrome-extension://extension/paper-queue.html' })).toBe(true);
 	for (const sender of [{ id: 'extension', url: 'https://example.org' }, { id: 'other', url: 'chrome-extension://extension/paper-queue.html' }, {}]) expect(isQueueSender(sender)).toBe(false);
+});
+it('sets an attention badge when jobs pause or need access and clears it once resolved or disconnected', async () => {
+	const setBadgeText = vi.mocked((browser as unknown as { action: { setBadgeText: (details: { text: string }) => Promise<void> } }).action.setBadgeText);
+	const setBadgeColor = vi.mocked((browser as unknown as { action: { setBadgeBackgroundColor: (details: { color: string }) => Promise<void> } }).action.setBadgeBackgroundColor);
+	const tabs = tab();
+	tabs.snapshot.mockRejectedValueOnce(new Error('Human login required'));
+	await controller(tabs).wake();
+	expect(setBadgeColor).toHaveBeenCalledWith({ color: '#d97706' });
+	expect(setBadgeText).toHaveBeenLastCalledWith({ text: '!' });
+
+	setBadgeText.mockClear();
+	await controller().command({ op: 'skip', jobId: 'abcd' });
+	await controller().wake();
+	expect(setBadgeText).toHaveBeenLastCalledWith({ text: '' });
+
+	jobs[0].status = 'needs-access';
+	await controller().wake();
+	expect(setBadgeText).toHaveBeenLastCalledWith({ text: '!' });
+	await controller().command({ op: 'disconnect' });
+	expect(setBadgeText).toHaveBeenLastCalledWith({ text: '' });
 });

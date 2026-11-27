@@ -335,3 +335,46 @@ test('directory links and artifact paths escaping the paper are refused', async 
 	assert.equal(result.exitCode, 1);
 	assert.match(result.report.items[0].error, /bounded successful source/);
 });
+
+test('folder archive layout writes YEAR_ShortTitle__SafeDOI bundle, deduplicates against translation.json with sibling translations, and never overwrites', async () => {
+	assert.throws(() => parseOptions(['paper.md', '--vault', 'vault', '--archive-layout', 'invalid']));
+	const f = await fixture('folder-layout');
+	const result = await archivePapers(f.options(['--archive-layout', 'folder']));
+	assert.equal(result.exitCode, 0);
+	assert.equal(result.report.counts.archived, 1);
+	const folderDir = path.dirname(result.report.items[0].output);
+	assert.equal(path.dirname(folderDir), f.vault);
+	assert.equal(path.basename(folderDir), '2024_Original_Paper_Title__10.1234_example');
+	assert.equal(path.basename(result.report.items[0].output), 'paper.md');
+	const paperMd = await readFile(path.join(folderDir, 'paper.md'), 'utf8');
+	assert.match(paperMd, /!\[Figure\]\(<images\/image\.png> "caption"\)/);
+	assert.equal((await readFile(path.join(folderDir, 'images/image.png'))).equals(png), true);
+	const bib = await readFile(path.join(folderDir, 'citation.bib'), 'utf8');
+	assert.match(bib, /@article\{example2024original,/);
+	assert.match(bib, /doi = \{10\.1234\/example\},/);
+	const checks = JSON.parse(await readFile(path.join(folderDir, 'checks.json'), 'utf8'));
+	assert.equal(checks.source, 'cli-archive');
+	assert.equal(checks.attachments[0].relativePath, 'images/image.png');
+	const translation = JSON.parse(await readFile(path.join(folderDir, 'translation.json'), 'utf8'));
+	assert.equal(translation.status, 'not-started');
+	assert.equal(translation.doi, '10.1234/example');
+	assert.equal(translation.acquisition.method, 'cli-archive');
+
+	// Sibling translation file inside the folder archive must not trigger multiple-note duplicate errors.
+	const zhPath = path.join(folderDir, 'paper.zh-CN.md');
+	await writeFile(zhPath, '---\ndoi: 10.1234/example\nsource: https://publisher.example/article\n---\n中文译文。\n');
+	const again = await fixture('folder-layout-dup');
+	const dupResult = await archivePapers(parseOptions([again.input, '--vault', f.vault, '--archive-layout', 'folder']));
+	assert.equal(dupResult.exitCode, 0);
+	assert.equal(dupResult.report.counts.duplicate, 1);
+	assert.equal(await readFile(zhPath, 'utf8'), '---\ndoi: 10.1234/example\nsource: https://publisher.example/article\n---\n中文译文。\n');
+
+	// Existing folder with an unrelated archive refuses replacement.
+	const occupied = await fixture('folder-layout-occupied', { doi: '10.1234/occupied', url: 'https://publisher.example/occupied' });
+	const occupiedDest = path.join(occupied.vault, '2024_Original_Paper_Title__10.1234_occupied');
+	await mkdir(occupiedDest, { recursive: true });
+	await writeFile(path.join(occupiedDest, 'keep.txt'), 'Keep');
+	const occupiedResult = await archivePapers(occupied.options(['--archive-layout', 'folder']));
+	assert.equal(occupiedResult.exitCode, 1);
+	assert.equal(await readFile(path.join(occupiedDest, 'keep.txt'), 'utf8'), 'Keep');
+});

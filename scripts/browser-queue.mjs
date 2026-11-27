@@ -22,16 +22,19 @@ No daily-profile access, cookie extraction, PDF/OCR or dedicated-browser fallbac
       --port <n>          Loopback port (default: 43127)
       --vault <dir>       Optional explicit Vault; existing notes never change
       --papers-dir <dir>  Relative Vault paper directory
+      --archive-layout <mode>  Archive structure: vault (default) or folder
       --download-assets   Opt into image requests without browser credentials
       --min-words <n>     Existing quality threshold (default: 1000)
       --require-section <heading>  Repeatable
   -t, --template <path>   Existing full-content template
-      --timeout <ms>     Conversion timeout (default: 60000)
-      --show-pairing-key Print the private key explicitly; without tasks, read only
-  -h, --help             Show help
+      --timeout <ms>      Conversion timeout (default: 60000)
+      --continue-on-block Continue claiming queued jobs if a task pauses or needs access
+      --exit-when-done    Exit automatically once all reachable jobs finish, printing a summary
+      --show-pairing-key  Print the private key explicitly; without tasks, read only
+  -h, --help              Show help
 
-Accepts 1-20 tasks. The local service stays open until Ctrl+C; it does not install
-a background service. Pairing key is private local data; never share or commit it.
+Accepts 1-20 tasks. The local service stays open until Ctrl+C (or completion with --exit-when-done);
+it does not install a background service. Pairing key is private local data; never share or commit it.
 Use the same output directory and port to reuse pairing. Keep them outside Vaults.
 Dedicated browser remains available via save-paper.mjs --fetch browser.
 `;
@@ -39,9 +42,10 @@ Dedicated browser remains available via save-paper.mjs --fetch browser.
 export function parseOptions(args) {
 	const { values, positionals, tokens } = parseArgs({ args, allowPositionals: true, tokens: true, options: {
 		'output-dir': { type: 'string', short: 'o' }, port: { type: 'string', default: '43127' },
-		vault: { type: 'string' }, 'papers-dir': { type: 'string' }, template: { type: 'string', short: 't' },
+		vault: { type: 'string' }, 'papers-dir': { type: 'string' }, 'archive-layout': { type: 'string' }, template: { type: 'string', short: 't' },
 		'download-assets': { type: 'boolean', default: false }, 'min-words': { type: 'string', default: '1000' },
 		'require-section': { type: 'string', multiple: true, default: [] }, timeout: { type: 'string', default: '60000' },
+		'exit-when-done': { type: 'boolean', default: false }, 'continue-on-block': { type: 'boolean', default: false },
 		help: { type: 'boolean', short: 'h' },
 		'show-pairing-key': { type: 'boolean', default: false },
 	} });
@@ -56,14 +60,19 @@ export function parseOptions(args) {
 	const port = Number(values.port);
 	if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Port must be 1024-65535.');
 	const forward = ['--output-dir', outputDir];
-	for (const name of ['vault', 'papers-dir', 'template', 'download-assets', 'min-words', 'require-section', 'timeout']) {
+	for (const name of ['vault', 'papers-dir', 'archive-layout', 'template', 'download-assets', 'min-words', 'require-section', 'timeout']) {
 		const value = values[name];
 		if (value === true) forward.push(`--${name}`);
 		else if (Array.isArray(value)) for (const item of value) forward.push(`--${name}`, item);
 		else if (typeof value === 'string') forward.push(`--${name}`, value);
 	}
 	clipOptions(['sample.html', ...forward]);
-	return { queries: positionals, port, outputDir, forward, showPairingKey: values['show-pairing-key'] };
+	return {
+		queries: positionals, port, outputDir, forward,
+		showPairingKey: values['show-pairing-key'],
+		exitWhenDone: values['exit-when-done'],
+		continueOnBlock: values['continue-on-block'],
+	};
 }
 
 async function plainDirectory(directory) {
@@ -167,6 +176,12 @@ export async function startQueue(options, { resolve = resolvePaper, runPaper = s
 		jobs.push(job);
 	}
 	const publicJob = ({ lease, ...job }) => job;
+	const continueOnBlock = Boolean(options.continueOnBlock);
+	const blockingStatuses = continueOnBlock ? ['claimed', 'processing'] : ['claimed', 'processing', 'paused', 'needs-access'];
+	const activeStatuses = continueOnBlock ? ['queued', 'claimed', 'processing'] : ['queued', 'claimed', 'processing', 'paused', 'needs-access'];
+	let resolveDone;
+	const done = new Promise(resolve => { resolveDone = resolve; });
+	const checkDone = () => { if (!jobs.some(job => activeStatuses.includes(job.status))) resolveDone(); };
 	let writes = Promise.resolve(), stopping = false;
 	const persist = () => {
 		const data = JSON.stringify({ schemaVersion: 1, route: 'extension', jobs: jobs.map(publicJob) }, null, 2) + '\n';
@@ -174,6 +189,7 @@ export async function startQueue(options, { resolve = resolvePaper, runPaper = s
 		return writes;
 	};
 	await persist();
+	checkDone();
 	const server = createServer(async (request, response) => {
 		const origin = request.headers.origin;
 		const expectedHost = `127.0.0.1:${server.address()?.port}`;
@@ -200,7 +216,7 @@ export async function startQueue(options, { resolve = resolvePaper, runPaper = s
 		if (credential.length !== 64 || !timingSafeEqual(credential, Buffer.from(key))) { reply(401, { error: 'Pairing required.' }); return; }
 		const authenticatedKey = key;
 		try {
-			if (request.method === 'GET' && request.url === '/v1/jobs') { reply(200, { jobs: jobs.map(publicJob) }); return; }
+			if (request.method === 'GET' && request.url === '/v1/jobs') { reply(200, { jobs: jobs.map(publicJob), continueOnBlock }); return; }
 			if (request.method !== 'POST' || stopping) { reply(404, { error: 'No route.' }); return; }
 			const data = await body(request);
 			// Requests authenticated before a rotation cannot finish under the old key.
@@ -227,7 +243,7 @@ export async function startQueue(options, { resolve = resolvePaper, runPaper = s
 				return;
 			}
 			if (request.url === '/v1/claim') {
-				if (jobs.some(job => ['claimed', 'processing', 'needs-access', 'paused'].includes(job.status))) { reply(200, { job: null }); return; }
+				if (jobs.some(job => blockingStatuses.includes(job.status))) { reply(200, { job: null }); return; }
 				const job = jobs.find(job => job.status === 'queued');
 				if (job) { job.status = 'claimed'; job.lease = randomUUID(); await persist(); }
 				reply(200, { job: job ?? null }); return;
@@ -239,12 +255,14 @@ export async function startQueue(options, { resolve = resolvePaper, runPaper = s
 			if (['resume', 'skip'].includes(action)) {
 				if (!['claimed', 'paused', 'needs-access'].includes(job.status)) throw new Error('Task cannot be resumed/skipped in this state.');
 				job.status = action === 'resume' ? 'queued' : 'cancelled'; delete job.lease;
-				await persist(); reply(200, { job: publicJob(job) }); return;
+				await persist(); reply(200, { job: publicJob(job) });
+				if (action === 'skip') checkDone();
+				return;
 			}
 			if (job.status !== 'claimed' || data.lease !== job.lease) throw new Error('Stale task lease.');
 			if (action === 'pause') {
 				job.status = 'paused'; job.error = String(data.reason ?? 'Browser requires attention.').slice(0, 500);
-				await persist(); reply(200, { job: publicJob(job) }); return;
+				await persist(); reply(200, { job: publicJob(job) }); checkDone(); return;
 			}
 			if (typeof data.html !== 'string' || !data.html || Buffer.byteLength(data.html) > 30 * 1024 * 1024 || data.htmlBytes !== Buffer.byteLength(data.html)) throw new Error('Invalid HTML size.');
 			for (const name of ['url', 'baseURI']) {
@@ -266,15 +284,32 @@ export async function startQueue(options, { resolve = resolvePaper, runPaper = s
 				job.status = job.result.status;
 				if (job.status === 'incomplete') job.status = 'paused';
 			} catch (error) { job.status = 'failed'; job.error = error.message; }
-			await persist(); log(`[${job.status}] ${job.query}`); reply(200, { job: publicJob(job) });
+			await persist(); log(`[${job.status}] ${job.query}`); reply(200, { job: publicJob(job) }); checkDone();
 		} catch (error) { reply(400, { error: error.message }); }
 	});
 	server.requestTimeout = 45000;
 	server.headersTimeout = 10000;
 	await new Promise((resolveListen, reject) => { server.once('error', reject); server.listen(options.port, '127.0.0.1', resolveListen); });
-	return { url: `http://127.0.0.1:${server.address().port}`, get key() { return key; }, reportPath,
+	return { url: `http://127.0.0.1:${server.address().port}`, get key() { return key; }, reportPath, done,
+		jobs: () => jobs.map(publicJob),
 		confirmPairing: (code, approve) => !stopping && !rotating && pairing.confirm(code, approve),
 		close: async () => { stopping = true; pairing.clear(); await new Promise(resolveClose => server.close(resolveClose)); await writes; } };
+}
+
+export function summarizeQueue(jobs) {
+	const attentionStatuses = new Set(['paused', 'needs-access', 'needs-selection', 'not-found', 'existing-unverified']);
+	const saved = jobs.filter(job => job.status === 'saved').length;
+	const duplicate = jobs.filter(job => job.status === 'duplicate').length;
+	const failedJobs = jobs.filter(job => job.status === 'failed');
+	const attentionJobs = jobs.filter(job => attentionStatuses.has(job.status));
+	const exitCode = failedJobs.length ? 1 : attentionJobs.length ? 2 : 0;
+	const lines = [`Summary: Saved=${saved}, Duplicate=${duplicate}, Failed=${failedJobs.length}, Needs attention=${attentionJobs.length}`];
+	for (const job of [...attentionJobs, ...failedJobs]) {
+		const target = job.url || job.query;
+		const reason = job.error || job.result?.error || job.resolution?.reason || job.status;
+		lines.push(`  [${job.status}] ${target} — ${reason}`);
+	}
+	return { exitCode, text: lines.join('\n') };
 }
 
 export function startupMessage(queue, showKey = false) {
@@ -293,10 +328,18 @@ export async function main(args = process.argv.slice(2)) {
 		} : undefined });
 		terminal?.on('line', line => { console.log(confirmPairingLine(line, queue.confirmPairing) ? 'Pairing decision recorded.' : 'No matching pending request. Enter its 6-digit code, or deny CODE.'); });
 		console.log(startupMessage(queue, options.showPairingKey));
-		await new Promise(resolve => {
-			const stop = () => { process.off('SIGINT', stop); process.off('SIGTERM', stop); terminal?.off('SIGINT', stop); resolve(); };
+		const signalPromise = new Promise(resolve => {
+			const stop = () => { process.off('SIGINT', stop); process.off('SIGTERM', stop); terminal?.off('SIGINT', stop); resolve({ completed: false }); };
 			process.once('SIGINT', stop); process.once('SIGTERM', stop); terminal?.once('SIGINT', stop);
 		});
+		const outcome = options.exitWhenDone
+			? await Promise.race([signalPromise, queue.done.then(() => ({ completed: true }))])
+			: await signalPromise;
+		if (outcome.completed) {
+			const summary = summarizeQueue(queue.jobs());
+			console.log(summary.text);
+			process.exitCode = summary.exitCode;
+		}
 	} finally { terminal?.close(); await queue?.close(); }
 }
 

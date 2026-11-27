@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { request as httpRequest } from 'node:http';
-import { startQueue, parseOptions, readPairingKey, startupMessage, pairingHandshake, confirmPairingLine } from './browser-queue.mjs';
+import { startQueue, parseOptions, readPairingKey, startupMessage, pairingHandshake, confirmPairingLine, summarizeQueue } from './browser-queue.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const paragraph = 'This research compares tissue expression and spatial organization across biological samples. '.repeat(100);
@@ -265,4 +265,36 @@ test('queue Vault writes retain existing DOI notes and personal annotations', as
 		const result = (await s.request(`/v1/jobs/${job.id}/capture`, { ...snapshot(), lease: job.lease })).data.job;
 		assert.equal(result.status, 'duplicate'); assert.equal(await readFile(note, 'utf8'), original);
 	} finally { await s.close(); }
+});
+
+test('parseOptions forwards --archive-layout and exposes --exit-when-done and --continue-on-block', () => {
+	const parsed = parseOptions(['10.1234/test', '--vault', 'ArchiveRoot', '--archive-layout', 'folder', '--exit-when-done', '--continue-on-block']);
+	assert.equal(parsed.exitWhenDone, true);
+	assert.equal(parsed.continueOnBlock, true);
+	assert.ok(parsed.forward.includes('--archive-layout'));
+	assert.ok(parsed.forward.includes('folder'));
+});
+
+test('continue-on-block advances past paused jobs and resolves done once queued work finishes', async () => {
+	const s = await setup(['10.1234/queue', '10.1234/other'], ['--continue-on-block']);
+	try {
+		assert.equal((await s.request('/v1/jobs')).data.continueOnBlock, true);
+		const first = (await s.request('/v1/claim', {})).data.job;
+		await s.request(`/v1/jobs/${first.id}/pause`, { lease: first.lease, reason: 'Login required' });
+		const second = (await s.request('/v1/claim', {})).data.job;
+		assert.notEqual(second, null);
+		assert.notEqual(second.id, first.id);
+		const saved = await s.request(`/v1/jobs/${second.id}/capture`, { ...snapshot(full.replace('10.1234/queue', '10.1234/other')), lease: second.lease });
+		assert.equal(saved.data.job.status, 'saved');
+		await s.done;
+		const summary = summarizeQueue(s.jobs());
+		assert.equal(summary.exitCode, 2);
+		assert.match(summary.text, /Saved=1, Duplicate=0, Failed=0, Needs attention=1/);
+		assert.match(summary.text, /Login required/);
+	} finally { await s.close(); }
+});
+
+test('summarizeQueue returns 0 when all jobs succeed or duplicate and 1 when any fail', () => {
+	assert.equal(summarizeQueue([{ status: 'saved' }, { status: 'duplicate' }]).exitCode, 0);
+	assert.equal(summarizeQueue([{ status: 'saved' }, { status: 'failed', query: '10.1/fail', error: 'HTTP 500' }]).exitCode, 1);
 });
