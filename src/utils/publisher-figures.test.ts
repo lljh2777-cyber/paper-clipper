@@ -272,3 +272,72 @@ describe('unified MathJax, MathML and Frontiers preprocessing', () => {
 		expect(prepareDocumentForExtraction(prepared, frontiersUrl)).toBe(prepared);
 	});
 });
+
+describe('SpringerLink and BMC preservation', () => {
+	const springerUrl = 'https://link.springer.com/article/10.1038/s44318-024-00123-3';
+	const bmcUrl = 'https://bmcbiomedeng.biomedcentral.com/articles/10.1186/s42490-021-00056-6';
+	const springerHtml = `<!doctype html><html><head><title>Polarity paper</title></head><body><article id="main">
+		<div class="c-article-header">
+			<ul class="c-article-author-list"><li>Author One<sup><a href="#Aff1">1</a>,<a href="#Aff2">2</a></sup></li><li>Author Two<sup><a href="#Aff1">1</a></sup></li></ul>
+		</div>
+		<div id="main-content"><main><div class="c-article-body">
+			<section data-title="Abstract"><h2>Abstract</h2><p>${paragraph}</p></section>
+			<section data-title="Synopsis"><h2>Synopsis</h2>
+				<div class="c-article-section__figure"><figure><img src="//media.springernature.com/lw685/springer-static/image/art%3A10.1038%2Fs44318-024-00123-3/MediaObjects/44318_2024_123_Figa_HTML.png" alt=""></figure></div>
+				<p>Synopsis summary of polarity mechanism.</p>
+			</section>
+			<section class="c-article-recommendations"><h2>Similar content being viewed by others</h2>
+				<article><img src="https://media.springernature.com/w215h120/springer-static/image/art%3A10.1007%2Frecommended/MediaObjects/rec.png" alt="Recommended"><h3>Unrelated paper</h3></article>
+			</section>
+			<div class="main-content">
+				<section data-title="Results"><h2>Results</h2><p>${paragraph}</p>
+				<div id="Equ1" class="c-article-equation"><span class="mathjax-tex">$$c_{\\rm tot} = c_{\\rm c}$$</span></div>
+				<div class="c-article-section__figure"><figure>
+					<figcaption><b id="Fig1" class="c-article-section__figure-caption">Figure 1: Cooperative membrane binding.</b></figcaption>
+					<div class="c-article-section__figure-content"><picture><img src="//media.springernature.com/lw685/springer-static/image/art%3A10.1038%2Fs44318-024-00123-3/MediaObjects/44318_2024_123_Fig1_HTML.png" alt="Figure 1: Cooperative membrane binding."></picture>
+					<div class="c-article-section__figure-link"><a class="c-article__pill-button" data-track-action="view figure" href="/article/10.1038/s44318-024-00123-3/figures/1"><span>Full size image</span></a></div>
+					<div class="c-article-section__figure-description"><p>(<b>A</b>) First panel observation.</p></div></div>
+				</figure></div>
+				<div class="c-article-section__figure"><figure>
+					<figcaption><b id="FigEV1" class="c-article-section__figure-caption">Figure EV1: Extended dataset.</b></figcaption>
+					<div class="c-article-section__figure-content"><picture><img src="//media.springernature.com/lw685/springer-static/image/art%3A10.1038%2Fs44318-024-00123-3/MediaObjects/44318_2024_123_Fig2_HTML.jpg" alt="Figure EV1: Extended dataset."></picture>
+					<div class="c-article-section__figure-link"><a class="c-article__pill-button" data-track-action="view figure" href="/article/10.1038/s44318-024-00123-3/figures/2"><span>Full size image</span></a></div>
+					<div class="c-article-section__figure-description"><p>(<b>A</b>) Extended panel observation.</p></div></div>
+				</figure></div></section>
+			</div>
+			<section data-title="References"><h2>References</h2><ul class="c-article-references"><li id="ref-CR1">Goehring NW (2014) PAR polarity.</li></ul></section>
+		</div></main></div>
+	</article></body></html>`;
+
+	test('preserves SpringerLink body, Synopsis, captions and formulas while stripping Full size image and recommendations', async () => {
+		for (const targetUrl of [springerUrl, bmcUrl]) {
+			const source = new DOMParser().parseFromString(springerHtml, 'text/html');
+			const before = source.documentElement.outerHTML;
+			const prepared = prepareDocumentForExtraction(source, targetUrl);
+			expect(source.documentElement.outerHTML).toBe(before);
+			expect(prepareDocumentForExtraction(prepared, targetUrl)).toBe(prepared);
+
+			const outputs = [
+				(await clip({ html: springerHtml, url: targetUrl, template, documentParser: new DOMParser() })).content,
+			];
+			for (const asyncMode of [false, true]) {
+				const parser = new Defuddle(prepareDocumentForExtraction(source, targetUrl), { url: targetUrl });
+				outputs.push(createMarkdownContent((asyncMode ? await parser.parseAsync() : parser.parse()).content, targetUrl));
+			}
+			for (const md of outputs) {
+				expect(md).toContain('## Results');
+				expect(md).toContain('## Synopsis');
+				expect(md).toContain('44318_2024_123_Figa_HTML.png');
+				expect(md).toContain('44318_2024_123_Fig1_HTML.png');
+				expect(md).toContain('44318_2024_123_Fig2_HTML.jpg');
+				expect(md).toContain('(**A**) First panel observation.');
+				expect(md).toContain('(**A**) Extended panel observation.');
+				expect(md).not.toContain('Full size image');
+				expect(md).not.toContain('Similar content being viewed by others');
+				expect(md).not.toContain('rec.png');
+			}
+		}
+		const spoofed = new DOMParser().parseFromString(springerHtml.replace(/<div id="Equ1"[\s\S]*?<\/div>/, ''), 'text/html');
+		expect(prepareDocumentForExtraction(spoofed, 'https://link.springer.com.example.org/article')).toBe(spoofed);
+	});
+});

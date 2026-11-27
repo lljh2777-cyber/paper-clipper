@@ -8,6 +8,17 @@ const citationSelector = '.reference-citations a.reference-citations__ctrl[data-
 const cellLegendSelector = 'figure.graphic figcaption .figure__caption__text__content';
 const bibliographySelector = '.biblioentry .citations[id]';
 const extendedImageSelector = '.c-article-supplementary__item h3 a[data-supp-info-image]';
+const springerNatureHost = /(^|\.)nature\.com$|^link\.springer\.com$|(^|\.)biomedcentral\.com$/;
+
+function springerFullSizeLinks(document: Document): Element[] {
+	return Array.from(document.querySelectorAll('figure .c-article-section__figure-link'))
+		.filter(box => Boolean(box.querySelector('a[data-track-action="view figure"]')) && /^Full size image$/i.test(box.textContent?.trim() ?? ''));
+}
+
+function springerRecommendationSections(document: Document): Element[] {
+	return Array.from(document.querySelectorAll('section.c-article-recommendations'))
+		.filter(section => /Similar content being viewed by others/i.test(section.querySelector('h2, h3')?.textContent ?? ''));
+}
 
 function prepareMathJaxTex(getSource: () => Document, editable: () => Document): void {
 	const delimiters: ReadonlyArray<readonly [string, string, 'inline' | 'block']> = [
@@ -301,9 +312,25 @@ export function prepareDocumentForExtraction(source: Document, url: string): Doc
 		prepareCellBibliography(prepared);
 		return prepared;
 	}
-	if (!/(^|\.)nature\.com$/.test(hostname)) return document;
-	if (!document.querySelector(`${descriptionSelector}, ${extendedImageSelector}`)) return document;
+	if (!springerNatureHost.test(hostname)) return document;
+	const hasSpringerChanges = Boolean(
+		document.querySelector(`${descriptionSelector}, ${extendedImageSelector}, .c-article-header a[href^="#Aff"]`) ||
+		springerFullSizeLinks(document).length ||
+		springerRecommendationSections(document).length
+	);
+	if (!hasSpringerChanges) return document;
 	const prepared = editable();
+	// On author-year SpringerLink/EMBO articles with UL references, header #Aff
+	// links otherwise cause Defuddle's generic footnote pass to swallow the body.
+	for (const link of Array.from(prepared.querySelectorAll('.c-article-header a[href^="#Aff"]'))) {
+		link.replaceWith(prepared.createTextNode(link.textContent ?? ''));
+	}
+	for (const linkBox of springerFullSizeLinks(prepared)) {
+		linkBox.remove();
+	}
+	for (const section of springerRecommendationSections(prepared)) {
+		section.remove();
+	}
 	prepareNatureExtendedImages(prepared, url);
 	for (const description of Array.from(prepared.querySelectorAll(descriptionSelector))) {
 		const figure = description.closest('figure');
