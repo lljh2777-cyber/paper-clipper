@@ -10,7 +10,7 @@ supports Chromium extensions only.
 Build/update the development extension in the full checkout (not exported Core):
 
 ```sh
-npx webpack --env BROWSER=chrome --env SKIP_CLEANUP=true --mode development
+npm run build:chrome:dev
 ```
 
 Load/reload the resulting `dev` directory in Chrome's extension manager. This is

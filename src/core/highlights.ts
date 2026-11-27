@@ -1116,7 +1116,11 @@ async function fetchDefuddled(url: string): Promise<DefuddleResult | null> {
 			action: 'fetchProxy', url, options: {},
 		}) as { ok: boolean; status: number; text: string; error?: string };
 		if (fetchResult?.error === 'CORS_PERMISSION_NEEDED') {
-			await browser.permissions.request({ origins: ['<all_urls>'] });
+			const parsedUrl = new URL(url);
+			if (!/^https?:$/.test(parsedUrl.protocol)) {
+				throw new Error(`Unsupported URL protocol: ${parsedUrl.protocol}`);
+			}
+			await browser.permissions.request({ origins: [`${parsedUrl.origin}/*`] });
 			const retry = await browser.runtime.sendMessage({
 				action: 'fetchProxy', url, options: {},
 			}) as { ok: boolean; status: number; text: string; error?: string };

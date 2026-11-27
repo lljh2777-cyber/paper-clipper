@@ -31,6 +31,8 @@ output/browser-fetch/
 output/playwright/
 
 # Local paper samples, private exports, and machine-specific Skill configuration
+/.obsidian/
+/.agent-trash/
 /test-paper*.md
 /Paper_Vault/
 /Paper_Vault_Backups/

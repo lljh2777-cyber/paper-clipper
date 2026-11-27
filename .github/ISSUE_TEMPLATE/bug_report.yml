@@ -1,63 +1,50 @@
 name: Bug report
-description: Report a bug in Web Clipper. Please review troubleshooting steps before submitting.
+description: Report a capture, conversion, or save issue in Paper Clipper.
 title: "BUG: "
 labels: ["bug"]
 body:
-
-  - type: checkboxes
-    id: content
+  - type: dropdown
+    id: route
     attributes:
-      label: Is this issue related to missing content or incorrect conversion to Markdown?
-      description: Web Clipper uses [Defuddle](https://github.com/kepano/defuddle) to convert web pages to Markdown. If the issue is related to missing content or incorrect content, please open the issue on the [Defuddle](https://github.com/kepano/defuddle) repo, not here.
+      label: Workflow / entry point
       options:
-        - label: No. This is definitely a Web Clipper bug.
-          required: true
-
-  - type: checkboxes
-    id: troubleshooting
-    attributes:
-      label: Have you reviewed the troubleshooting instructions?
-      options:
-        - label: I have reviewed the [Troubleshooting instructions](https://help.obsidian.md/web-clipper/troubleshoot).
-          required: true
-
-  - type: input
-    id: os
-    attributes:
-      label: Operating system
-      placeholder: e.g. macOS 14.5, Windows 11
+        - Chrome extension — save folder / ZIP
+        - Chrome extension — paired browser queue
+        - CLI — save-paper / clip
+        - Paper Clipper Core
     validations:
       required: true
 
   - type: input
-    id: browser
+    id: version
     attributes:
-      label: Browser
-      placeholder: e.g. Chrome 124, Firefox 126, Safari 17
+      label: Paper Clipper version
+      placeholder: e.g. 1.7.2
     validations:
       required: true
 
   - type: input
-    id: clipper-version
+    id: environment
     attributes:
-      label: Web Clipper version
-      placeholder: e.g. 0.9.5
-    validations:
-      required: true
-
-  - type: input
-    id: obsidian-version
-    attributes:
-      label: Obsidian version
-      placeholder: e.g. 1.7.5
+      label: OS and browser / Node.js version
+      placeholder: e.g. Windows 11, Chrome 131 / Node 24
     validations:
       required: true
 
   - type: textarea
+    id: article
+    attributes:
+      label: Public article URL or DOI
+      description: Omit private or signed URLs, article content, and pairing keys.
+      placeholder: e.g. 10.1186/s13045-021-01131-0 or https://...
+    validations:
+      required: false
+
+  - type: textarea
     id: description
     attributes:
-      label: Describe the bug
-      description: A clear and concise description of the bug. If applicable, add screenshots to help explain the problem.
+      label: What happened?
+      description: Describe the capture, conversion, or save failure and how to reproduce it.
     validations:
       required: true
 
@@ -65,36 +52,13 @@ body:
     id: expected
     attributes:
       label: Expected behavior
-      description: What did you expect to happen?
     validations:
       required: true
 
   - type: textarea
-    id: urls
+    id: diagnostics
     attributes:
-      label: URLs where the bug occurs
-      description: Any specific web pages where the bug can be replicated.
-    validations:
-      required: false
-
-  - type: textarea
-    id: reproduce
-    attributes:
-      label: To reproduce
-      description: Steps to reproduce the behavior.
-      value: |
-        1. Go to '...'
-        2. Click on '...'
-        3. Scroll down to '...'
-        4. See error
-    validations:
-      required: true
-
-  - type: textarea
-    id: template
-    attributes:
-      label: Your template file
-      description: If you are using a custom template (i.e. not the Default template), go to Web Clipper settings and click **More** → **Copy as JSON**. Paste the JSON code below.
-      render: json
+      label: Error message or checks.json excerpt
+      description: Optional diagnostic output, report status, or screenshot details (without private URLs or keys).
     validations:
       required: false

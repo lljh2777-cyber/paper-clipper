@@ -1,7 +1,20 @@
+# Repository text sources use LF so Windows Git avoids CRLF noise.
+/.gitattributes text eol=lf
+/.gitignore text eol=lf
+/*.md text eol=lf
+/*.json text eol=lf
+/*.js text eol=lf
+/*.ts text eol=lf
+/docs/** text eol=lf
+/scripts/** text eol=lf
+/skills/** text eol=lf
+/.github/** text eol=lf
+*.png binary
+
 # Preserve the bytes of text assets copied into the Chrome 1.7.2 package.
 /LICENSE text eol=crlf
 /THIRD_PARTY_NOTICES.md text eol=lf
-/src/manifest.chrome.json text eol=lf
+/src/manifest.*.json text eol=lf
 /src/_locales/*/messages.json text eol=lf
 /src/icons/paper-clipper.svg text eol=lf
 /src/styles/paper-*.css text eol=lf

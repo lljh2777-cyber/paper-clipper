@@ -9,7 +9,7 @@ see [local image attachments](paper-assets.md).
 
 ## Quick start
 
-Run from `E:\Paper_Clipper\obsidian-clipper`. Build the CLI once after installing
+Run from the repository root. Build the CLI once after installing
 dependencies, or after changing the converter:
 
 ```powershell

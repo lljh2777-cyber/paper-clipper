@@ -1,6 +1,6 @@
 # Unified paper command
 
-Run from `E:\Paper_Clipper\obsidian-clipper`. The recommended entry point is now
+Run from the repository root. The recommended entry point is now
 `npm run clip -- <input>`: supply a publisher URL, an extension-exported HTML
 file, or a directory of HTML/JSON pairs. Existing commands remain available.
 

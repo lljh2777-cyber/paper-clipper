@@ -2012,13 +2012,8 @@ export class Reader {
 				if (videoElement) {
 					videoTimestamp = Math.floor(videoElement.currentTime);
 					videoWasPlaying = !videoElement.paused;
-					// Chromium's iframe embed works via declarativeNetRequest.
-					// Safari/Firefox can't modify headers, so we preserve
-					// the native video element instead.
-					if (!['chrome', 'brave', 'edge'].includes(browserType)) {
-						youtubeVideoElement = videoElement;
-						videoElement.remove();
-					}
+					youtubeVideoElement = videoElement;
+					videoElement.remove();
 				}
 			}
 
@@ -2298,46 +2293,10 @@ export class Reader {
 					videoWrapper.appendChild(youtubeVideoElement);
 					iframe.replaceWith(videoWrapper);
 				} else if (iframe) {
-					// Fallback: use embed with header modification (Chrome)
-					// or thumbnail (Safari)
 					const embedUrl = new URL(iframe.src);
 					const videoId = embedUrl.pathname.split('/').pop();
-					const isSafari = ['safari', 'mobile-safari', 'ipad-os'].includes(browserType);
-
-					if (isSafari && videoId) {
-						const watchUrl = 'https://www.youtube.com/watch?v=' + videoId
-							+ (videoTimestamp > 0 ? '&t=' + videoTimestamp : '');
-						const thumbnail = doc.createElement('a');
-						thumbnail.href = watchUrl;
-						thumbnail.target = '_blank';
-						thumbnail.rel = 'noopener';
-						thumbnail.style.cssText = 'display:block;position:relative;aspect-ratio:16/9;max-width:100%;background:#000;border-radius:8px;overflow:hidden;';
-						const thumbImg = doc.createElement('img');
-						thumbImg.src = 'https://img.youtube.com/vi/' + videoId + '/hqdefault.jpg';
-						thumbImg.style.cssText = 'width:100%;height:100%;object-fit:cover;mix-blend-mode:normal!important;';
-						const playSvg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
-						playSvg.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:68px;height:48px;mix-blend-mode:normal!important;';
-						playSvg.setAttribute('viewBox', '0 0 68 48');
-						setSVGChildren(playSvg,
-							'<path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55c-2.93.78-4.63 3.26-5.42 6.19C.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="red"/>'
-							+ '<path d="M45 24L27 14v20" fill="white"/>');
-						thumbnail.replaceChildren(thumbImg, playSvg);
-						iframe.replaceWith(thumbnail);
-					} else {
-						await browser.runtime.sendMessage({
-							action: 'enableYouTubeEmbedRule'
-						}).catch(() => {});
-
-						if (videoTimestamp > 0 || videoWasPlaying) {
-							const src = new URL(iframe.src);
-							if (videoTimestamp > 0) {
-								src.searchParams.set('start', String(videoTimestamp));
-							}
-							if (videoWasPlaying) {
-								src.searchParams.set('autoplay', '1');
-							}
-							iframe.src = src.toString();
-						}
+					if (videoId) {
+						iframe.replaceWith(this.createYouTubeWatchThumbnail(doc, videoId, videoTimestamp));
 					}
 				}
 			}
@@ -2367,22 +2326,34 @@ export class Reader {
 		}
 	}
 
+	private static createYouTubeWatchThumbnail(doc: Document, videoId: string, videoTimestamp = 0): HTMLElement {
+		const watchUrl = 'https://www.youtube.com/watch?v=' + videoId
+			+ (videoTimestamp > 0 ? '&t=' + videoTimestamp : '');
+		const thumbnail = doc.createElement('a');
+		thumbnail.href = watchUrl;
+		thumbnail.target = '_blank';
+		thumbnail.rel = 'noopener';
+		thumbnail.style.cssText = 'display:block;position:relative;aspect-ratio:16/9;max-width:100%;background:#000;border-radius:8px;overflow:hidden;';
+		const thumbImg = doc.createElement('img');
+		thumbImg.src = 'https://img.youtube.com/vi/' + videoId + '/hqdefault.jpg';
+		thumbImg.style.cssText = 'width:100%;height:100%;object-fit:cover;mix-blend-mode:normal!important;';
+		const playSvg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		playSvg.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:68px;height:48px;mix-blend-mode:normal!important;';
+		playSvg.setAttribute('viewBox', '0 0 68 48');
+		setSVGChildren(playSvg,
+			'<path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55c-2.93.78-4.63 3.26-5.42 6.19C.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="red"/>'
+			+ '<path d="M45 24L27 14v20" fill="white"/>');
+		thumbnail.replaceChildren(thumbImg, playSvg);
+		return thumbnail;
+	}
+
 	static async restore(doc: Document) {
 		if (this.hasApplied) {
 			this.hasApplied = false;
 			this.isActive = false;
 
-			// Send all messages to background before reloading
-			const messages: Promise<any>[] = [
-				browser.runtime.sendMessage({ action: 'readerModeChanged', isActive: false }).catch(() => {}),
-			];
-
-			const host = doc.URL ? new URL(doc.URL).hostname : '';
-			if (host.includes('youtube.com') || host.includes('youtu.be')) {
-				messages.push(browser.runtime.sendMessage({ action: 'disableYouTubeEmbedRule' }).catch(() => {}));
-			}
-
-			await Promise.all(messages);
+			// Send message to background before reloading
+			await browser.runtime.sendMessage({ action: 'readerModeChanged', isActive: false }).catch(() => {});
 			window.location.reload();
 		}
 	}
@@ -2709,10 +2680,10 @@ export class Reader {
 		if (host.includes('youtube.com') || host.includes('youtu.be')) {
 			const iframe = article.querySelector('iframe[src*="youtube.com/embed/"]') as HTMLIFrameElement;
 			if (iframe) {
-				await browser.runtime.sendMessage({
-					action: 'enableYouTubeEmbedRule'
-				}).catch(() => {});
-				iframe.src = iframe.src;
+				const videoId = new URL(iframe.src).pathname.split('/').pop();
+				if (videoId) {
+					iframe.replaceWith(this.createYouTubeWatchThumbnail(doc, videoId));
+				}
 			}
 		}
 

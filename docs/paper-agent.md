@@ -87,7 +87,7 @@ calling local code, not an AI replacement for the converter or its content check
 
 ## Run
 
-Working directory on this machine: `E:\Paper_Clipper\obsidian-clipper`.
+Run these commands from the repository root.
 Build the existing converter once after converter source changes:
 
 ```powershell

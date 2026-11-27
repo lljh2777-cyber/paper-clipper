@@ -9,15 +9,12 @@
 		"alarms",
 		"activeTab",
 		"clipboardWrite",
-		"commands",
 		"contextMenus",
 		"sidePanel",
 		"storage",
-		"scripting",
-		"declarativeNetRequest"
+		"scripting"
 	],
 	"host_permissions": [
-		"<all_urls>",
 		"http://*/*",
 		"https://*/*"
 	],

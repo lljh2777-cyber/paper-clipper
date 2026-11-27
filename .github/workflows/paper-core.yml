@@ -30,26 +30,20 @@ jobs:
           package-manager-cache: false
       - name: Install development dependencies
         run: npm ci --no-audit --no-fund
-      - name: Check extension types and settings and template regressions
+      - name: Check extension types and run full Vitest suite
         run: |
           npx tsc --noEmit
-          npx vitest run src/utils/settings-restore.test.ts src/utils/import-modal.test.ts src/utils/model-variables.test.ts src/utils/template-editor.test.ts src/utils/template-integration.test.ts
+          npm test
+      - name: Build Chrome release and check packaged assets
+        run: npm run build:chrome
       - name: Check the packaged ESM selector API
         run: |
           npm run build:api
           node --input-type=module -e "import assert from 'node:assert/strict'; import {parseHTML} from 'linkedom'; import {createSelectorProcessor} from './dist/api.mjs'; const {document} = parseHTML('<html><body><p>Paper</p></body></html>'); assert.equal(await createSelectorProcessor(document)('{{selector:p}}', 'https://example.org'), 'Paper');"
       - name: Test queue service and snapshot client
         run: npm run test:browser-queue
-      - name: Test manual image archives
-        run: npx vitest run src/utils/image-archive.test.ts src/utils/paper-attachments.test.ts src/utils/figure-links.test.ts src/utils/paper-directory.test.ts src/utils/paper-directory-handoff.test.ts src/utils/paper-file-writer.test.ts src/utils/manual-export-checks.test.ts src/core/paper-save.test.ts src/core/popup-paper-switch.test.ts
-      - name: Test stale side panel notifications
-        run: npx vitest run src/utils/side-panel-lifecycle.test.ts
-      - name: Test read-only archive catalog
-        run: npx vitest run src/utils/paper-library.test.ts src/core/paper-library.test.ts
-      - name: Test publisher content preservation with synthetic pages
-        run: npx vitest run src/utils/publisher-figures.test.ts src/utils/publisher-citations.test.ts src/utils/paper-math.test.ts
       - name: Build development extension without cleanup
-        run: npx webpack --env BROWSER=chrome --env SKIP_CLEANUP=true --mode development
+        run: npm run build:chrome:dev
       - name: Verify extension branding and packaged attribution
         run: npm run test:extension-brand
       - name: Install Chromium

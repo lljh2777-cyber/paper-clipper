@@ -160,7 +160,11 @@ async function proxyFetch(url: string): Promise<{ text: string; finalUrl: string
 	}) as { ok: boolean; status: number; text: string; finalUrl?: string; error?: string };
 
 	if (result?.error === 'CORS_PERMISSION_NEEDED') {
-		const granted = await browser.permissions.request({ origins: ['<all_urls>'] });
+		const parsedUrl = new URL(url);
+		if (!/^https?:$/.test(parsedUrl.protocol)) {
+			throw new Error(`Unsupported URL protocol: ${parsedUrl.protocol}`);
+		}
+		const granted = await browser.permissions.request({ origins: [`${parsedUrl.origin}/*`] });
 		if (granted) {
 			const retry = await browser.runtime.sendMessage({
 				action: 'fetchProxy', url, options: {},

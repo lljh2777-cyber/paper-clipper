@@ -6,7 +6,7 @@ The archive stage itself does not re-fetch papers, download attachments, transla
 generate scientific summaries, install Obsidian, or change Obsidian settings.
 An ordinary directory can be opened as a Vault in Obsidian.
 
-Run from `E:\Paper_Clipper\obsidian-clipper`:
+Run from the repository root:
 
 ```powershell
 npm run clip -- "E:\Paper_Clipper" --download-assets -o "E:\Paper_Clipper\converted"

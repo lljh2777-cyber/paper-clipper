@@ -5,7 +5,7 @@ Markdown and replace their embedded URLs with portable relative paths. Without
 this flag, existing behavior is unchanged: HTML imports make no network requests
 and image URLs remain remote.
 
-Run from `E:\Paper_Clipper\obsidian-clipper`:
+Run from the repository root:
 
 ```powershell
 npm run clip -- "https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1012386" --download-assets

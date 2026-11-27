@@ -13,7 +13,6 @@
 		"scripting"
 	],
 	"host_permissions": [
-		"<all_urls>",
 		"http://*/*",
 		"https://*/*"
 	],
@@ -75,28 +74,28 @@
 				"default": "Ctrl+Shift+O",
 				"mac": "Command+Shift+O"
 			},
-			"description": "Open Paper Clipper"
+			"description": "__MSG_commandOpenClipper__"
 		},
 		"quick_clip": {
 			"suggested_key": {
 				"default": "Alt+Shift+O",
 				"mac": "Alt+Shift+O"
 			},
-			"description": "Quick clip"
+			"description": "__MSG_commandQuickClip__"
 		},
 		"toggle_highlighter": {
 			"suggested_key": {
 				"default": "Alt+Shift+H",
 				"mac": "Alt+Shift+H"
 			},
-			"description": "Toggle highlighter mode"
+			"description": "__MSG_commandToggleHighlighter__"
 		},
 		"toggle_reader": {
 			"suggested_key": {
 				"default": "Alt+Shift+R",
 				"mac": "Alt+Shift+R"
 			},
-			"description": "Toggle reading view"
+			"description": "__MSG_commandToggleReader__"
 		}
 	},
 	"default_locale": "en"

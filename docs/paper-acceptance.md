@@ -64,7 +64,7 @@ or automatically accepts a new baseline.
 
 ## Reproduce locally
 
-From `E:\Paper_Clipper\obsidian-clipper`:
+From the repository root:
 
 ```powershell
 npm run accept:papers

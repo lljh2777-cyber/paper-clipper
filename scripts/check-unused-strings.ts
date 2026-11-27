@@ -19,7 +19,7 @@ async function findUsedMessages(srcDir: string): Promise<Set<string>> {
 	const messagePattern = /getMessage\(['"]([^'"]+)['"]/g;
 	const i18nPattern = /data-i18n="([^"]+)"/g;
 	const i18nTitlePattern = /data-i18n="([^"]+)"/g;
-	const manifestPattern = /__MSG_([^_]+)__/g;
+	const manifestPattern = /__MSG_([A-Za-z0-9_]+)__/g;
 	const showErrorPattern = /showError\(['"]([^'"]+)['"]/g;
 
 	const searchFiles = async (dir: string) => {
@@ -77,7 +77,7 @@ async function findUsedMessages(srcDir: string): Promise<Set<string>> {
 }
 
 async function checkUnusedStrings(): Promise<void> {
-	const LOCALES_DIR = path.join(__dirname, '../src/locales');
+	const LOCALES_DIR = path.join(__dirname, '../src/_locales');
 	const SRC_DIR = path.join(__dirname, '../src');
 
 	try {

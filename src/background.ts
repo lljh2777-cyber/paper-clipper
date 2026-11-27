@@ -11,108 +11,7 @@ import { hasStoredHighlights } from './utils/url-utils';
 import { openReaderMarkdownSave } from './utils/paper-directory-handoff';
 import { capturePageHtml } from './utils/page-html-export';
 
-const YOUTUBE_EMBED_RULE_ID = 9001;
 installPaperQueueBackground();
-const YOUTUBE_INNERTUBE_RULE_ID = 9002;
-
-// Chrome: declarativeNetRequest to rewrite Referer on YouTube embeds.
-// Safari/Firefox use the native video element instead (see reader.ts).
-async function enableYouTubeEmbedRule(tabId: number): Promise<void> {
-	await chrome.declarativeNetRequest.updateSessionRules({
-		removeRuleIds: [YOUTUBE_EMBED_RULE_ID],
-		addRules: [{
-			id: YOUTUBE_EMBED_RULE_ID,
-			priority: 1,
-			action: {
-				type: 'modifyHeaders' as any,
-				requestHeaders: [{
-					header: 'Referer',
-					operation: 'set' as any,
-					value: 'https://obsidian.md/'
-				}]
-			},
-			condition: {
-				urlFilter: '||youtube.com/embed/',
-				resourceTypes: ['sub_frame' as any],
-				tabIds: [tabId]
-			}
-		}]
-	});
-}
-
-async function disableYouTubeEmbedRule(): Promise<void> {
-	await chrome.declarativeNetRequest.updateSessionRules({
-		removeRuleIds: [YOUTUBE_EMBED_RULE_ID]
-	});
-}
-
-// Set Origin header on YouTube innertube API requests from the extension.
-// YouTube doesn't accept chrome-extension://...
-async function enableYouTubeInnertubeRule(): Promise<void> {
-	const dnr = (typeof chrome !== 'undefined' && chrome.declarativeNetRequest)
-		|| (typeof browser !== 'undefined' && (browser as any).declarativeNetRequest);
-	if (!dnr) return;
-	try {
-		await dnr.updateSessionRules({
-			removeRuleIds: [YOUTUBE_INNERTUBE_RULE_ID],
-			addRules: [{
-				id: YOUTUBE_INNERTUBE_RULE_ID,
-				priority: 1,
-				action: {
-					type: 'modifyHeaders' as any,
-					requestHeaders: [
-						{ header: 'Origin', operation: 'set' as any, value: 'https://www.youtube.com' },
-						{ header: 'Referer', operation: 'set' as any, value: 'https://www.youtube.com/' },
-					]
-				},
-				condition: {
-					urlFilter: '||youtube.com/youtubei/',
-					resourceTypes: ['xmlhttprequest' as any],
-					initiatorDomains: [chrome?.runtime?.id || ''].filter(Boolean),
-				}
-			}]
-		});
-	} catch { /* Firefox/Safari use webRequest or native messaging instead */ }
-}
-
-// Firefox/Safari: use webRequest.onBeforeSendHeaders to set Origin/Referer on
-// YouTube innertube requests. Fallback for browsers where declarativeNetRequest
-// doesn't work or isn't supported.
-if (typeof browser !== 'undefined' && browser.webRequest?.onBeforeSendHeaders) {
-	try {
-		browser.webRequest.onBeforeSendHeaders.addListener(
-			(details) => {
-				// Only modify requests from tabs showing extension pages
-				if (details.tabId && details.tabId > 0) {
-					// Check asynchronously would be complex — instead check
-					// if the request has an extension origin or referer
-					const refHeader = details.requestHeaders?.find(h => h.name.toLowerCase() === 'referer');
-					const refValue = refHeader?.value || '';
-					const originHeader = details.requestHeaders?.find(h => h.name.toLowerCase() === 'origin');
-					const originValue = originHeader?.value || '';
-					const isFromExtension = refValue.startsWith('moz-extension://') || originValue.startsWith('moz-extension://')
-						|| refValue.startsWith('safari-web-extension://') || originValue.startsWith('safari-web-extension://');
-					if (!isFromExtension) return { requestHeaders: details.requestHeaders };
-				}
-
-				const headers = details.requestHeaders || [];
-				const setHeader = (name: string, value: string) => {
-					const existing = headers.find(h => h.name.toLowerCase() === name.toLowerCase());
-					if (existing) {
-						existing.value = value;
-					} else {
-						headers.push({ name, value });
-					}
-				};
-				setHeader('Origin', 'https://www.youtube.com');
-				setHeader('Referer', 'https://www.youtube.com/');
-				return { requestHeaders: headers };
-			},
-			{ urls: ['*://www.youtube.com/*'] },
-			['blocking', 'requestHeaders']
-		);
-	} catch { /* webRequest not available */ }
-}
 
 let sidePanelOpenWindows: Set<number> = new Set();
 let highlighterModeState: { [tabId: number]: boolean } = {};
@@ -310,9 +209,6 @@ async function initialize() {
 		// Initialize context menu
 		await debouncedUpdateContextMenu(-1);
 
-		// Enable Origin header for YouTube innertube API requests
-		await enableYouTubeInnertubeRule();
-
 		// Set up action popup based on openBehavior setting
 		await updateActionPopup();
 
@@ -471,29 +367,6 @@ browser.runtime.onMessage.addListener((request: unknown, sender: browser.Runtime
 				sendResponse({ success: false, error: 'No tab ID provided' });
 				return true;
 			}
-		}
-
-		if (typedRequest.action === "enableYouTubeEmbedRule") {
-			const tabId = sender.tab?.id;
-			if (tabId) {
-				enableYouTubeEmbedRule(tabId).then(() => {
-					sendResponse({ success: true });
-				}).catch(() => {
-					sendResponse({ success: true });
-				});
-			} else {
-				sendResponse({ success: true });
-			}
-			return true;
-		}
-
-		if (typedRequest.action === "disableYouTubeEmbedRule") {
-			disableYouTubeEmbedRule().then(() => {
-				sendResponse({ success: true });
-			}).catch(() => {
-				sendResponse({ success: true });
-			});
-			return true;
 		}
 
 		if (typedRequest.action === "sidePanelOpened") {
