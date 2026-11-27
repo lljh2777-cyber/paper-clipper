@@ -155,13 +155,18 @@ test('validates image MIME and magic bytes instead of URL suffix or Content-Disp
 
 test('HTTP transport enforces status, MIME, stream size, timeout, redirect limits and redirect address validation', async () => {
 	let receivedHeaders;
+	let flakyHits = 0;
+	let deniedHits = 0;
 	const server = createServer((request, response) => {
 		receivedHeaders = request.headers;
 		if (request.url === '/png') response.writeHead(200, { 'Content-Type': 'image/png', 'Content-Disposition': 'attachment; filename="../../outside.exe"' }).end(png);
-		else if (request.url === '/redirect') response.writeHead(302, { Location: '/png' }).end();
+		else if (request.url === '/flaky') {
+			if (++flakyHits === 1) response.writeHead(503).end('busy');
+			else response.writeHead(200, { 'Content-Type': 'image/png' }).end(png);
+		} else if (request.url === '/redirect') response.writeHead(302, { Location: '/png' }).end();
 		else if (request.url === '/private') response.writeHead(302, { Location: 'http://127.0.0.1/private' }).end();
 		else if (request.url === '/loop') response.writeHead(302, { Location: '/loop' }).end();
-		else if (request.url === '/denied') response.writeHead(403).end('denied');
+		else if (request.url === '/denied') { deniedHits++; response.writeHead(403).end('denied'); }
 		else if (request.url === '/html') response.writeHead(200, { 'Content-Type': 'text/html' }).end('<html>Login</html>');
 		else if (request.url === '/fake') response.writeHead(200, { 'Content-Type': 'image/png' }).end('<html>Login</html>');
 		else if (request.url === '/large') { response.writeHead(200, { 'Content-Type': 'image/png' }); response.write(png); response.end(png); }
@@ -175,11 +180,15 @@ test('HTTP transport enforces status, MIME, stream size, timeout, redirect limit
 		const fetched = await fetchImage(`${base}/redirect`, { lookup });
 		assert.deepEqual(fetched.bytes, png);
 		assert.equal(fetched.finalUrl, `${base}/png`);
+		const retried = await fetchImage(`${base}/flaky`, { lookup });
+		assert.deepEqual(retried.bytes, png);
+		assert.equal(flakyHits, 2);
 		assert.equal(receivedHeaders.cookie, undefined);
 		assert.equal(receivedHeaders.authorization, undefined);
 		for (const [route, pattern] of [['/private', /Private/], ['/loop', /redirect limit/], ['/denied', /HTTP 403/], ['/html', /Content-Type/], ['/fake', /bytes do not match/]]) {
 			await assert.rejects(fetchImage(base + route, { lookup }), pattern);
 		}
+		assert.equal(deniedHits, 1);
 		for (const route of ['/large', '/length']) await assert.rejects(fetchImage(base + route, { lookup, maxBytes: png.length }), /byte limit/);
 		await assert.rejects(fetchImage(base + '/slow', { lookup, timeout: 30 }), /abort/i);
 		await assert.rejects(fetchImage(`http://localhost:${server.address().port}/png`), /private or reserved/);

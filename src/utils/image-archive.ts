@@ -8,9 +8,17 @@ import { unassessedManualExportChecks, markdownSha256, ManualExportCheckContext,
 
 const MAX_IMAGE = 20 * 1024 * 1024;
 const MAX_TOTAL = 100 * 1024 * 1024;
-export const IMAGE_DOWNLOAD_CONCURRENCY = 5;
+const IMAGE_DOWNLOAD_TIMEOUT_MS = 30000;
+export const IMAGE_DOWNLOAD_CONCURRENCY = 3;
+export const IMAGE_DOWNLOAD_RETRY_DELAYS_MS = [300, 900];
 export class ImageArchiveError extends Error {
 	constructor(public readonly reason: 'unsupported' | 'limit' | 'download', public readonly imageNumber = 0) { super(reason); }
+}
+class RetryableImageDownloadError extends ImageArchiveError {
+	constructor() { super('download'); }
+}
+export function isRetryableImageStatus(status: number): boolean {
+	return status === 408 || status === 429 || (status >= 500 && status <= 599);
 }
 
 function imageType(bytes: Uint8Array, mime: string): string {
@@ -50,8 +58,23 @@ function plosFigure(url: URL, source: string): string | undefined {
 		/^(inline|medium|large)$/.test(url.searchParams.get('size') ?? '')) return figure;
 }
 
-async function download(url: string, source: string, maxBytes: number, batchSignal?: AbortSignal) {
-	const timeout = AbortSignal.timeout(15000);
+function sleepWithSignal(ms: number, signal?: AbortSignal): Promise<void> {
+	if (signal?.aborted) return Promise.reject(new ImageArchiveError('download'));
+	return new Promise((resolve, reject) => {
+		const timer = setTimeout(() => {
+			signal?.removeEventListener('abort', onAbort);
+			resolve();
+		}, ms);
+		const onAbort = () => {
+			clearTimeout(timer);
+			reject(new ImageArchiveError('download'));
+		};
+		signal?.addEventListener('abort', onAbort, { once: true });
+	});
+}
+
+async function downloadOnce(url: string, source: string, maxBytes: number, batchSignal?: AbortSignal) {
+	const timeout = AbortSignal.timeout(IMAGE_DOWNLOAD_TIMEOUT_MS);
 	const signal = batchSignal ? AbortSignal.any([timeout, batchSignal]) : timeout;
 	const options: RequestInit = { credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer', signal };
 	const figure = plosFigure(new URL(url), source);
@@ -70,7 +93,7 @@ async function download(url: string, source: string, maxBytes: number, batchSign
 			document.body.append(frame);
 		});
 		const client = frame.contentWindow as (Window & typeof globalThis) | null;
-		if (!client) throw new ImageArchiveError('download');
+		if (!client) throw new RetryableImageDownloadError();
 		const response = await client.fetch(url, { ...options, redirect: 'follow', cache: 'no-store' });
 		if (response.redirected) {
 			const target = new URL(response.url);
@@ -85,10 +108,22 @@ async function download(url: string, source: string, maxBytes: number, batchSign
 	} finally { frame.remove(); }
 }
 
+async function download(url: string, source: string, maxBytes: number, batchSignal?: AbortSignal) {
+	for (let attempt = 0; ; attempt++) {
+		try {
+			return await downloadOnce(url, source, maxBytes, batchSignal);
+		} catch (error) {
+			const retryable = !(error instanceof ImageArchiveError) || error instanceof RetryableImageDownloadError;
+			if (batchSignal?.aborted || !retryable || attempt >= IMAGE_DOWNLOAD_RETRY_DELAYS_MS.length) throw error;
+			await sleepWithSignal(IMAGE_DOWNLOAD_RETRY_DELAYS_MS[attempt], batchSignal);
+		}
+	}
+}
+
 async function readImage(response: Response, maxBytes: number): Promise<{ bytes: Uint8Array; extension: string }> {
 	if (!response.ok || !response.body) {
 		await response.body?.cancel();
-		throw new ImageArchiveError('download');
+		throw isRetryableImageStatus(response.status) ? new RetryableImageDownloadError() : new ImageArchiveError('download');
 	}
 	if (Number(response.headers.get('content-length')) > maxBytes) {
 		await response.body.cancel();

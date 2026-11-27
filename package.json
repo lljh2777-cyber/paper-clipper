@@ -1,6 +1,6 @@
 {
 	"name": "paper-clipper-dev",
-	"version": "1.7.7",
+	"version": "1.7.8",
 	"private": true,
 	"description": "Unofficial, HTML-first academic paper archiver for Obsidian and AI agents. Based on Obsidian Web Clipper.",
 	"bin": {

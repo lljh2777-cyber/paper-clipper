@@ -61,8 +61,11 @@ describe('manual image ZIP', () => {
 		await expect(createImageArchive('![x](https://example.org/a)', 'Paper', 'https://example.org')).rejects.toMatchObject({ reason: 'unsupported', imageNumber: 1 });
 	});
 	it('fails atomically when a later image cannot be fetched', async () => {
-		const fetcher = mockFetch();
-		fetcher.mockResolvedValueOnce(new Response(png, { headers: { 'Content-Type': 'image/png' } })).mockRejectedValueOnce(new Error('private URL should not leak'));
+		const fetcher = vi.fn(async (url: string) => {
+			if (url.endsWith('/b')) throw new Error('private URL should not leak');
+			return new Response(png, { headers: { 'Content-Type': 'image/png' } });
+		});
+		vi.stubGlobal('fetch', fetcher);
 		await expect(createImageArchive('![x](https://example.org/a)\n![y](https://example.org/b)', 'Paper', 'https://example.org')).rejects.toMatchObject({ reason: 'download', imageNumber: 2, message: 'download' });
 	});
 	it('rejects oversized responses and too many images', async () => {
@@ -124,6 +127,30 @@ describe('manual image ZIP', () => {
 		expect(prepared.files['images/image-1.png']).toEqual(png);
 		expect(JSON.parse(strFromU8(prepared.files['image-report.json'])).items[0].selection).toBe('original-fallback');
 	});
+	it('retries transient errors and 503/429 responses on preferred images without unnecessary fallback', async () => {
+		const small = 'https://media.springernature.com/lw685/springer-static/image/art%3A10.1186%2Fs13059-019-1713-4/MediaObjects/Fig4.png';
+		const large = small.replace('/lw685/', '/full/');
+		const fetcher = vi.fn()
+			.mockRejectedValueOnce(new TypeError('fetch failed'))
+			.mockResolvedValueOnce(new Response('Busy', { status: 503 }))
+			.mockResolvedValueOnce(new Response(png, { headers: { 'Content-Type': 'image/png' } }));
+		vi.stubGlobal('fetch', fetcher);
+		const prepared = await prepareImageFiles(`![Fig 4](${small})`, 'https://link.springer.com/article/10.1186/s13059-019-1713-4');
+		expect(fetcher.mock.calls.map(call => call[0])).toEqual([large, large, large]);
+		expect(prepared.checks.images?.originalFallbacks).toBe(0);
+		expect(JSON.parse(strFromU8(prepared.files['image-report.json'])).items[0].selection).toBe('preferred');
+	});
+	it('does not retry 403/404 or validation failures before falling back', async () => {
+		const small = 'https://media.springernature.com/lw685/springer-static/image/art%3A10.1186%2Fs12859-024-05935-y/MediaObjects/Fig2.png';
+		const large = small.replace('/lw685/', '/full/');
+		const fetcher = vi.fn()
+			.mockResolvedValueOnce(new Response('Not Found', { status: 404 }))
+			.mockResolvedValueOnce(new Response(png, { headers: { 'Content-Type': 'image/png' } }));
+		vi.stubGlobal('fetch', fetcher);
+		const prepared = await prepareImageFiles(`![Fig 2](${small})`, 'https://link.springer.com/article/10.1186/s12859-024-05935-y');
+		expect(fetcher.mock.calls.map(call => call[0])).toEqual([large, small]);
+		expect(prepared.checks.images?.originalFallbacks).toBe(1);
+	});
 	it('downloads multiple images concurrently while preserving deterministic numbering and optional citation.bib', async () => {
 		let inFlight = 0;
 		let maxInFlight = 0;
@@ -141,12 +168,12 @@ describe('manual image ZIP', () => {
 		const markdown = Array.from({ length: 6 }, (_, i) => `![Img ${i + 1}](https://example.org/${i + 1})`).join('\n');
 		const pending = createImageArchive(markdown, 'Paper', 'https://example.org', undefined, {}, undefined,
 			{ doi: '10.1234/conc', published: '2026-01-01' }, {}, [], '@article{key2026, title = {Paper}}\n');
-		await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(5));
-		expect(maxInFlight).toBe(5);
-		// Resolve out of order: 5, 4, 3, 2, 1, then 6.
-		for (const index of [5, 4, 3, 2, 1]) resolvers[`https://example.org/${index}`]();
+		await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(3));
+		expect(maxInFlight).toBe(3);
+		// Resolve out of order: 3, 2, 1, then 6, 5, 4.
+		for (const index of [3, 2, 1]) resolvers[`https://example.org/${index}`]();
 		await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(6));
-		resolvers['https://example.org/6']();
+		for (const index of [6, 5, 4]) resolvers[`https://example.org/${index}`]();
 		const archive = await pending;
 		const files = unzipSync(archive.bytes);
 		const root = archive.fileName.slice(0, -4);

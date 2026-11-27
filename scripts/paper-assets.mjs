@@ -4,11 +4,15 @@ import http from 'node:http';
 import https from 'node:https';
 import { BlockList, isIP } from 'node:net';
 import path from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import { parseFragment } from 'parse5';
 import { imageDownloadCandidates } from '../src/utils/image-sources.mjs';
 
-export const assetLimits = Object.freeze({ maxImages: 200, maxBytes: 20 * 1024 * 1024, maxTotalBytes: 100 * 1024 * 1024, timeout: 15000, redirects: 5 });
+export const assetLimits = Object.freeze({ maxImages: 200, maxBytes: 20 * 1024 * 1024, maxTotalBytes: 100 * 1024 * 1024, timeout: 30000, redirects: 5 });
+const retryDelays = [300, 900];
+const isRetryableStatus = status => status === 408 || status === 429 || (status >= 500 && status <= 599);
+const nonRetryable = error => Object.assign(error, { retryable: false });
 const types = new Map([['image/png', 'png'], ['image/jpeg', 'jpg'], ['image/gif', 'gif'], ['image/webp', 'webp'], ['image/avif', 'avif']]);
 const blocked = new BlockList();
 for (const [address, prefix] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8],
@@ -55,9 +59,10 @@ export function imageExtension(bytes, contentType) {
 	return extension;
 }
 
-export async function fetchImage(value, { timeout = assetLimits.timeout, maxBytes = assetLimits.maxBytes, lookup = publicLookup } = {}) {
+async function fetchImageOnce(value, { timeout = assetLimits.timeout, maxBytes = assetLimits.maxBytes, lookup = publicLookup } = {}) {
 	const signal = AbortSignal.timeout(timeout);
-	let url = imageUrl(value);
+	let url;
+	try { url = imageUrl(value); } catch (error) { throw nonRetryable(error); }
 	for (let redirects = 0; redirects <= assetLimits.redirects; redirects++) {
 		const result = await new Promise((resolve, reject) => {
 			const request = (url.protocol === 'https:' ? https : http).get(url, {
@@ -74,8 +79,13 @@ export async function fetchImage(value, { timeout = assetLimits.timeout, maxByte
 				const contentType = response.headers['content-type'] ?? '';
 				if (status !== 200 || !types.has(contentType.split(';')[0].trim().toLowerCase()) || Number(response.headers['content-length']) > maxBytes) {
 					response.destroy();
-					reject(new Error(status !== 200 ? `Image HTTP ${status}.` : Number(response.headers['content-length']) > maxBytes
-						? 'Image exceeds the byte limit.' : `Unsupported image Content-Type: ${contentType || '(missing)'}.`));
+					if (status !== 200) {
+						const err = new Error(`Image HTTP ${status}.`);
+						reject(isRetryableStatus(status) ? err : nonRetryable(err));
+					} else {
+						reject(nonRetryable(new Error(Number(response.headers['content-length']) > maxBytes
+							? 'Image exceeds the byte limit.' : `Unsupported image Content-Type: ${contentType || '(missing)'}.`)));
+					}
 					return;
 				}
 				const chunks = [];
@@ -84,7 +94,7 @@ export async function fetchImage(value, { timeout = assetLimits.timeout, maxByte
 					size += chunk.length;
 					if (size > maxBytes) {
 						response.destroy();
-						reject(new Error('Image exceeds the byte limit.'));
+						reject(nonRetryable(new Error('Image exceeds the byte limit.')));
 					} else chunks.push(chunk);
 				});
 				response.on('end', () => resolve({ bytes: Buffer.concat(chunks), contentType, finalUrl: url.href }));
@@ -92,12 +102,25 @@ export async function fetchImage(value, { timeout = assetLimits.timeout, maxByte
 			request.on('error', reject);
 		});
 		if (result.redirect) {
-			url = imageUrl(result.redirect, url);
+			try { url = imageUrl(result.redirect, url); } catch (error) { throw nonRetryable(error); }
 			continue;
 		}
-		return { ...result, extension: imageExtension(result.bytes, result.contentType) };
+		try {
+			return { ...result, extension: imageExtension(result.bytes, result.contentType) };
+		} catch (error) { throw nonRetryable(error); }
 	}
-	throw new Error('Image exceeded the redirect limit.');
+	throw nonRetryable(new Error('Image exceeded the redirect limit.'));
+}
+
+export async function fetchImage(value, { timeout = assetLimits.timeout, maxBytes = assetLimits.maxBytes, lookup = publicLookup, retries = timeout >= 500 ? retryDelays.length : 0 } = {}) {
+	for (let attempt = 0; ; attempt++) {
+		try {
+			return await fetchImageOnce(value, { timeout, maxBytes, lookup });
+		} catch (error) {
+			if (error?.retryable === false || attempt >= retries) throw error;
+			await delay(retryDelays[Math.min(attempt, retryDelays.length - 1)]);
+		}
+	}
 }
 
 export function collectImages(markdown) {
