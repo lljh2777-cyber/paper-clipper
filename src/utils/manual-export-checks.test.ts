@@ -191,4 +191,15 @@ describe('manual export preservation reports', () => {
 		const mismatched = await prepareImageFiles('Different note', nature, undefined, {}, context);
 		expect(mismatched.checks.preservation).toBe('not-assessed');
 	});
+	it('verifies SpringerLink captions containing MathJax raw TeX and author-year citations', () => {
+		const springer = 'https://link.springer.com/article/10.1038/s44318-024-00123-3';
+		const springerContent = `<figure><img src="https://images.example.org/main.png"><figcaption>Figure 1: Cooperative model.</figcaption>
+			<div class="c-article-section__figure-description"><p>(A) Binding constant <span class="mathjax-tex">\\(K_{\\rm d}\\)</span> from (Goehring, <a data-test="citation-ref" href="/article/10.1038/s44318-024-00123-3#ref-CR1">2014</a>).</p></div></figure>
+			<section><h2>References</h2><ul class="c-article-references"><li><p id="ref-CR1">Goehring NW (2014) PAR polarity.</p></li></ul></section>`;
+		const capture = snapshot(springerContent, springer);
+		const report = checkManualExport(capture, capture.templateMarkdown);
+		expect(report.preservation).toBe('passed-within-scope');
+		expect(report.stages.output.captions).toMatchObject({ status: 'passed', expected: 1, matched: 1 });
+		expect(checkManualExport(capture, capture.templateMarkdown.replace('Binding constant', 'Changed text')).stages.output.captions.status).toBe('failed');
+	});
 });

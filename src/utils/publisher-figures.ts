@@ -20,6 +20,32 @@ function springerRecommendationSections(document: Document): Element[] {
 		.filter(section => /Similar content being viewed by others/i.test(section.querySelector('h2, h3')?.textContent ?? ''));
 }
 
+function springerAuthorYearCitations(document: Document): Element[] {
+	return Array.from(document.querySelectorAll('a[data-test="citation-ref"][href*="#ref-CR"]')).filter(link => {
+		if (link.querySelector('sup')) return false;
+		const match = link.getAttribute('href')?.match(/#ref-CR(\d+)$/);
+		const label = link.textContent?.trim() ?? '';
+		return Boolean(match && label !== match[1] && /^\d{4}[a-z]?$/.test(label));
+	});
+}
+
+function springerTableLinks(document: Document, url: string): Array<{ box: Element; figure: Element; href: string; text: string }> {
+	const results: Array<{ box: Element; figure: Element; href: string; text: string }> = [];
+	for (const box of Array.from(document.querySelectorAll('.c-article-table'))) {
+		const figure = box.querySelector('figure');
+		const hideWrapper = box.querySelector('.u-hide-print');
+		const link = hideWrapper?.querySelector('a[data-test="table-link"][href]');
+		const label = link?.textContent?.trim() ?? '';
+		if (!figure || !hideWrapper || !link || !label) continue;
+		try {
+			const target = new URL(link.getAttribute('href')!, url);
+			if (!/^https?:$/.test(target.protocol) || target.username || target.password) continue;
+			results.push({ box: hideWrapper, figure, href: target.href, text: label });
+		} catch { /* Ignore invalid table URLs. */ }
+	}
+	return results;
+}
+
 function prepareMathJaxTex(getSource: () => Document, editable: () => Document): void {
 	const delimiters: ReadonlyArray<readonly [string, string, 'inline' | 'block']> = [
 		['\\(', '\\)', 'inline'],
@@ -314,16 +340,55 @@ export function prepareDocumentForExtraction(source: Document, url: string): Doc
 	}
 	if (!springerNatureHost.test(hostname)) return document;
 	const hasSpringerChanges = Boolean(
-		document.querySelector(`${descriptionSelector}, ${extendedImageSelector}, .c-article-header a[href^="#Aff"]`) ||
+		document.querySelector(`${descriptionSelector}, ${extendedImageSelector}, .c-article-header a[href^="#Aff"], a[data-track-action="equation anchor"][href*="#Equ"], ul.c-article-references`) ||
+		springerAuthorYearCitations(document).length ||
+		springerTableLinks(document, url).length ||
 		springerFullSizeLinks(document).length ||
 		springerRecommendationSections(document).length
 	);
 	if (!hasSpringerChanges) return document;
 	const prepared = editable();
 	// On author-year SpringerLink/EMBO articles with UL references, header #Aff
-	// links otherwise cause Defuddle's generic footnote pass to swallow the body.
-	for (const link of Array.from(prepared.querySelectorAll('.c-article-header a[href^="#Aff"]'))) {
+	// links and equation anchors otherwise trigger Defuddle's generic footnote pass.
+	for (const link of Array.from(prepared.querySelectorAll('.c-article-header a[href^="#Aff"], a[data-track-action="equation anchor"][href*="#Equ"]'))) {
 		link.replaceWith(prepared.createTextNode(link.textContent ?? ''));
+	}
+	// Convert unordered reference lists to <ol> with IDs on <li> so Defuddle preserves
+	// numbered citations cleanly without turning equation/affiliation blocks into footnotes.
+	for (const ul of Array.from(prepared.querySelectorAll('ul.c-article-references'))) {
+		const ol = prepared.createElement('ol');
+		for (const attr of Array.from(ul.attributes)) ol.setAttribute(attr.name, attr.value);
+		for (const li of Array.from(ul.children)) {
+			if (!li.id) {
+				const p = Array.from(li.children).find(child => child.tagName === 'P' && /^ref-CR/.test(child.id));
+				if (p) {
+					li.id = p.id;
+					p.removeAttribute('id');
+				}
+			}
+			ol.append(li);
+		}
+		ul.replaceWith(ol);
+	}
+	for (const link of springerAuthorYearCitations(prepared)) {
+		const match = link.getAttribute('href')?.match(/#ref-CR(\d+)$/);
+		const labelText = link.textContent?.trim() ?? '';
+		if (!match || !labelText) continue;
+		const label = prepared.createElement('span');
+		label.textContent = labelText;
+		link.before(label);
+		const sup = prepared.createElement('sup');
+		sup.textContent = match[1];
+		link.replaceChildren(sup);
+	}
+	for (const { box, figure, href, text: label } of springerTableLinks(prepared, url)) {
+		const p = prepared.createElement('p');
+		const anchor = prepared.createElement('a');
+		anchor.setAttribute('href', href);
+		anchor.textContent = label;
+		p.append(anchor);
+		figure.after(p);
+		box.remove();
 	}
 	for (const linkBox of springerFullSizeLinks(prepared)) {
 		linkBox.remove();

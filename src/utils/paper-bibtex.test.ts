@@ -95,4 +95,12 @@ describe('paper BibTeX generation', () => {
 		expect(bib).toContain('title = {100\\% \\$x\\_1\\$ \\textasciicircum{} \\textasciitilde{} \\textbackslash{}test},');
 		expect(bib.endsWith('\n')).toBe(true);
 	});
+
+	it('strips tracking query parameters while keeping legitimate query params', () => {
+		const fields = extractCitationFields({
+			title: 'Tracked URL paper',
+			source: 'https://link.springer.com/article/10.1038/s44318-024-00123-3?id=42&utm_source=chatgpt.com&fbclid=abc&gclid=def#Sec1',
+		});
+		expect(fields.url).toBe('https://link.springer.com/article/10.1038/s44318-024-00123-3?id=42');
+	});
 });

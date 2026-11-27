@@ -66,7 +66,7 @@ export function collectFigureLinks(document: Document, source: string, markdown:
 		const values = candidates.get(url) ?? new Set<string>();
 		values.add(image); candidates.set(url, values);
 	};
-	const nature = /(^|\.)nature\.com$/.test(new URL(page).hostname);
+	const nature = /(^|\.)nature\.com$|^link\.springer\.com$|(^|\.)biomedcentral\.com$/.test(new URL(page).hostname);
 	const selector = nature ? 'figure, .c-article-supplementary__item:has(h3 a[data-supp-info-image])' : 'figure';
 	for (const figure of Array.from(document.querySelectorAll(selector))) {
 		if (figure.querySelectorAll('img').length > 1) continue;

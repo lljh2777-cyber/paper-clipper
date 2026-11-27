@@ -206,6 +206,9 @@ export function extractCitationFields(input: PaperBibtexInput): CitationFields {
 			const parsed = new URL(input.source);
 			if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
 				parsed.hash = '';
+				for (const key of [...parsed.searchParams.keys()]) {
+					if (/^(?:utm_|fbclid$|gclid$)/i.test(key)) parsed.searchParams.delete(key);
+				}
 				url = parsed.href;
 			}
 		} catch { /* Leave invalid source URLs unset. */ }

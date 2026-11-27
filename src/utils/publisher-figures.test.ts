@@ -290,8 +290,9 @@ describe('SpringerLink and BMC preservation', () => {
 				<article><img src="https://media.springernature.com/w215h120/springer-static/image/art%3A10.1007%2Frecommended/MediaObjects/rec.png" alt="Recommended"><h3>Unrelated paper</h3></article>
 			</section>
 			<div class="main-content">
-				<section data-title="Results"><h2>Results</h2><p>${paragraph}</p>
+				<section data-title="Results"><h2>Results</h2><p>${paragraph} As shown earlier (Goehring, <a data-test="citation-ref" href="/article/10.1038/s44318-024-00123-3#ref-CR1">2014</a>) and Equation <a data-track-action="equation anchor" href="#Equ1">1</a>.</p>
 				<div id="Equ1" class="c-article-equation"><span class="mathjax-tex">$$c_{\\rm tot} = c_{\\rm c}$$</span></div>
+				<div class="c-article-table"><figure><figcaption><b>Table 1 Summary table</b></figcaption><div class="u-hide-print"><a data-test="table-link" href="/article/10.1038/s44318-024-00123-3/tables/1">Full size table</a></div></figure></div>
 				<div class="c-article-section__figure"><figure>
 					<figcaption><b id="Fig1" class="c-article-section__figure-caption">Figure 1: Cooperative membrane binding.</b></figcaption>
 					<div class="c-article-section__figure-content"><picture><img src="//media.springernature.com/lw685/springer-static/image/art%3A10.1038%2Fs44318-024-00123-3/MediaObjects/44318_2024_123_Fig1_HTML.png" alt="Figure 1: Cooperative membrane binding."></picture>
@@ -305,7 +306,7 @@ describe('SpringerLink and BMC preservation', () => {
 					<div class="c-article-section__figure-description"><p>(<b>A</b>) Extended panel observation.</p></div></div>
 				</figure></div></section>
 			</div>
-			<section data-title="References"><h2>References</h2><ul class="c-article-references"><li id="ref-CR1">Goehring NW (2014) PAR polarity.</li></ul></section>
+			<section data-title="References"><h2>References</h2><ul class="c-article-references"><li><p id="ref-CR1">Goehring NW (2014) PAR polarity.</p></li></ul></section>
 		</div></main></div>
 	</article></body></html>`;
 
@@ -324,9 +325,14 @@ describe('SpringerLink and BMC preservation', () => {
 				const parser = new Defuddle(prepareDocumentForExtraction(source, targetUrl), { url: targetUrl });
 				outputs.push(createMarkdownContent((asyncMode ? await parser.parseAsync() : parser.parse()).content, targetUrl));
 			}
+			const origin = new URL(targetUrl).origin;
 			for (const md of outputs) {
 				expect(md).toContain('## Results');
 				expect(md).toContain('## Synopsis');
+				expect(md).toMatch(/2014\s*\[\^1\]/);
+				expect(md).toContain('[^1]: Goehring NW (2014) PAR polarity.');
+				expect(md).not.toMatch(/\[\^1\]:[\s\S]*c_\{\\rm tot\}/);
+				expect(md).toContain(`[Full size table](${origin}/article/10.1038/s44318-024-00123-3/tables/1)`);
 				expect(md).toContain('44318_2024_123_Figa_HTML.png');
 				expect(md).toContain('44318_2024_123_Fig1_HTML.png');
 				expect(md).toContain('44318_2024_123_Fig2_HTML.jpg');

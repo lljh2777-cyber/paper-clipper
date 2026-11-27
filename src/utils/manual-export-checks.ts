@@ -94,10 +94,55 @@ function checkPlosBibliography(document: Document, view: ReturnType<typeof markd
 	}));
 }
 
+const springerNatureHost = /(^|\.)nature\.com$|^link\.springer\.com$|(^|\.)biomedcentral\.com$/;
+
+function springerCaptionForCheck(paragraph: Element): Element {
+	const copy = paragraph.cloneNode(true) as Element;
+	const delimiters: ReadonlyArray<readonly [string, string, string]> = [
+		['\\(', '\\)', '$'],
+		['\\[', '\\]', '$$'],
+		['$$', '$$', '$$'],
+	];
+	for (const element of Array.from(copy.querySelectorAll('.mathjax-tex'))) {
+		if (element.children.length || element.closest('pre, code, script, style, textarea, math')) continue;
+		const value = (element.textContent ?? '').trim();
+		const delimiter = delimiters.find(([start, end]) => value.startsWith(start) && value.endsWith(end));
+		if (!delimiter) continue;
+		const latex = value.slice(delimiter[0].length, -delimiter[1].length).trim();
+		if (latex) element.textContent = `${delimiter[2]}${latex}${delimiter[2]}`;
+	}
+	for (const link of Array.from(copy.querySelectorAll('a[data-test="citation-ref"][href*="#ref-CR"]'))) {
+		const match = link.getAttribute('href')?.match(/#ref-CR(\d+)$/);
+		const label = link.textContent?.trim() ?? '';
+		if (match && label !== match[1] && /^\d{4}[a-z]?$/.test(label)) {
+			link.before(copy.ownerDocument.createTextNode(label));
+			link.textContent = match[1];
+		}
+	}
+	return copy;
+}
+
+function paragraphText(block: ReturnType<typeof markdownView>['blocks'][number]): string {
+	if (!block.raw.includes('$')) return block.text;
+	const saved: string[] = [];
+	const masked = block.raw.replace(/`[^`\n]+`|(?<!\\)\$(?![\s$])((?:\\[^\n]|[^\\$\n])+?)(?<![\s\\])\$(?!\$)/g, match => {
+		if (match.startsWith('`')) return match;
+		const token = `PCMATHTOKEN${saved.length}END`;
+		saved.push(match);
+		return token;
+	});
+	if (!saved.length) return block.text;
+	let result = canonical(text(fromMarkdown(masked)));
+	saved.forEach((value, index) => {
+		result = result.replace(`PCMATHTOKEN${index}END`, canonical(value));
+	});
+	return result;
+}
+
 function inspect(snapshot: ManualExportSnapshot, markdown: string): Checks {
 	const { document, source } = snapshot;
 	const host = new URL(source).hostname;
-	const cell = /(^|\.)cell\.com$/.test(host), nature = /(^|\.)nature\.com$/.test(host);
+	const cell = /(^|\.)cell\.com$/.test(host), nature = springerNatureHost.test(host);
 	const view = markdownView(markdown, source);
 	// Tables with merged cells remain HTML. Read only visible table citations,
 	// not arbitrary HTML/code that could hide a missing prose reference.
@@ -141,9 +186,9 @@ function inspect(snapshot: ManualExportSnapshot, markdown: string): Checks {
 		if (titles.length !== 1) return { id, reason: 'missing-or-ambiguous-caption-title' };
 		const intact = paragraphs.every((paragraph, index) => {
 			const block = view.blocks[titles[0] + index + 1];
-			const scientific = cell ? cellCaptionForCheck(paragraph, referenceNumbers) : paragraph;
+			const scientific = cell ? cellCaptionForCheck(paragraph, referenceNumbers) : springerCaptionForCheck(paragraph);
 			const expected = canonical(scientific.textContent ?? '');
-			return !!expected && block?.type === 'paragraph' && block.text === expected && hasLinks(scientific, block, view, source, referenceNumbers);
+			return !!expected && block?.type === 'paragraph' && (cell ? block.text : paragraphText(block)) === expected && hasLinks(scientific, block, view, source, referenceNumbers);
 		});
 		return { id, ...(!intact && { reason: 'caption-text-link-or-order-differs' }) };
 	})) : uncovered(captionScope, 'unsupported-publisher');
