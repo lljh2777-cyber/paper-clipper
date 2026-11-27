@@ -3,16 +3,72 @@ import { parseHTML } from 'linkedom';
 import { cellCaptionForCheck } from '../src/utils/cell-citations.mjs';
 
 const marked = new Marked({ gfm: true });
+const springerNatureHost = /(^|\.)nature\.com$|^link\.springer\.com$|(^|\.)biomedcentral\.com$/;
 const bodyOnly = value => value.replace(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, '');
 // Citation superscripts may become Markdown footnote references. Ignore layout
 // whitespace, but retain every letter, number and punctuation mark of the legend.
 const canonicalText = value => value.replace(/\[\^(\d+)\]/g, '$1').replace(/\s+/g, '');
 const rendered = value => parseHTML(`<html><body>${marked.parse(value)}</body></html>`).document;
 
+function renderedText(raw) {
+	if (!raw.includes('$')) return { document: rendered(raw), text: canonicalText(rendered(raw).body.textContent) };
+	const saved = [];
+	const masked = raw.replace(/`[^`\n]+`|(?<!\\)\$(?![\s$])((?:\\[^\n]|[^\\$\n])+?)(?<![\s\\])\$(?!\$)/g, match => {
+		if (match.startsWith('`')) return match;
+		const token = `PCMATHTOKEN${saved.length}END`;
+		saved.push(match);
+		return token;
+	});
+	const doc = rendered(raw);
+	if (!saved.length) return { document: doc, text: canonicalText(doc.body.textContent) };
+	let text = canonicalText(rendered(masked).body.textContent);
+	saved.forEach((value, index) => {
+		text = text.replace(`PCMATHTOKEN${index}END`, canonicalText(value));
+	});
+	return { document: doc, text };
+}
+
+function springerReferenceOrdinals(document) {
+	const map = new Map();
+	let index = 0;
+	for (const li of document.querySelectorAll('.c-article-references > li')) {
+		index++;
+		const id = li.id || [...li.children].find(child => child.tagName === 'P' && /^ref-CR\d+$/.test(child.id))?.id;
+		if (id) map.set(id, String(index));
+	}
+	return map;
+}
+
+function springerCaptionForCheck(paragraph, refMap = new Map()) {
+	const copy = paragraph.cloneNode(true);
+	const delimiters = [
+		['\\(', '\\)', '$'],
+		['\\[', '\\]', '$$'],
+		['$$', '$$', '$$'],
+	];
+	for (const element of copy.querySelectorAll('.mathjax-tex')) {
+		if (element.children.length || element.closest('pre, code, script, style, textarea, math')) continue;
+		const value = (element.textContent ?? '').trim();
+		const delimiter = delimiters.find(([start, end]) => value.startsWith(start) && value.endsWith(end));
+		if (!delimiter) continue;
+		const latex = value.slice(delimiter[0].length, -delimiter[1].length).trim();
+		if (latex) element.textContent = `${delimiter[2]}${latex}${delimiter[2]}`;
+	}
+	for (const link of copy.querySelectorAll('a[data-test="citation-ref"][href*="#ref-CR"]')) {
+		const match = link.getAttribute('href')?.match(/#(ref-CR(\d+))$/);
+		const label = link.textContent?.trim() ?? '';
+		if (match && label !== match[2] && /^\d{4}[a-z]?$/.test(label)) {
+			link.before(copy.ownerDocument.createTextNode(label));
+			link.textContent = refMap.get(match[1]) ?? match[2];
+		}
+	}
+	return copy;
+}
+
 export function checkFigureCaptions(html, markdown, url) {
 	const result = { version: 1, status: 'not-applicable', publisher: null, expected: 0, matched: 0, failed: 0, figures: [] };
 	const host = new URL(url).hostname;
-	const publisher = /(^|\.)nature\.com$/.test(host) ? 'nature' : /(^|\.)cell\.com$/.test(host) ? 'cell' : null;
+	const publisher = /(^|\.)nature\.com$/.test(host) ? 'nature' : springerNatureHost.test(host) ? 'springer-nature' : /(^|\.)cell\.com$/.test(host) ? 'cell' : null;
 	if (!publisher) return { ...result, reason: 'unsupported-publisher' };
 	result.publisher = publisher;
 	result.expected = parseHTML(html).document.querySelectorAll(legendSelector(publisher)).length;
@@ -45,8 +101,8 @@ function auditSourceLegends(html, markdown, url, publisher) {
 		const start = body.indexOf(token.raw, cursor);
 		if (start < 0) throw new Error('Cannot locate caption token in the original Markdown.');
 		cursor = start + token.raw.length;
-		const document = rendered(token.raw);
-		return { ...token, start, end: cursor, text: canonicalText(document.body.textContent), document };
+		const { document, text } = renderedText(token.raw);
+		return { ...token, start, end: cursor, text, document };
 	});
 	const figures = [];
 	const blocks = [];
@@ -68,8 +124,9 @@ function auditSourceLegends(html, markdown, url, publisher) {
 			if (expected && matches.length === 1) referenceNumbers.set(entry.id, matches[0].number);
 		}
 	}
+	const refMap = publisher === 'cell' ? new Map() : springerReferenceOrdinals(source);
 	const paragraphsFor = description => [...description.querySelectorAll(publisher === 'cell' ? 'p, [role="paragraph"]' : 'p')]
-		.map(paragraph => publisher === 'cell' ? cellCaptionForCheck(paragraph, referenceNumbers) : paragraph);
+		.map(paragraph => publisher === 'cell' ? cellCaptionForCheck(paragraph, referenceNumbers) : springerCaptionForCheck(paragraph, refMap));
 	const sourceCounts = new Map();
 	for (const paragraph of descriptions.flatMap(paragraphsFor)) {
 		const value = canonicalText(paragraph.textContent);
@@ -93,9 +150,10 @@ function auditSourceLegends(html, markdown, url, publisher) {
 			const links = [...token.document.querySelectorAll('a[href]')].map(link => new URL(link.getAttribute('href'), url).href);
 			for (const link of paragraph.querySelectorAll('a[href]')) {
 				const target = new URL(link.getAttribute('href'), url);
+				const cr = target.hash.match(/^#(ref-CR(\d+))$/);
 				const citation = target.origin === article.origin && target.pathname === article.pathname
-					? target.hash.match(/^#ref-CR(\d+)$/)?.[1] ?? referenceNumbers.get(target.hash.slice(1)) : undefined;
-				const footnote = citation && (link.textContent.trim() === citation || referenceNumbers.has(target.hash.slice(1))) && definitions.has(citation) && token.raw.includes(`[^${citation}]`);
+					? (cr ? (refMap.get(cr[1]) ?? cr[2]) : referenceNumbers.get(target.hash.slice(1))) : undefined;
+				const footnote = citation && (link.textContent.trim() === (cr?.[2] ?? citation) || link.textContent.trim() === citation || referenceNumbers.has(target.hash.slice(1))) && definitions.has(citation) && token.raw.includes(`[^${citation}]`);
 				if (!footnote && !links.includes(target.href)) item.errors.push(`Paragraph ${index + 1} lost a link or citation.`);
 			}
 			blocks.push({ id: description.id, title, text: expected, raw: token.raw, start: token.start, end: token.end });

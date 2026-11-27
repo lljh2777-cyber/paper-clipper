@@ -95,3 +95,27 @@ test('Cell conversion and source checks retain collapsed panel text and complete
 	assert.match(footnote, /Author A\..*\*\*Synthetic reference\.\*\*.*\*Journal\.\* 2026; 1:2-3\..*\[Source\]\(https:\/\/example\.org\/ref\)/);
 	assert.doesNotMatch(footnote, /#body-ref/);
 });
+
+test('SpringerLink and BMC hosts verify captions containing MathJax raw TeX and author-year citations', () => {
+	for (const springerUrl of [
+		'https://link.springer.com/article/10.1186/s13059-019-1713-4',
+		'https://genomebiology.biomedcentral.com/articles/10.1186/s13059-019-1713-4',
+	]) {
+		const input = `<html><body><figure><figcaption>Fig. 1: Network plasticity.</figcaption><img src="/fig.png">
+			<div class="c-article-section__figure-description"><p><b>a</b>, Ratio <span class="mathjax-tex">\\(K_{\\mathrm{D}}\\)</span> and <span class="mathjax-tex">\\(K_{\\mathrm{dim}}\\)</span> (Kumfer et al, <a data-test="citation-ref" href="${new URL(springerUrl).pathname}#ref-CR1">2010</a>).</p></div>
+			</figure><ol><li id="ref-CR1">Kumfer KT (2010) Polarity.</li></ol></body></html>`;
+		const md = '![Fig. 1](/fig.png)\n\nFig. 1: Network plasticity.\n\n**a**, Ratio $K_{\\mathrm{D}}$ and $K_{\\mathrm{dim}}$ (Kumfer et al, 2010 [^1]).\n\n[^1]: Kumfer KT (2010) Polarity.\n';
+		const result = checkFigureCaptions(input, md, springerUrl);
+		assert.equal(result.status, 'passed');
+		assert.equal(result.publisher, 'springer-nature');
+		assert.equal(result.matched, 1);
+		assert.equal(checkFigureCaptions(input, md.replace('$K_{\\mathrm{dim}}$', '$K_{\\mathrm{changed}}$'), springerUrl).status, 'failed');
+
+		const reorderedInput = `<html><body><figure><figcaption>Fig. 1: Network plasticity.</figcaption><img src="/fig.png">
+			<div class="c-article-section__figure-description"><p><b>a</b>, Feedback (Chau et al, <a data-test="citation-ref" href="${new URL(springerUrl).pathname}#ref-CR15">2012</a>).</p></div>
+			</figure><ul class="c-article-references"><li><p id="ref-CR102">Boyd (1996)</p></li><li><p id="ref-CR15">Chau (2012)</p></li></ul></body></html>`;
+		const reorderedMd = '![Fig. 1](/fig.png)\n\nFig. 1: Network plasticity.\n\n**a**, Feedback (Chau et al, 2012 [^2]).\n\n[^1]: Boyd (1996)\n\n[^2]: Chau (2012)\n';
+		assert.equal(checkFigureCaptions(reorderedInput, reorderedMd, springerUrl).status, 'passed');
+		assert.equal(checkFigureCaptions(reorderedInput, reorderedMd.replace('[^2]', '[^15]'), springerUrl).status, 'failed');
+	}
+});

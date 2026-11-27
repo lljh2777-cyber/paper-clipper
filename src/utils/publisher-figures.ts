@@ -20,6 +20,45 @@ function springerRecommendationSections(document: Document): Element[] {
 		.filter(section => /Similar content being viewed by others/i.test(section.querySelector('h2, h3')?.textContent ?? ''));
 }
 
+function springerSupplementaryLinks(document: Document, url: string): Array<{ heading: Element; href: string; label: string }> {
+	const results: Array<{ heading: Element; href: string; label: string }> = [];
+	for (const link of Array.from(document.querySelectorAll('.c-article-supplementary__item h3 a[data-test="supp-info-link"][href]'))) {
+		if ((link.getAttribute('data-supp-info-image') ?? '').trim()) continue;
+		const heading = link.closest('h3');
+		if (!heading || heading.textContent?.trim() !== link.textContent?.trim()) continue;
+		try {
+			const target = new URL(link.getAttribute('href')!, url);
+			if (!/^https?:$/.test(target.protocol) || target.username || target.password) continue;
+			const clone = link.cloneNode(true) as Element;
+			clone.querySelectorAll('svg').forEach(node => node.remove());
+			const label = (clone.textContent ?? '').replace(/\s+/g, ' ').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')').trim();
+			if (!label) continue;
+			results.push({ heading, href: target.href, label });
+		} catch { /* Ignore invalid supplementary URLs. */ }
+	}
+	return results;
+}
+
+function springerPunctuationEmphasis(document: Document): Element[] {
+	return Array.from(document.querySelectorAll('.c-article-body i, .c-article-body em, .c-article-body b, .c-article-body strong'))
+		.filter(el => {
+			if (el.children.length || el.closest('pre, code, math, .mathjax-tex, mjx-container')) return false;
+			const value = el.textContent ?? '';
+			return Boolean(value) && /^[.,;:()[\]{}\s]+$/.test(value);
+		});
+}
+
+function springerReferenceOrdinals(document: Document): Map<string, string> {
+	const map = new Map<string, string>();
+	let index = 0;
+	for (const li of Array.from(document.querySelectorAll('.c-article-references > li'))) {
+		index++;
+		const id = li.id || Array.from(li.children).find(child => child.tagName === 'P' && /^ref-CR\d+$/.test(child.id))?.id;
+		if (id) map.set(id, String(index));
+	}
+	return map;
+}
+
 function springerAuthorYearCitations(document: Document): Element[] {
 	return Array.from(document.querySelectorAll('a[data-test="citation-ref"][href*="#ref-CR"]')).filter(link => {
 		if (link.querySelector('sup')) return false;
@@ -344,7 +383,9 @@ export function prepareDocumentForExtraction(source: Document, url: string): Doc
 		springerAuthorYearCitations(document).length ||
 		springerTableLinks(document, url).length ||
 		springerFullSizeLinks(document).length ||
-		springerRecommendationSections(document).length
+		springerRecommendationSections(document).length ||
+		springerSupplementaryLinks(document, url).length ||
+		springerPunctuationEmphasis(document).length
 	);
 	if (!hasSpringerChanges) return document;
 	const prepared = editable();
@@ -352,6 +393,9 @@ export function prepareDocumentForExtraction(source: Document, url: string): Doc
 	// links and equation anchors otherwise trigger Defuddle's generic footnote pass.
 	for (const link of Array.from(prepared.querySelectorAll('.c-article-header a[href^="#Aff"], a[data-track-action="equation anchor"][href*="#Equ"]'))) {
 		link.replaceWith(prepared.createTextNode(link.textContent ?? ''));
+	}
+	for (const emphasis of springerPunctuationEmphasis(prepared)) {
+		emphasis.replaceWith(prepared.createTextNode(emphasis.textContent ?? ''));
 	}
 	// Convert unordered reference lists to <ol> with IDs on <li> so Defuddle preserves
 	// numbered citations cleanly without turning equation/affiliation blocks into footnotes.
@@ -370,15 +414,16 @@ export function prepareDocumentForExtraction(source: Document, url: string): Doc
 		}
 		ul.replaceWith(ol);
 	}
+	const refOrdinals = springerReferenceOrdinals(prepared);
 	for (const link of springerAuthorYearCitations(prepared)) {
-		const match = link.getAttribute('href')?.match(/#ref-CR(\d+)$/);
+		const match = link.getAttribute('href')?.match(/#(ref-CR(\d+))$/);
 		const labelText = link.textContent?.trim() ?? '';
 		if (!match || !labelText) continue;
 		const label = prepared.createElement('span');
 		label.textContent = labelText;
 		link.before(label);
 		const sup = prepared.createElement('sup');
-		sup.textContent = match[1];
+		sup.textContent = refOrdinals.get(match[1]) ?? match[2];
 		link.replaceChildren(sup);
 	}
 	for (const { box, figure, href, text: label } of springerTableLinks(prepared, url)) {
@@ -395,6 +440,25 @@ export function prepareDocumentForExtraction(source: Document, url: string): Doc
 	}
 	for (const section of springerRecommendationSections(prepared)) {
 		section.remove();
+	}
+	for (const { heading, href, label } of springerSupplementaryLinks(prepared, url)) {
+		const p = prepared.createElement('p');
+		p.setAttribute('data-defuddle', 'true');
+		const anchor = prepared.createElement('a');
+		anchor.setAttribute('href', href);
+		const download = label.match(/^(.+?)\s*\((download [^)]+)\)$/i);
+		if (download) {
+			const strong = prepared.createElement('strong');
+			strong.textContent = download[1];
+			anchor.textContent = download[2];
+			p.append(strong, prepared.createTextNode(' ('), anchor, prepared.createTextNode(')'));
+		} else {
+			const strong = prepared.createElement('strong');
+			anchor.textContent = label;
+			strong.append(anchor);
+			p.append(strong);
+		}
+		heading.replaceWith(p);
 	}
 	prepareNatureExtendedImages(prepared, url);
 	for (const description of Array.from(prepared.querySelectorAll(descriptionSelector))) {

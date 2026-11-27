@@ -377,4 +377,17 @@ test('folder archive layout writes YEAR_ShortTitle__SafeDOI bundle, deduplicates
 	const occupiedResult = await archivePapers(occupied.options(['--archive-layout', 'folder']));
 	assert.equal(occupiedResult.exitCode, 1);
 	assert.equal(await readFile(path.join(occupiedDest, 'keep.txt'), 'utf8'), 'Keep');
+
+	// Redirected requestedUrl is recorded in checks.json and deduplicated by DOI across old/new domains.
+	const redirected = await fixture('folder-layout-redirected', { url: 'https://link.springer.com/article/10.1234/redirected', doi: '10.1234/redirected' });
+	redirected.report.requestedUrl = 'https://genomebiology.biomedcentral.com/articles/10.1234/redirected?utm_source=chatgpt.com';
+	await writeFile(`${redirected.input}.report.json`, JSON.stringify(redirected.report));
+	const redirResult = await archivePapers(redirected.options(['--archive-layout', 'folder']));
+	assert.equal(redirResult.exitCode, 0);
+	const redirDir = path.dirname(redirResult.report.items[0].output);
+	const redirChecks = JSON.parse(await readFile(path.join(redirDir, 'checks.json'), 'utf8'));
+	assert.equal(redirChecks.requestedUrl, 'https://genomebiology.biomedcentral.com/articles/10.1234/redirected');
+	const sameDoiOtherUrl = await fixture('folder-layout-redir-dup', { url: 'https://genomebiology.biomedcentral.com/articles/10.1234/redirected', doi: '10.1234/redirected' });
+	const redirDup = await archivePapers(parseOptions([sameDoiOtherUrl.input, '--vault', redirected.vault, '--archive-layout', 'folder']));
+	assert.equal(redirDup.report.counts.duplicate, 1);
 });

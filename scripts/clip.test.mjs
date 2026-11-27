@@ -100,6 +100,7 @@ test('uses stable bounded URL filenames, distinguishes paths and queries, and ig
 	const url = 'https://example.com/a/paper?version=1';
 	const output = parseOptions([url]).config.output;
 	assert.equal(parseOptions([`${url}#Methods`]).config.output, output);
+	assert.equal(parseOptions(['https://example.com/a/paper?utm_source=chatgpt.com&version=1']).config.output, output);
 	assert.notEqual(parseOptions(['https://example.com/b/paper?version=1']).config.output, output);
 	assert.notEqual(parseOptions(['https://example.com/a/paper?version=2']).config.output, output);
 	assert.match(path.basename(output), /^example.com-paper-[a-f0-9]{12}\.md$/);

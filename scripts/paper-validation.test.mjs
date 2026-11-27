@@ -90,7 +90,7 @@ test('common back-matter labels are excluded at any depth', () => {
 	for (const label of ['Funding', 'Acknowledgments', 'Acknowledgements', 'Author contributions', 'Authors\u2019 contributions',
 		'Author information', 'Declarations', 'Ethics declarations', 'Competing interests', 'Conflict of interest',
 		'Data availability', 'Availability of data and materials', 'Code availability', 'Supplementary information',
-		'Additional information', 'References and notes', 'Bibliography']) {
+		'Additional information', 'Additional files', 'Additional file', 'References and notes', 'Bibliography']) {
 		const result = check(`## Results\n\nA result.\n\n### ${label}\n\n${paragraph}\n\n## Methods\n\nA method.`, { minWords: 10 });
 		assert.equal(result.mainBodyWords, 4, label);
 		assert.equal(result.passed, false, label);

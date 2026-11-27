@@ -11,7 +11,7 @@ export const qualityVersion = 'paper-quality-v3';
 export const reviewSectionRule = 'nature-review-source-v1';
 export const previewPattern = /this is a preview of subscription content|sign in to access (?:the )?full (?:text|article)|purchase access to (?:the|this) article/i;
 const mainPattern = /^(?:introduction|background|main|results|discussion|methods|materials and methods|methodology|conclusions?)(?:$|[\s:])/i;
-const excludedPattern = /^(?:abstract|references?|bibliography|acknowledg(?:e)?ments?|funding|author(?:s|['\u2019]s)?[\s\u2019']+(?:contributions?|information|details)|declarations|ethics declarations|competing interests|conflicts? of interest|data availability|availability of data|code availability|supplementary|supporting information|additional information|peer review information|publisher['\u2019]s note|copyright|rights and permissions|about this article|article information)(?:$|[\s:])/i;
+const excludedPattern = /^(?:abstract|references?|bibliography|acknowledg(?:e)?ments?|funding|author(?:s|['\u2019]s)?[\s\u2019']+(?:contributions?|information|details)|declarations|ethics declarations|competing interests|conflicts? of interest|data availability|availability of data|code availability|supplementary|supporting information|additional (?:information|files?)|peer review information|publisher['\u2019]s note|copyright|rights and permissions|about this article|article information)(?:$|[\s:])/i;
 const referencePattern = /^(?:references?|bibliography)(?:$|[\s:])/i;
 const words = value => value.trim().split(/\s+/).filter(Boolean).length;
 const unnumbered = value => value.replace(/^\d+(?:\.\d+)*[.)]?\s*/, '');

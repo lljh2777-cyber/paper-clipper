@@ -25,7 +25,7 @@ export function collectPaperAttachments(document: Document, source: string): Pap
 	for (const link of Array.from(document.querySelectorAll('a[href]'))) {
 		try {
 			const url = attachmentUrl(link.getAttribute('href')!, source);
-			const label = (link.textContent ?? '').replace(/\s+/g, ' ').trim();
+			const label = (link.textContent ?? '').replace(/\s+/g, ' ').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')').trim();
 			const evidence = [label, link.getAttribute('title'), link.getAttribute('aria-label'), url.pathname,
 				link.closest('section')?.querySelector('h2,h3')?.textContent].join(' ');
 			if (!/supplement(?:ary|al|s)?|supporting[\s_-]+(?:information|data|file)|additional[\s_-]+file|source[\s_-]+data|(?:table|data|document)\s+s\d|(?:moesm|mmc)\d/i.test(evidence)) continue;

@@ -304,9 +304,17 @@ describe('SpringerLink and BMC preservation', () => {
 					<div class="c-article-section__figure-content"><picture><img src="//media.springernature.com/lw685/springer-static/image/art%3A10.1038%2Fs44318-024-00123-3/MediaObjects/44318_2024_123_Fig2_HTML.jpg" alt="Figure EV1: Extended dataset."></picture>
 					<div class="c-article-section__figure-link"><a class="c-article__pill-button" data-track-action="view figure" href="/article/10.1038/s44318-024-00123-3/figures/2"><span>Full size image</span></a></div>
 					<div class="c-article-section__figure-description"><p>(<b>A</b>) Extended panel observation.</p></div></div>
-				</figure></div></section>
+				</figure></div>
+				<p>Grouped markers<b>(</b>see Fig. 1<b>; </b><b>).</b> And italic suffix<i>.</i> and <code><i>.</i></code></p>
+				</section>
 			</div>
 			<section data-title="References"><h2>References</h2><ul class="c-article-references"><li><p id="ref-CR1">Goehring NW (2014) PAR polarity.</p></li></ul></section>
+			<section data-title="Additional files"><h2>Additional files</h2>
+				<div class="c-article-supplementary__item" id="MOESM1"><h3><a data-test="supp-info-link" href="https://static-content.springer.com/esm/art%3A10.1186%2Fs13059-019-1713-4/MediaObjects/13059_2019_1713_MOESM1_ESM.pdf" data-supp-info-image="">Additional file 1: (download PDF <svg></svg>)</a></h3><div class="c-article-supplementary__description"><p><b>Figure S1.</b> Benchmarking.</p></div></div>
+			</section>
+			<section data-title="Supplementary Information"><h2>Supplementary Information</h2>
+				<div class="c-article-supplementary__item" id="MOESM2"><h3><a data-test="supp-info-link" href="https://static-content.springer.com/esm/art%3A10.1186%2Fs12859-024-05935-y/MediaObjects/12859_2024_5935_MOESM1_ESM.docx" data-supp-info-image="">Supplementary Material 1 (download DOCX <svg></svg>)</a></h3></div>
+			</section>
 		</div></main></div>
 	</article></body></html>`;
 
@@ -338,6 +346,14 @@ describe('SpringerLink and BMC preservation', () => {
 				expect(md).toContain('44318_2024_123_Fig2_HTML.jpg');
 				expect(md).toContain('(**A**) First panel observation.');
 				expect(md).toContain('(**A**) Extended panel observation.');
+				expect(md).toContain('**Additional file 1:** ([download PDF](https://static-content.springer.com/esm/art%3A10.1186%2Fs13059-019-1713-4/MediaObjects/13059_2019_1713_MOESM1_ESM.pdf))');
+				expect(md).toContain('**Figure S1.** Benchmarking.');
+				expect(md).toContain('## Supplementary Information');
+				expect(md).toContain('**Supplementary Material 1** ([download DOCX](https://static-content.springer.com/esm/art%3A10.1186%2Fs12859-024-05935-y/MediaObjects/12859_2024_5935_MOESM1_ESM.docx))');
+				expect(md).not.toContain('**(**');
+				expect(md).not.toContain('**;**');
+				expect(md).not.toContain('**).**');
+				expect(md).toContain('And italic suffix. and `*.*`');
 				expect(md).not.toContain('Full size image');
 				expect(md).not.toContain('Similar content being viewed by others');
 				expect(md).not.toContain('rec.png');

@@ -28,8 +28,13 @@ it('discovers explicit supported supplementary links, not the article PDF or arb
 	document.body.innerHTML = `<a href="/article.pdf">Download PDF</a><a href="/random.csv">Other data</a>
 	<a href="/supplement.pdf?Signature=private">Supplementary information</a><a href="/supplement.pdf?Signature=private">Duplicate</a>
 	<a href="https://cdn.example.org/a_MOESM1_ESM.xlsx">Download file</a>
+	<a data-test="supp-info-link" href="https://static-content.springer.com/esm/art/MOESM1_ESM.pdf">Additional file 1: (download PDF <svg></svg>)</a>
 	<a href="/code.exe">Supplementary program</a><a href="http://localhost/supplement.pdf">Supplement</a>`;
-	expect(collectPaperAttachments(document, source).map(value => value.url)).toEqual([item.url, 'https://cdn.example.org/a_MOESM1_ESM.xlsx']);
+	expect(collectPaperAttachments(document, source)).toEqual([
+		{ url: item.url, label: 'Supplementary information' },
+		{ url: 'https://cdn.example.org/a_MOESM1_ESM.xlsx', label: 'Download file' },
+		{ url: 'https://static-content.springer.com/esm/art/MOESM1_ESM.pdf', label: 'Additional file 1: (download PDF)' },
+	]);
 });
 
 it('starts unchecked, keeps selections bound to the capture and resets on a new page', () => {

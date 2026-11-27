@@ -146,12 +146,14 @@ describe('translation directory', () => {
 		expect(fetcher).not.toHaveBeenCalled();
 		expect([...original.files]).toEqual(before);
 		expect(parent.directories.size).toBe(1);
-		const saved = await savePaperDirectory(asHandle(parent), { ...input, title: 'Changed title' }, undefined, { newVersion: true });
+		const saved = await savePaperDirectory(asHandle(parent), { ...input, source: 'https://genomebiology.biomedcentral.com/articles/10.1038/s41592-025-02899-6?utm_source=chatgpt.com#Sec1', title: 'Changed title' }, undefined, { newVersion: true });
 		expect(saved.folder).toContain('__v_');
 		expect([...original.files]).toEqual(before);
 		const version = parent.directories.get(saved.folder)!;
 		expect(version.files.has('paper.zh-CN.md')).toBe(false);
-		expect(JSON.parse(version.files.get('translation.json') as string).previousArchives).toEqual(['Renamed archive']);
+		const versionMetadata = JSON.parse(version.files.get('translation.json') as string);
+		expect(versionMetadata.previousArchives).toEqual(['Renamed archive']);
+		expect(versionMetadata.sourceUrl).toBe('https://genomebiology.biomedcentral.com/articles/10.1038/s41592-025-02899-6');
 	});
 	it('rechecks DOI inside the write lock to catch a concurrent archive', async () => {
 		const parent = new Directory();

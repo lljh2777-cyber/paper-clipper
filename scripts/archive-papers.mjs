@@ -287,6 +287,13 @@ async function prepare(input, options) {
 	const { figureCaptions, sourceSections, paperIdentity } = outputQuality;
 	const metadata = paperMetadata(html, { url: sourceUrl,
 		capturedAt: report.capturedAt || attempt.capture?.capturedAt, convertedAt: report.finishedAt });
+	let requestedUrl;
+	if (report.requestedUrl) {
+		try {
+			const normalizedRequested = canonicalUrl(report.requestedUrl);
+			if (normalizedRequested !== metadata.source) requestedUrl = normalizedRequested;
+		} catch { /* Ignore invalid requested URL in legacy reports. */ }
+	}
 	const { properties, body } = splitFrontmatter(markdown);
 	if (properties.doi && normalizeDoi(properties.doi) !== metadata.doi) throw new Error('Markdown DOI conflicts with captured article metadata.');
 	if (properties.source && canonicalUrl(properties.source) !== metadata.source) throw new Error('Markdown source conflicts with captured article metadata.');
@@ -314,7 +321,7 @@ async function prepare(input, options) {
 	// Hashing here names the DOI/URL identity, not the paper or its attachments.
 	const id = createHash('sha256').update(metadata.identity).digest('hex').slice(0, 16);
 	const merged = { ...properties, ...metadata, paper_clipper_id: id, archive_status: 'clipped-source' };
-	return { input, reportPath, metadata, figureCaptions, sourceSections, paperIdentity, quality, requirements, id, name: filename(metadata), attachments, originalBytes: bytes,
+	return { input, reportPath, metadata, ...(requestedUrl ? { requestedUrl } : {}), figureCaptions, sourceSections, paperIdentity, quality, requirements, id, name: filename(metadata), attachments, originalBytes: bytes,
 		markdown: `---\n${stringify(merged, { lineWidth: 0 })}---\n${body}` };
 }
 
@@ -381,7 +388,7 @@ export async function archivePapers(options) {
 						await writeFile(path.join(staging, 'paper.md'), payload.markdown, { flag: 'wx' });
 						await writeFile(path.join(staging, 'citation.bib'), formatCitationBib(paper.metadata), { flag: 'wx' });
 						await writeFile(path.join(staging, 'checks.json'), JSON.stringify({
-							schemaVersion: 1, source: 'cli-archive', metadata: paper.metadata, quality: paper.quality, checks: paper.requirements,
+							schemaVersion: 1, source: 'cli-archive', metadata: paper.metadata, ...(paper.requestedUrl ? { requestedUrl: paper.requestedUrl } : {}), quality: paper.quality, checks: paper.requirements,
 							originalInput: input, originalReport: paper.reportPath, archivedAt,
 							attachments: payload.attachments.map(asset => ({ relativePath: asset.relative, bytes: asset.content.length })),
 						}, null, 2) + '\n', { flag: 'wx' });

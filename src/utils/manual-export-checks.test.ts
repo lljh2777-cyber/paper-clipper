@@ -201,5 +201,12 @@ describe('manual export preservation reports', () => {
 		expect(report.preservation).toBe('passed-within-scope');
 		expect(report.stages.output.captions).toMatchObject({ status: 'passed', expected: 1, matched: 1 });
 		expect(checkManualExport(capture, capture.templateMarkdown.replace('Binding constant', 'Changed text')).stages.output.captions.status).toBe('failed');
+
+		const reorderedContent = `<figure><img src="https://images.example.org/main.png"><figcaption>Figure 1: Cooperative model.</figcaption>
+			<div class="c-article-section__figure-description"><p>(A) Feedback from (Chau et al, <a data-test="citation-ref" href="/article/10.1038/s44318-024-00123-3#ref-CR15">2012</a>).</p></div></figure>
+			<section><h2>References</h2><ul class="c-article-references"><li><p id="ref-CR102">Boyd (1996).</p></li><li><p id="ref-CR15">Chau (2012).</p></li></ul></section>`;
+		const reorderedCapture = snapshot(reorderedContent, springer);
+		expect(reorderedCapture.templateMarkdown).toContain('2012 [^2]');
+		expect(checkManualExport(reorderedCapture, reorderedCapture.templateMarkdown).stages.output.captions).toMatchObject({ status: 'passed', expected: 1, matched: 1 });
 	});
 });

@@ -3,7 +3,7 @@
 	"default_locale": "en",
 	"name": "__MSG_extensionName__",
 	"homepage_url": "https://github.com/lljh2777-cyber/paper-clipper",
-	"version": "1.7.6",
+	"version": "1.7.7",
 	"description": "__MSG_extensionDescription__",
 	"permissions": [
 		"alarms",

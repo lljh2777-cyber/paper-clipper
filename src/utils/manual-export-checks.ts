@@ -71,8 +71,9 @@ function hasLinks(element: Element, block: ReturnType<typeof markdownView>['bloc
 		if (!href) return false;
 		if (block.links.includes(href)) return true;
 		const target = new URL(href), article = new URL(url);
+		const cr = target.hash.match(/^#(ref-CR(\d+))$/);
 		const number = target.origin === article.origin && target.pathname === article.pathname
-			? target.hash.match(/^#ref-CR(\d+)$/)?.[1] ?? references.get(target.hash.slice(1)) : undefined;
+			? (cr ? (references.get(cr[1]) ?? cr[2]) : references.get(target.hash.slice(1))) : undefined;
 		return !!number && block.raw.includes(`[^${number}]`) && view.footnotes.get(number)?.length === 1 && !!view.footnotes.get(number)![0].text;
 	});
 }
@@ -96,7 +97,18 @@ function checkPlosBibliography(document: Document, view: ReturnType<typeof markd
 
 const springerNatureHost = /(^|\.)nature\.com$|^link\.springer\.com$|(^|\.)biomedcentral\.com$/;
 
-function springerCaptionForCheck(paragraph: Element): Element {
+function springerReferenceOrdinals(document: Document): Map<string, string> {
+	const map = new Map<string, string>();
+	let index = 0;
+	for (const li of Array.from(document.querySelectorAll('.c-article-references > li'))) {
+		index++;
+		const id = li.id || Array.from(li.children).find(child => child.tagName === 'P' && /^ref-CR\d+$/.test(child.id))?.id;
+		if (id) map.set(id, String(index));
+	}
+	return map;
+}
+
+function springerCaptionForCheck(paragraph: Element, refMap = new Map<string, string>()): Element {
 	const copy = paragraph.cloneNode(true) as Element;
 	const delimiters: ReadonlyArray<readonly [string, string, string]> = [
 		['\\(', '\\)', '$'],
@@ -112,11 +124,11 @@ function springerCaptionForCheck(paragraph: Element): Element {
 		if (latex) element.textContent = `${delimiter[2]}${latex}${delimiter[2]}`;
 	}
 	for (const link of Array.from(copy.querySelectorAll('a[data-test="citation-ref"][href*="#ref-CR"]'))) {
-		const match = link.getAttribute('href')?.match(/#ref-CR(\d+)$/);
+		const match = link.getAttribute('href')?.match(/#(ref-CR(\d+))$/);
 		const label = link.textContent?.trim() ?? '';
-		if (match && label !== match[1] && /^\d{4}[a-z]?$/.test(label)) {
+		if (match && label !== match[2] && /^\d{4}[a-z]?$/.test(label)) {
 			link.before(copy.ownerDocument.createTextNode(label));
-			link.textContent = match[1];
+			link.textContent = refMap.get(match[1]) ?? match[2];
 		}
 	}
 	return copy;
@@ -174,6 +186,7 @@ function inspect(snapshot: ManualExportSnapshot, markdown: string): Checks {
 			sourceLinks(copy, source).every(link => definitions[0].links.includes(link)));
 		if (expected && matches.length === 1) referenceNumbers.set(entry.id, matches[0][0]);
 	}
+	const springerRefOrdinals = nature ? springerReferenceOrdinals(document) : new Map<string, string>();
 	const captionScope = 'cell-nature-caption-paragraphs-links-order-v1';
 	const captions = cell || nature ? checked(captionScope, Array.from(document.querySelectorAll(cell
 		? 'figure.graphic figcaption .figure__caption__text__content' : 'figure .c-article-section__figure-description')).map((legend, i) => {
@@ -186,9 +199,9 @@ function inspect(snapshot: ManualExportSnapshot, markdown: string): Checks {
 		if (titles.length !== 1) return { id, reason: 'missing-or-ambiguous-caption-title' };
 		const intact = paragraphs.every((paragraph, index) => {
 			const block = view.blocks[titles[0] + index + 1];
-			const scientific = cell ? cellCaptionForCheck(paragraph, referenceNumbers) : springerCaptionForCheck(paragraph);
+			const scientific = cell ? cellCaptionForCheck(paragraph, referenceNumbers) : springerCaptionForCheck(paragraph, springerRefOrdinals);
 			const expected = canonical(scientific.textContent ?? '');
-			return !!expected && block?.type === 'paragraph' && (cell ? block.text : paragraphText(block)) === expected && hasLinks(scientific, block, view, source, referenceNumbers);
+			return !!expected && block?.type === 'paragraph' && (cell ? block.text : paragraphText(block)) === expected && hasLinks(scientific, block, view, source, cell ? referenceNumbers : springerRefOrdinals);
 		});
 		return { id, ...(!intact && { reason: 'caption-text-link-or-order-differs' }) };
 	})) : uncovered(captionScope, 'unsupported-publisher');

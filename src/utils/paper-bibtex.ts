@@ -1,4 +1,4 @@
-import { normalizeDoi } from './paper-bundle';
+import { canonicalPaperUrl, normalizeDoi } from './paper-bundle';
 
 export interface BibtexMetaTag {
 	name?: string | null;
@@ -204,12 +204,8 @@ export function extractCitationFields(input: PaperBibtexInput): CitationFields {
 	if (input.source) {
 		try {
 			const parsed = new URL(input.source);
-			if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-				parsed.hash = '';
-				for (const key of [...parsed.searchParams.keys()]) {
-					if (/^(?:utm_|fbclid$|gclid$)/i.test(key)) parsed.searchParams.delete(key);
-				}
-				url = parsed.href;
+			if ((parsed.protocol === 'http:' || parsed.protocol === 'https:') && !parsed.username && !parsed.password) {
+				url = canonicalPaperUrl(input.source);
 			}
 		} catch { /* Leave invalid source URLs unset. */ }
 	}

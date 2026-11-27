@@ -2,33 +2,59 @@ import { Marked } from 'marked';
 import { parseHTML } from 'linkedom';
 
 const marked = new Marked({ gfm: true });
+const springerNatureHost = /(^|\.)nature\.com$|^link\.springer\.com$|(^|\.)biomedcentral\.com$/;
 export const sourceSectionsVersion = 'nature-sections-v2';
 const excluded = 'figure, figcaption, table, ul, ol, blockquote, pre, script, style, template, noscript, [hidden], [aria-hidden="true"]';
 const math = 'math, mjx-container, .mathjax-tex, .c-article-equation, [data-tex], [data-latex]';
 const canonical = value => value.replace(/\s+/g, '');
 const citationMarker = id => `{paper-citation:${id}}`;
 
-function citationId(link, url) {
-	const target = new URL(link.getAttribute('href'), url);
-	const article = new URL(url);
-	const id = target.origin === article.origin && target.pathname === article.pathname
-		? target.hash.match(/^#ref-CR(\d+)$/)?.[1] : null;
-	return id && link.textContent.trim() === id ? id : null;
+function springerReferenceOrdinals(document) {
+	const map = new Map();
+	let index = 0;
+	for (const li of document.querySelectorAll('.c-article-references > li')) {
+		index++;
+		const id = li.id || [...li.children].find(child => child.tagName === 'P' && /^ref-CR\d+$/.test(child.id))?.id;
+		if (id) map.set(id, String(index));
+	}
+	return map;
 }
 
-function textOf(element, url, markdown = false, compact = true) {
+function citationId(link, url, refMap) {
+	const target = new URL(link.getAttribute('href'), url);
+	const article = new URL(url);
+	const match = target.origin === article.origin && target.pathname === article.pathname
+		? target.hash.match(/^#(ref-CR(\d+))$/) : null;
+	if (!match || link.textContent.trim() !== match[2]) return null;
+	return refMap?.get(match[1]) ?? match[2];
+}
+
+function springerAuthorYearId(link, url, refMap) {
+	if (!link.matches('a[data-test="citation-ref"][href*="#ref-CR"]')) return null;
+	const target = new URL(link.getAttribute('href'), url);
+	const article = new URL(url);
+	const match = target.origin === article.origin && target.pathname === article.pathname
+		? target.hash.match(/^#(ref-CR(\d+))$/) : null;
+	const label = link.textContent.trim();
+	if (!match || label === match[2] || !/^\d{4}[a-z]?$/.test(label)) return null;
+	return { id: refMap?.get(match[1]) ?? match[2], label };
+}
+
+function textOf(element, url, markdown = false, compact = true, refMap) {
 	const clone = element.cloneNode(true);
 	for (const node of clone.querySelectorAll(excluded + ', img')) node.remove();
 	// Clipper turns numeric Nature citation groups into adjacent footnote markers.
 	// Normalize their separators only; keep each reference number distinct.
 	for (const sup of clone.querySelectorAll('sup')) {
 		const links = [...sup.querySelectorAll('a[href]')];
-		if (links.length && [...sup.children].every(node => links.includes(node)) && links.every(link => citationId(link, url)) &&
-			/^[\d\s,]+$/.test(sup.textContent)) sup.textContent = links.map(link => citationMarker(citationId(link, url))).join('');
+		if (links.length && [...sup.children].every(node => links.includes(node)) && links.every(link => citationId(link, url, refMap)) &&
+			/^[\d\s,]+$/.test(sup.textContent)) sup.textContent = links.map(link => citationMarker(citationId(link, url, refMap))).join('');
 	}
 	for (const link of clone.querySelectorAll('a[href]')) {
-		const id = citationId(link, url);
-		if (id) link.textContent = citationMarker(id);
+		const id = citationId(link, url, refMap);
+		if (id) { link.textContent = citationMarker(id); continue; }
+		const authorYear = springerAuthorYearId(link, url, refMap);
+		if (authorYear) link.textContent = `${authorYear.label}${citationMarker(authorYear.id)}`;
 	}
 	const text = markdown ? clone.textContent.replace(/\[\^(\d+)\]/g, (_, id) => citationMarker(id)) : clone.textContent;
 	return compact ? canonical(text) : text;
@@ -48,7 +74,7 @@ function markdownSections(markdown, url) {
 	return sections;
 }
 
-function sourceSections(section, url) {
+function sourceSections(section, url, refMap) {
 	const content = section.querySelector('.c-article-section__content');
 	const heading = section.querySelector('.c-article-section__title');
 	if (!content || !heading || !/^H[1-6]$/.test(heading.tagName) || heading.parentElement !== content.parentElement) {
@@ -59,13 +85,13 @@ function sourceSections(section, url) {
 		if (element.closest(excluded)) continue;
 		if (element.tagName !== 'P') {
 			sections.push({ heading: element.textContent.trim(), id: element.id || null,
-				text: textOf(element, url), level: Number(element.tagName.slice(1)), paragraphs: [] });
+				text: textOf(element, url, false, true, refMap), level: Number(element.tagName.slice(1)), paragraphs: [] });
 		} else {
 			if (!sections.length) throw new Error('Source paragraph has no supported heading.');
 			const reason = element.querySelector(math) || /\\[([]|\$/.test(element.textContent) ? 'math-or-dollar-content'
 				: element.querySelector('img') ? 'inline-image' : null;
-			const text = textOf(element, url);
-			const words = textOf(element, url, false, false).trim().split(/\s+/).filter(Boolean).length;
+			const text = textOf(element, url, false, true, refMap);
+			const words = textOf(element, url, false, false, refMap).trim().split(/\s+/).filter(Boolean).length;
 			if (text || reason) sections.at(-1).paragraphs.push({ text, reason, words });
 		}
 	}
@@ -78,17 +104,19 @@ export function checkSourceSections(html, markdown, url) {
 		scope: 'main-content headings and plain prose paragraphs', expectedSections: 0, checkedParagraphs: 0,
 		matchedParagraphs: 0, checkedWords: 0, matchedWords: 0, skippedParagraphs: 0, sections: [] };
 	try {
-		if (!/(^|\.)nature\.com$/.test(new URL(url).hostname)) return { ...result, reason: 'unsupported-publisher' };
-		result.publisher = 'nature';
+		const host = new URL(url).hostname;
+		if (!springerNatureHost.test(host)) return { ...result, reason: 'unsupported-publisher' };
+		result.publisher = /(^|\.)nature\.com$/.test(host) ? 'nature' : 'springer-nature';
 		const document = parseHTML(html).document;
 		const containers = document.querySelectorAll('.c-article-body .main-content');
 		if (containers.length !== 1) return { ...result, reason: 'unsupported-source-structure' };
 		const roots = [...containers[0].querySelectorAll(':scope > section[data-title]')];
 		if (!roots.length) return { ...result, reason: 'no-supported-sections' };
+		const refMap = springerReferenceOrdinals(document);
 		const actual = markdownSections(markdown, url);
 		let lastRootEnd = 0;
 		for (const root of roots) {
-			const expected = sourceSections(root, url);
+			const expected = sourceSections(root, url, refMap);
 			const candidates = actual.map((entry, index) => entry.text === expected[0].text && entry.level === expected[0].level ? index : -1).filter(index => index >= 0);
 			const start = candidates.length === 1 ? candidates[0] : -1;
 			let end = start + 1;

@@ -9,6 +9,19 @@ export function normalizeDoi(value: unknown): string | null {
 	return /^10\.\d{4,9}\/[^\s<>"?#]+$/i.test(doi) ? doi.toLowerCase() : null;
 }
 
+export function canonicalPaperUrl(value: string): string {
+	try {
+		const parsed = new URL(value);
+		if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) return value;
+		parsed.hash = '';
+		for (const key of [...parsed.searchParams.keys()]) {
+			if (/^(?:utm_|fbclid$|gclid$)/i.test(key)) parsed.searchParams.delete(key);
+		}
+		parsed.searchParams.sort();
+		return parsed.href;
+	} catch { return value; }
+}
+
 const safeComponent = (value: string, length: number) => value.normalize('NFC').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
 	.replace(/\s+/g, '_').slice(0, length).replace(/[. _]+$/g, '') || 'paper';
 export function paperFolderName(title: string, identity: PaperIdentity, id: string): string {
@@ -21,7 +34,7 @@ export async function paperTranslationMetadata(input: { title: string; source: s
 	const hash = await crypto.subtle.digest('SHA-256', new Uint8Array(prepared.files['paper.md']).buffer);
 	return {
 		schemaVersion: 1, id, doi: input.identity.doi, title: input.title, published: input.identity.published,
-		sourceUrl: input.source, sourceFile: 'paper.md', translationFile: 'paper.zh-CN.md',
+		sourceUrl: canonicalPaperUrl(input.source), sourceFile: 'paper.md', translationFile: 'paper.zh-CN.md',
 		sourceVersion: { algorithm: 'sha256', value: [...new Uint8Array(hash)].map(value => value.toString(16).padStart(2, '0')).join('') },
 		createdAt: new Date().toISOString(), status: 'not-started', model: null, completedSections: [], archiveStatus: 'writing',
 		acquisition: { method: 'extension-editor', completeness: prepared.checks.completeness, preservation: prepared.checks.preservation,

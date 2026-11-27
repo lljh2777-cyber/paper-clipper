@@ -7,6 +7,7 @@ import { clipPaper, parseOptions as parsePaperOptions } from './clip-paper.mjs';
 import { browserFlags } from './fetch-page.mjs';
 import { importPapers, parseOptions as parseImportOptions } from './import-papers.mjs';
 import { archivePapers, parseOptions as parseArchiveOptions, validateVaultDestination } from './archive-papers.mjs';
+import { canonicalUrl } from './paper-metadata.mjs';
 import { qualitySummary } from './paper-validation.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -67,7 +68,7 @@ function forwardFlags(values, names) {
 }
 
 function urlFilename(url) {
-	const key = new URL(url);
+	const key = new URL(canonicalUrl(url));
 	key.hash = '';
 	const label = `${key.hostname}-${key.pathname.split('/').filter(Boolean).at(-1) || 'index'}`
 		.replace(/[^a-z0-9._-]+/gi, '-').slice(0, 80);
