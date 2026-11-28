@@ -94,7 +94,17 @@ async function downloadOnce(url: string, source: string, maxBytes: number, batch
 		});
 		const client = frame.contentWindow as (Window & typeof globalThis) | null;
 		if (!client) throw new RetryableImageDownloadError();
-		const response = await client.fetch(url, { ...options, redirect: 'follow', cache: 'no-store' });
+		let cspBlocked = false;
+		client.addEventListener('securitypolicyviolation', () => { cspBlocked = true; });
+		let response: Response;
+		try {
+			response = await client.fetch(url, { ...options, redirect: 'follow', cache: 'no-store' });
+		} catch (error) {
+			if (cspBlocked) throw new ImageArchiveError('download');
+			await new Promise(resolve => setTimeout(resolve, 0));
+			if (cspBlocked) throw new ImageArchiveError('download');
+			throw error;
+		}
 		if (response.redirected) {
 			const target = new URL(response.url);
 			const asset = /^\/(10\.1371\/journal\.[a-z]+\.\d+)\/\d+\/([^/]+)\.PNG_[IML]$/i.exec(target.pathname);

@@ -204,8 +204,12 @@ try {
 		assert.equal(await collision.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
 		await collision.page.screenshot({ path: path.join(directory, `duplicate-${width}.png`) });
 	}
-	await collision.page.locator('#keep-existing').click();
-	await collision.closed;
+	await Promise.all([
+		collision.closed,
+		collision.page.locator('#keep-existing').click().catch(error => {
+			if (!/Target .*closed/i.test(String(error))) throw error;
+		}),
+	]);
 	await popup.locator('#image-archive-status').filter({ hasText: '已跳过本次保存' }).waitFor();
 	const version = await openSavePage(context, () => popup.locator('#clip-btn').click());
 	await version.page.locator('#save-new-version').click();
@@ -368,8 +372,12 @@ try {
 	assert.equal((await readEmbedded('Permission_test', 'Permission_papers')).metadata.archiveStatus, 'complete');
 	save = await openSave('Cancelled permission test');
 	await save.page.locator('#save-status').filter({ hasText: '等待目录访问授权' }).waitFor();
-	await save.page.locator('#close-save').click();
-	await save.closed;
+	await Promise.all([
+		save.closed,
+		save.page.locator('#close-save').click().catch(error => {
+			if (!/Target .*closed/i.test(String(error))) throw error;
+		}),
+	]);
 	await embedded.locator('#image-archive-status').filter({ hasText: '尚未确认保存结果' }).waitFor();
 	await settings.evaluate(() => localStorage.removeItem('qa-permission'));
 	assert.equal(await settings.evaluate(async () => {

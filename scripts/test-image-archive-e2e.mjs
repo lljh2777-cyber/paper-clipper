@@ -55,7 +55,12 @@ try {
 		assert.equal(await save.page.locator('#retry-save').isVisible(), false);
 		if (fallback) assert.match(await save.page.locator('#save-status').innerText(), /fell back to the original page image/);
 		assert.equal(await worker.evaluate(async () => (await chrome.storage.session.get('paperSaveLastResult')).paperSaveLastResult.state), 'saved-warning');
-		await save.page.locator('#close-save').click();
+		await Promise.all([
+			save.closed,
+			save.page.locator('#close-save').click().catch(error => {
+				if (!/Target .*closed/i.test(String(error))) throw error;
+			}),
+		]);
 	};
 	popup.on('pageerror', error => errors.push(error.message));
 	await popup.locator('#note-content-field').waitFor({ state: 'visible' });

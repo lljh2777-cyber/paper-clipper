@@ -107,11 +107,17 @@ test('recognized but malformed sections and invalid URLs fail closed with a diag
 test('supports SpringerLink and BMC hosts including author-year citations', () => {
 	const springerUrl = 'https://link.springer.com/article/10.1186/s12859-024-05935-y';
 	const springerHtml = html(section('Results', '<p>Observed by Smith (<a data-test="citation-ref" href="/article/10.1186/s12859-024-05935-y#ref-CR1">2020</a>).</p>'));
+	const bmcUrl = 'https://bmcbioinformatics.biomedcentral.com/articles/10.1186/s12859-024-05935-y';
+	const bmcHtml = html(section('Results', '<p>Observed by Smith (<a data-test="citation-ref" href="/articles/10.1186/s12859-024-05935-y#ref-CR1">2020</a>).</p>'));
 	const springerMd = '## Results\n\nObserved by Smith (2020 [^1]).\n\n[^1]: Smith (2020) Tool.\n';
-	const result = checkSourceSections(springerHtml, springerMd, springerUrl);
-	assert.equal(result.status, 'passed');
-	assert.equal(result.publisher, 'springer-nature');
-	assert.equal(checkSourceSections(springerHtml, springerMd, 'https://bmcbioinformatics.biomedcentral.com/articles/10.1186/s12859-024-05935-y').status, 'passed');
+	const springerResult = checkSourceSections(springerHtml, springerMd, springerUrl);
+	assert.equal(springerResult.status, 'passed');
+	assert.equal(springerResult.publisher, 'springer-nature');
+	const bmcResult = checkSourceSections(bmcHtml, springerMd, bmcUrl);
+	assert.equal(bmcResult.status, 'passed');
+	assert.equal(bmcResult.publisher, 'springer-nature');
+	// Cross-article path mismatch between HTML citation link (/article/) and BMC URL (/articles/) stays rejected.
+	assert.equal(checkSourceSections(springerHtml, springerMd, bmcUrl).status, 'failed');
 	assert.equal(checkSourceSections(springerHtml, springerMd.replace('2020 [^1]', '2021 [^1]'), springerUrl).status, 'failed');
 
 	const reorderedHtml = `<html><body><article class="c-article-body"><div class="main-content">${section('Results', '<p>Feedback circuit (Chau et al, <a data-test="citation-ref" href="/article/10.1186/s12859-024-05935-y#ref-CR15">2012</a>).</p>')}</div><ul class="c-article-references"><li><p id="ref-CR102">Boyd (1996)</p></li><li><p id="ref-CR15">Chau (2012)</p></li></ul></article></body></html>`;
