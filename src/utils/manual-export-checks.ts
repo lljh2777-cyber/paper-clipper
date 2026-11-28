@@ -151,7 +151,7 @@ function paragraphText(block: ReturnType<typeof markdownView>['blocks'][number])
 	return result;
 }
 
-function inspect(snapshot: ManualExportSnapshot, markdown: string): Checks {
+function inspect(snapshot: ManualExportSnapshot, markdown: string, skippedImages?: ReadonlySet<string>): Checks {
 	const { document, source } = snapshot;
 	const host = new URL(source).hostname;
 	const cell = /(^|\.)cell\.com$/.test(host), nature = springerNatureHost.test(host);
@@ -246,15 +246,16 @@ function inspect(snapshot: ManualExportSnapshot, markdown: string): Checks {
 
 	const extendedScope = 'nature-declared-extended-images-v1';
 	const extendedImages = nature ? checked(extendedScope, Array.from(document.querySelectorAll('.c-article-supplementary__item h3 a'))
-		.filter(link => /^Extended Data Fig\.\s*\d+\b/i.test(link.textContent?.trim() ?? '')).map((link, i) => {
+		.filter(link => /^Extended Data Fig\.\s*\d+\b/i.test(link.textContent?.trim() ?? '')).flatMap((link, i) => {
 			const id = `extended-figure-${i + 1}`;
 			const declared = link.getAttribute('data-supp-info-image');
-			if (!declared) return { id, reason: 'source-image-address-unavailable', notCovered: true };
+			if (!declared) return [{ id, reason: 'source-image-address-unavailable', notCovered: true }];
+			if (skippedImages?.has(absolute(declared, source))) return [];
 			const title = canonical(link.textContent ?? '');
 			const titles = view.blocks.flatMap((block, index) => block.type === 'heading' && block.text === title ? [index] : []);
 			const block = titles.length === 1 ? view.blocks[titles[0] + 1] : undefined;
 			const images = block ? walk(block.node).filter(node => node.type === 'image' || node.type === 'imageReference') : [];
-			return { id, ...(!images.some(image => view.targetUrl(image) === absolute(declared, source)) && { reason: 'declared-image-missing-or-not-after-heading' }) };
+			return [{ id, ...(!images.some(image => view.targetUrl(image) === absolute(declared, source)) && { reason: 'declared-image-missing-or-not-after-heading' }) }];
 		})) : uncovered(extendedScope, 'unsupported-publisher');
 
 	const math = checkMathPreservation(document, markdown);
@@ -264,11 +265,11 @@ function inspect(snapshot: ManualExportSnapshot, markdown: string): Checks {
 	} };
 }
 
-export function checkManualExport(snapshot: ManualExportSnapshot | undefined, output: string): ManualExportChecks {
+export function checkManualExport(snapshot: ManualExportSnapshot | undefined, output: string, skippedImages?: ReadonlySet<string>): ManualExportChecks {
 	if (!snapshot) return unassessedManualExportChecks();
 	const extraction = inspect(snapshot, snapshot.extractedMarkdown);
 	const template = snapshot.templateMarkdown === snapshot.extractedMarkdown ? extraction : inspect(snapshot, snapshot.templateMarkdown);
-	const final = output === snapshot.templateMarkdown ? template : inspect(snapshot, output);
+	const final = output === snapshot.templateMarkdown && !skippedImages?.size ? template : inspect(snapshot, output, skippedImages);
 	const all = [...Object.values(extraction), ...Object.values(template), ...Object.values(final)];
 	return {
 		schemaVersion: 1, completeness: 'not-assessed',
@@ -278,10 +279,10 @@ export function checkManualExport(snapshot: ManualExportSnapshot | undefined, ou
 		changes: { template: snapshot.templateMarkdown === snapshot.extractedMarkdown ? 'unchanged' : 'changed',
 			editor: output === snapshot.templateMarkdown ? 'unchanged' : 'changed' },
 		stages: { extraction, template, output: final },
-		limitations: [...manualCheckLimitations],
+		limitations: [...manualCheckLimitations, ...(skippedImages?.size ? ['Extended images excluded by the save selection are outside the output preservation check.'] : [])],
 	};
 }
 
-export async function prepareManualExportChecks(snapshot: ManualExportSnapshot | undefined, markdown: string): Promise<ManualExportCheckContext> {
-	return { inputSha256: await markdownSha256(markdown), report: checkManualExport(snapshot, bodyOnly(markdown)) };
+export async function prepareManualExportChecks(snapshot: ManualExportSnapshot | undefined, markdown: string, skippedImages?: ReadonlySet<string>): Promise<ManualExportCheckContext> {
+	return { inputSha256: await markdownSha256(markdown), report: checkManualExport(snapshot, bodyOnly(markdown), skippedImages) };
 }

@@ -1,4 +1,4 @@
-import { ImageArchiveError, prepareImageFiles } from './image-archive';
+import { ImageArchiveError, prepareImageFiles, type ImageDownloadSession } from './image-archive';
 import { exists, writeFile } from './paper-file-writer';
 import { publicationDay } from './publication-date';
 import type { ManualExportCheckContext } from './manual-export-report';
@@ -106,7 +106,7 @@ async function matchingArchives(parent: WritableDirectory, doi: string | null): 
 }
 
 export async function savePaperDirectory(parent: WritableDirectory, input: PaperDirectoryInput,
-	progress: (done: number, total: number) => void = () => {}, options: { newVersion?: boolean } = {}) {
+	progress: (done: number, total: number) => void = () => {}, options: { newVersion?: boolean; imageDownloads?: ImageDownloadSession } = {}) {
 	const id = crypto.randomUUID();
 	const doi = normalizeDoi(input.identity.doi);
 	if (input.identity.doi && !doi) throw new PaperDirectoryError('identity');
@@ -116,7 +116,7 @@ export async function savePaperDirectory(parent: WritableDirectory, input: Paper
 	if (duplicates.length && !options.newVersion) throw new PaperDirectoryError('duplicate', duplicates.join('\n'));
 	if (await exists(parent, folder)) throw new PaperDirectoryError('exists', folder);
 	// Images and selected attachments must succeed before creating any output.
-	const prepared = await prepareImageFiles(input.markdown, input.source, progress, input.imageSources, input.checkContext, input.figureLinks, input.attachments, input.bibtex);
+	const prepared = await prepareImageFiles(input.markdown, input.source, progress, input.imageSources, input.checkContext, input.figureLinks, input.attachments, input.bibtex, options.imageDownloads);
 	const baseMetadata = await paperTranslationMetadata({ ...input, identity: { ...input.identity, doi } }, prepared, id);
 	return navigator.locks.request('paper-clipper-directory-write', async () => {
 		const previousArchives = await matchingArchives(parent, doi);

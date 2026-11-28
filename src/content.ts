@@ -14,6 +14,7 @@ import { debugLog } from './utils/debug';
 import { updateSidebarWidth, addResizeHandle, cleanupResizeHandlers } from './utils/iframe-resize';
 import { parseForClip } from './utils/clip-utils';
 import { captureDocumentWithMath } from './utils/page-html-export';
+import { expandHighWirePreprintTables, readHighWireExtendedTables } from './utils/biorxiv';
 
 declare const PAPER_CLIPPER_BUILD: string;
 
@@ -21,6 +22,11 @@ declare global {
 	interface Window {
 		obsidianClipperGeneration?: number;
 	}
+}
+
+async function captureDocumentForClip(document: Document, scope: 'all' | 'body' = 'all'): Promise<Document> {
+	const source = document.URL;
+	return expandHighWirePreprintTables(await captureDocumentWithMath(document), source, scope);
 }
 
 // IIFE to scope variables and allow safe re-execution
@@ -160,7 +166,7 @@ declare global {
 		if (request.action === "copyMarkdownToClipboard") {
 			flattenShadowDom(document).then(async () => {
 				try {
-					const defuddled = parseForClip(await captureDocumentWithMath(document));
+					const defuddled = parseForClip(await captureDocumentForClip(document));
 
 					// Convert HTML content to markdown
 					const markdown = createMarkdownContent(defuddled.content, document.URL);
@@ -185,7 +191,7 @@ declare global {
 		if (request.action === "saveMarkdownToFile") {
 			flattenShadowDom(document).then(async () => {
 				try {
-					const defuddled = parseForClip(await captureDocumentWithMath(document));
+					const defuddled = parseForClip(await captureDocumentForClip(document));
 					const markdown = createMarkdownContent(defuddled.content, document.URL);
 					const title = defuddled.title || document.title || 'Untitled';
 					sendResponse({ success: true, title, markdown, source: document.URL });
@@ -194,6 +200,15 @@ declare global {
 					sendResponse({ success: false, error: (err as Error).message });
 				}
 			});
+			return true;
+		}
+
+		if (request.action === 'getExtendedPaperTables') {
+			const source = document.URL;
+			if (request.source !== source) return;
+			readHighWireExtendedTables(document, source).then(tables => {
+				sendResponse(document.URL === source ? tables.map(({ url, html }) => ({ url, markdown: createMarkdownContent(html, source) })) : []);
+			}).catch(() => sendResponse([]));
 			return true;
 		}
 
@@ -216,7 +231,7 @@ declare global {
 
 				// Use parseAsync to ensure async variables like {{transcript}} are available.
 				// If it hangs (e.g. another extension has corrupted fetch), fall back to sync parse.
-				const extractionDoc = await captureDocumentWithMath(document);
+				const extractionDoc = await captureDocumentForClip(document, 'body');
 				const defuddle = new Defuddle(prepareDocumentForExtraction(extractionDoc, document.URL), { url: document.URL });
 				const parseTimeout = new Promise<never>((_, reject) =>
 					setTimeout(() => reject(new Error('parseAsync timeout')), 8000)

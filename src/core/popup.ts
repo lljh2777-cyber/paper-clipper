@@ -21,7 +21,8 @@ import { debounce } from '../utils/debounce';
 import { sanitizeFileName } from '../utils/string-utils';
 import { collectImageSources } from '../utils/image-sources.mjs';
 import { collectFigureLinks } from '../utils/figure-links';
-import { resetAttachmentPicker, selectedPaperAttachments } from '../utils/attachment-picker';
+import { applyExtendedContentChoice, resetAttachmentPicker, selectedPaperAttachments } from '../utils/attachment-picker';
+import { fillExtendedTableLinks } from '../utils/extended-paper-content';
 import { paperIdentity, paperDirectoryFailure } from '../utils/paper-directory';
 import { lastPaperSaveResult, openPaperDirectorySave, type PaperSaveFormat, type PaperSaveInput } from '../utils/paper-directory-handoff';
 import { translatePage, getMessage, setupLanguageAndDirection } from '../utils/i18n';
@@ -890,7 +891,7 @@ async function fillTemplateFieldValues(currentTabId: number, template: Template,
 			extractedMarkdown: createMarkdownContent(exportPage.data.content, exportPage.source), templateMarkdown: noteContentField.value,
 		} };
 		void restoreSaveFeedback(manualExportPage);
-		resetAttachmentPicker(manualExportPage.snapshot);
+		resetAttachmentPicker(manualExportPage.snapshot, noteContentField);
 		clearError();
 		document.querySelector<HTMLElement>('.clipper')!.inert = false;
 	}
@@ -1230,10 +1231,17 @@ async function handleManualSave(format: PaperSaveFormat) {
 		const input: PaperSaveInput = { format, destination: useDefault ? 'default' : 'once', markdown: frontmatter + markdown,
 			title, source, identity: { doi: null, published: null } };
 		if (format !== 'markdown') {
+			const selection = applyExtendedContentChoice(input.markdown, source);
+			input.markdown = selection.markdown;
+			if (selection.includeTables && /^(?:www\.)?(?:bio|med)rxiv\.org$/.test(new URL(source).hostname)) {
+				const tables = await browser.runtime.sendMessage({ action: 'sendMessageToTab', tabId: page.tabId,
+					message: { action: 'getExtendedPaperTables', source } }).catch(() => []) as {url: string; markdown: string}[];
+				if (Array.isArray(tables)) input.markdown = fillExtendedTableLinks(input.markdown, source, Object.fromEntries(tables.map(table => [table.url, table.markdown])));
+			}
 			input.identity = paperIdentity(page.data.metaTags, properties, source, page.data.published);
 			input.imageSources = collectImageSources(page.snapshot.document, source);
 			input.attachments = selectedPaperAttachments();
-			input.checkContext = await prepareManualExportChecks(page.snapshot, input.markdown);
+			input.checkContext = await prepareManualExportChecks(page.snapshot, input.markdown, selection.skippedImages);
 			input.figureLinks = collectFigureLinks(page.snapshot.document, source, input.markdown);
 			input.bibtex = buildCurrentBibtex(page, title, properties, input.identity.doi);
 		}
@@ -1279,7 +1287,10 @@ function determineMainAction() {
 	secondaryActions.textContent = '';
 
 	const primary = primarySaveBehavior();
-	mainButton.textContent = getMessage(saveLabel(primary));
+	const primaryLabel = getMessage(saveLabel(primary));
+	mainButton.textContent = primary === 'savePaperDirectory' ? getMessage('paperSaveToFolderShort') : primaryLabel;
+	mainButton.title = primaryLabel;
+	mainButton.setAttribute('aria-label', primaryLabel);
 	mainButton.onclick = saveActions[primary];
 	for (const action of ['savePaperDirectory', 'saveImageArchive', 'saveMarkdownWithImageLinks', 'copyToClipboard'] as const) {
 		if (action !== primary) {

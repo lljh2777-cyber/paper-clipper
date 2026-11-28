@@ -2,6 +2,8 @@ import { MathMLToLaTeX } from 'mathml-to-latex';
 import { prepareMath } from './paper-math.mjs';
 import { cellCitation } from './cell-citations.mjs';
 import { citationPublicationDay } from './publication-date';
+import { preprintArticleSelector, prepareHighWirePreprint } from './biorxiv';
+import { isHighWirePreprintHost } from './image-sources.mjs';
 
 const descriptionSelector = 'figure .c-article-section__figure-description';
 const citationSelector = '.reference-citations a.reference-citations__ctrl[data-xml-rid]';
@@ -344,6 +346,11 @@ export function prepareDocumentForExtraction(source: Document, url: string): Doc
 			tag.setAttribute('content', published);
 			copy.head.prepend(tag);
 		}
+	}
+	if (isHighWirePreprintHost(hostname) && document.querySelectorAll(preprintArticleSelector).length === 1) {
+		const prepared = editable();
+		prepareHighWirePreprint(prepared, url);
+		return prepared;
 	}
 	if (hostname === 'journals.plos.org' && document.querySelector('ol.references > li[id] > a.link-target[id]')) {
 		const prepared = editable();

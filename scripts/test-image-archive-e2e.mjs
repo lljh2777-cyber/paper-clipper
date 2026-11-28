@@ -222,6 +222,7 @@ try {
 	const naturePopup = await natureOpening;
 	naturePopup.on('pageerror', error => errors.push(error.message));
 	await naturePopup.waitForFunction(() => document.querySelector('#note-content-field')?.value.includes('GAMMA'));
+	await naturePopup.locator('#paper-extended-content input').check();
 	await naturePopup.locator('#more-btn').click();
 	const natureSave = await openSavePage(context, () => naturePopup.locator('#save-image-archive').click());
 	const natureDownload = await readCompletedZip(worker, natureSave);

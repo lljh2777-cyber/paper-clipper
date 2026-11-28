@@ -11,7 +11,7 @@ import { unassessedManualExportChecks } from '../utils/manual-export-report';
 
 vi.mock('../utils/storage-utils', () => ({ addHistoryEntry: vi.fn(), incrementStat: vi.fn() }));
 vi.mock('lucide', () => ({ createIcons: vi.fn(), FolderOpen: {}, RotateCw: {}, CopyPlus: {}, Check: {}, X: {} }));
-vi.mock('../utils/i18n', () => ({ getMessage: (key: string, detail?: string) => `${key}${detail ? ': ' + detail : ''}`,
+vi.mock('../utils/i18n', () => ({ getMessage: (key: string, detail?: string | string[]) => `${key}${detail ? ': ' + detail : ''}`,
 	translatePage: vi.fn(), setupLanguageAndDirection: vi.fn() }));
 vi.mock('../utils/browser-polyfill', () => ({ default: { tabs: { getCurrent: vi.fn(), update: vi.fn() } } }));
 vi.mock('../utils/paper-directory', async importOriginal => ({ ...await importOriginal<typeof import('../utils/paper-directory')>(),
@@ -85,15 +85,21 @@ it.each(['exists', 'write'] as const)('activates and stays open on %s failure wi
 });
 
 it('retries a pre-write image failure only on a click, with the original editor snapshot', async () => {
-	vi.mocked(savePaperDirectory).mockRejectedValueOnce(new ImageArchiveError('download', 2));
+	const url = 'https://example.org/figure.gif?Signature=local-only';
+	vi.mocked(savePaperDirectory).mockRejectedValueOnce(new ImageArchiveError('download', 2, [
+		{ imageNumber: 2, url, httpStatus: 429 }, { imageNumber: 3, url: 'https://example.org/formula.gif' },
+	]));
 	await import('./paper-save');
 	await vi.waitFor(() => { expect(retry().hidden).toBe(false); expect(retry().disabled).toBe(false); });
-	expect(status().textContent).toBe('paperSaveImageError_download: 2');
+	expect(status().textContent).toBe(['paperSaveImageError_download: 2', `paperSaveImageRequestDiagnostic: 2,HTTP 429 ${url}`,
+		'paperSaveImageRequestDiagnostic: 3,paperSaveImageHttpUnavailable https://example.org/formula.gif'].join('\n'));
+	expect(reportPaperDirectorySave).toHaveBeenLastCalledWith('job', { state: 'failed', message: 'paperSaveImageError_download: 2' }, '');
 	expect(savePaperDirectory).toHaveBeenCalledOnce();
 	retry().click(); retry().click();
 	await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
 	expect(savePaperDirectory).toHaveBeenCalledTimes(2);
 	expect(vi.mocked(savePaperDirectory).mock.calls[1][1]).toBe(vi.mocked(savePaperDirectory).mock.calls[0][1]);
+	expect(vi.mocked(savePaperDirectory).mock.calls[1][3]?.imageDownloads).toBe(vi.mocked(savePaperDirectory).mock.calls[0][3]?.imageDownloads);
 });
 
 const zipInput = { format: 'zip' as const, title: 'Edited title', markdown: 'Edited source', source: '', identity: { doi: '10.1234/test', published: '2026-10-15' } };
@@ -172,7 +178,7 @@ it('opens a one-time picker on click, allows cancellation and never reads the sa
 	authorize().click();
 	await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
 	expect(choosePaperDirectory).toHaveBeenLastCalledWith('once');
-	expect(savePaperDirectory).toHaveBeenCalledWith(handle, draft, expect.any(Function), { newVersion: false });
+	expect(savePaperDirectory).toHaveBeenCalledWith(handle, draft, expect.any(Function), expect.objectContaining({ newVersion: false }));
 });
 
 it('shows an expired request without replaying writes even if activating the closed tab fails', async () => {
@@ -238,7 +244,7 @@ it('creates a new version only on an explicit click, reusing the original snapsh
 	await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
 	expect(savePaperDirectory).toHaveBeenCalledTimes(2);
 	const calls = vi.mocked(savePaperDirectory).mock.calls;
-	expect(calls[0][3]).toEqual({ newVersion: false });
-	expect(calls[1][3]).toEqual({ newVersion: true });
+	expect(calls[0][3]).toMatchObject({ newVersion: false });
+	expect(calls[1][3]).toMatchObject({ newVersion: true });
 	expect(calls[0][1]).toBe(calls[1][1]);
 });

@@ -75,9 +75,10 @@
 				<textarea id="note-content-field" rows="4" data-i18n="notesAboutPage"></textarea>
 			</div>
 			<div class="clipper-footer">
-				<label class="paper-destination"><span data-i18n="paperUseDefaultFolder">Use default folder</span>
-					<span class="checkbox-container mod-small"><input type="checkbox" role="switch" id="use-default-paper-directory" checked></span>
-				</label>
+				<div id="paper-archive-count" role="status" hidden></div>
+				<div id="paper-save-options">
+					<label class="paper-destination"><input type="checkbox" id="use-default-paper-directory" checked><span data-i18n="paperUseDefaultFolder">Use default folder</span></label>
+				</div>
 				<div class="action-buttons" id="action-buttons">
 					<button id="clip-btn" class="mod-cta"><!-- Text set by determineMainAction --></button>
 					<div class="menu-btn">

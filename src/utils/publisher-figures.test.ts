@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import Defuddle from 'defuddle';
 import { createMarkdownContent } from 'defuddle/full';
 import { clip } from '../api';
@@ -9,6 +9,8 @@ import type { Template } from '../types/types';
 import { pmcHtml, pmcUrl } from '../../scripts/fixtures/pmc.mjs';
 import { natureFiguresHtml, natureFiguresUrl } from '../../scripts/fixtures/nature-figures.mjs';
 import { marked } from 'marked';
+import { expandHighWirePreprintTables } from './biorxiv';
+import { collectImageSources, imageDownloadCandidates } from './image-sources.mjs';
 
 const url = 'https://www.nature.com/articles/figure-fixture';
 const paragraph = 'This scientific article describes cells, spatial domains and the experimental method. '.repeat(100);
@@ -19,6 +21,67 @@ const figure = `<figure><figcaption><b id="Fig1">Fig. 1: Model overview.</b></fi
 const html = `<!doctype html><html><head><title>Figure fixture</title></head><body><article><h1>Figure fixture</h1><h2>Results</h2><p>${paragraph}</p>${figure}<p>After figure marker.</p><h2>Methods</h2><p>${paragraph}</p></article></body></html>`;
 const template: Template = { id: 'test', name: 'Test', behavior: 'create', noteNameFormat: '{{title}}', path: '', noteContentFormat: '{{content}}', properties: [] };
 const makeDocument = () => new DOMParser().parseFromString(html, 'text/html');
+
+describe.each([['biorxiv', 'v1'], ['medrxiv', 'v2']])('%s full text', (publisher, version) => {
+	const source = `https://www.${publisher}.org/content/10.64898/2026.05.05.123456${version}.full`;
+	const assets = `/content/${publisher}/early/2026/05/05/2026.05.05.123456`;
+	const medium = new URL(`${assets}/F1.medium.gif`, source).href;
+	const large = new URL(`${assets}/F1.large.jpg`, source).href;
+	const tablePath = '/highwire/markup/123/expansion?table-expand-inline=1';
+	const bioFigure = (id: string, label: string) => `<div class="fig type-figure" id="${id}"><div class="highwire-figure">
+		<div class="fig-inline-img"><a href="${assets}/${id}.large.jpg?carousel=1"><img class="fragment-image" src="data:image/gif;base64,AAA" data-src="${assets}/${id}.medium.gif"><noscript><img class="fragment-image" src="${assets}/${id}.medium.gif"></noscript></a></div>
+		<ul class="highwire-figure-links"><li>Download figure</li><li><a class="highwire-figure-link-newtab" href="${assets}/${id}.large.jpg">Open in new tab</a></li></ul>
+		<div class="fig-caption"><span class="fig-label">${label}</span> <span class="caption-title">Cell measurements</span><p><strong>A.</strong> Complete first panel with <a href="/source">link</a>.</p><p><strong>B.</strong> Complete second panel. See <a class="xref-fig" href="#F1">Fig. 1A</a> and <a class="xref-bibr" href="#ref-17">17</a>.</p></div>
+	</div></div>`;
+	const input = `<html><head><title>Preprint fixture</title></head><body><header>Navigation chrome</header><div class="article fulltext-view"><h2>Results</h2><p>${paragraph}</p>
+		${bioFigure('F1', 'Fig. 1:')}<p>A second reference <a class="xref-bibr" href="#ref-19">19</a>.</p><h2>Extended Data</h2>${bioFigure('F2', 'Extended Data Fig. 1:')}
+		<div class="table pos-float" id="T1"><div class="table-inline"><div class="callout"><a class="table-expand-inline" data-table-url="${tablePath}">View inline</a></div></div><div class="table-caption"><span class="table-label">Extended Data 1:</span> <span class="caption-title">Source values</span></div></div>
+		<div class="section ref-list"><h2>References</h2><ol><li><a class="rev-xref-ref" id="ref-17" href="#xref-ref-17-1">↵</a>Source seventeen.</li><li><a class="rev-xref-ref" id="ref-19" href="#xref-ref-19-1">↵</a>Source nineteen.</li></ol></div>
+	</div></body></html>`;
+	const parse = (value = input) => new DOMParser().parseFromString(value, 'text/html');
+
+	test('retains ordered figure labels and full captions, with safe image candidates and a collapsed table link', async () => {
+		const original = parse();
+		const prepared = prepareDocumentForExtraction(original, source);
+		expect(original.querySelector('.highwire-figure-links')).not.toBeNull();
+		expect(prepared.querySelectorAll('article p[id^="F"] img')).toHaveLength(2);
+		expect(prepared.querySelector('#F2')?.nextElementSibling?.textContent).toContain('Extended Data Fig. 1:');
+		const { content } = await clip({ html: input, url: source, template, documentParser: new DOMParser() });
+		expect(content).toContain(`![Fig. 1:](${medium})`);
+		expect(content).toContain('**B.** Complete second panel.');
+		expect(content).toContain(`[link](https://www.${publisher}.org/source)`);
+		expect(content).toContain(`[Fig. 1A](${source}#F1) and [17](${source}#ref-17)`);
+		expect(content).toContain('Source nineteen.');
+		expect(content).toContain(`Open source table](${source}#T1)`);
+		expect(content).not.toMatch(/Navigation chrome|Download figure|Open in new tab|View inline|data:image/);
+		const sources = collectImageSources(original, source);
+		expect(imageDownloadCandidates(medium, source, sources)).toEqual([large, medium]);
+		expect(imageDownloadCandidates(medium, source, { [medium]: large.replace('/F1.', '/F2.') })).toEqual([medium]);
+		expect(imageDownloadCandidates(medium, 'https://biorxiv.org.example/test', sources)).toEqual([medium]);
+	});
+
+	test('reads only the declared same-origin expansion and preserves its table without changing the original DOM', async () => {
+		const original = parse();
+		const fetcher = vi.fn(async () => new Response('<table><thead><tr><th>Item</th><th>Score</th></tr></thead><tbody><tr><td>Control</td><td>42</td></tr></tbody></table>'));
+		vi.stubGlobal('fetch', fetcher);
+		try {
+			expect(await expandHighWirePreprintTables(original, source, 'body')).toBe(original);
+			expect(fetcher).not.toHaveBeenCalled();
+			const expanded = await expandHighWirePreprintTables(original, source, 'extended');
+			expect(fetcher).toHaveBeenCalledOnce();
+			expect(fetcher).toHaveBeenCalledWith(new URL(tablePath, source), expect.objectContaining({ redirect: 'error', credentials: 'same-origin' }));
+			expect(original.querySelector('table')).toBeNull();
+			const { content } = await clip({ html: expanded.documentElement.outerHTML, url: source, template, documentParser: new DOMParser() });
+			expect(content).toContain('Extended Data 1: Source values');
+			expect(content).toMatch(/Control\s*\|\s*42|<td>Control<\/td>\s*<td>42<\/td>/);
+			expect(content).not.toMatch(/View inline|Open source table/);
+			expect(await expandHighWirePreprintTables(expanded, source)).toBe(expanded);
+			const foreign = parse(input.replace(tablePath, `https://example.com${tablePath}`));
+			expect(await expandHighWirePreprintTables(foreign, source)).toBe(foreign);
+			expect(fetcher).toHaveBeenCalledOnce();
+		} finally { vi.unstubAllGlobals(); }
+	});
+});
 
 describe('PMC header and figure preservation', () => {
 	test('only deduplicates mapped header names on PMC and preserves source, notes and prose', () => {

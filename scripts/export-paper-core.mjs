@@ -8,7 +8,7 @@ const converter = [
 	'cli.ts', 'api.ts', 'types/types.ts', 'utils/cli-utils.ts', 'utils/cli-stubs.ts',
 	'utils/browser-polyfill.ts', 'utils/debug.ts', 'utils/filters.ts', 'utils/filters/markdown.ts',
 	'utils/string-utils.ts', 'utils/shared.ts', 'utils/resolver.ts', 'utils/storage-utils.ts',
-	'utils/template-compiler.ts', 'utils/publisher-figures.ts', 'utils/publication-date.ts', 'utils/image-sources.mjs', 'utils/image-sources.d.mts', 'utils/variables/selector.ts',
+	'utils/template-compiler.ts', 'utils/publisher-figures.ts', 'utils/biorxiv.ts', 'utils/extended-paper-content.ts', 'utils/publication-date.ts', 'utils/image-sources.mjs', 'utils/image-sources.d.mts', 'utils/variables/selector.ts',
 	'utils/paper-math.mjs', 'utils/paper-math.d.mts',
 	'utils/cell-citations.mjs', 'utils/cell-citations.d.mts',
 	'utils/variables/prompt.ts',

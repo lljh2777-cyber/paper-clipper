@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { unzipSync, strFromU8 } from 'fflate';
-import { createImageArchive, prepareImageFiles } from './image-archive';
+import { createImageArchive, createImageDownloadSession, prepareImageFiles } from './image-archive';
 import { paperFolderName } from './paper-bundle';
 import { markdownSha256 } from './manual-export-report';
 
@@ -10,7 +10,7 @@ function mockFetch() {
 	vi.stubGlobal('fetch', fetcher);
 	return fetcher;
 }
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 describe('manual image ZIP', () => {
 	it('localizes figure citations only when their mapped image was archived, preserving labels and unrelated links', async () => {
 		mockFetch();
@@ -127,7 +127,7 @@ describe('manual image ZIP', () => {
 		expect(prepared.files['images/image-1.png']).toEqual(png);
 		expect(JSON.parse(strFromU8(prepared.files['image-report.json'])).items[0].selection).toBe('original-fallback');
 	});
-	it('retries transient errors and 503/429 responses on preferred images without unnecessary fallback', async () => {
+	it('retries transient errors and 503 responses on preferred images without unnecessary fallback', async () => {
 		const small = 'https://media.springernature.com/lw685/springer-static/image/art%3A10.1186%2Fs13059-019-1713-4/MediaObjects/Fig4.png';
 		const large = small.replace('/lw685/', '/full/');
 		const fetcher = vi.fn()
@@ -139,6 +139,122 @@ describe('manual image ZIP', () => {
 		expect(fetcher.mock.calls.map(call => call[0])).toEqual([large, large, large]);
 		expect(prepared.checks.images?.originalFallbacks).toBe(0);
 		expect(JSON.parse(strFromU8(prepared.files['image-report.json'])).items[0].selection).toBe('preferred');
+	});
+	it.each(['seconds', 'HTTP date'])('waits for 429 Retry-After in %s before requesting the asset again', async kind => {
+		const current = new Date('2026-11-28T08:00:00Z');
+		vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+		vi.setSystemTime(current);
+		const retryAfter = kind === 'seconds' ? '2' : new Date(current.getTime() + 2000).toUTCString();
+		let started!: () => void;
+		const firstRequest = new Promise<void>(resolve => { started = resolve; });
+		const fetcher = mockFetch();
+		fetcher.mockImplementationOnce(async () => {
+			started();
+			return new Response('Busy', { status: 429, headers: { 'Retry-After': retryAfter } });
+		});
+		const pending = prepareImageFiles('![Figure](https://example.org/figure)', 'https://example.org/paper');
+		await firstRequest;
+		await vi.advanceTimersByTimeAsync(0);
+		await vi.advanceTimersByTimeAsync(1999);
+		expect(fetcher).toHaveBeenCalledTimes(1);
+		await vi.advanceTimersByTimeAsync(1);
+		expect((await pending).imageCount).toBe(1);
+		expect(fetcher).toHaveBeenCalledTimes(2);
+	});
+	it('holds new same-origin jobs during a 429 cooldown and resumes only missing images', async () => {
+		vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+		vi.setSystemTime(new Date('2026-11-28T08:00:00Z'));
+		const page = 'https://example.org/paper';
+		const blocked = 'https://example.org/busy';
+		const others = [1, 2, 3].map(n => `https://example.org/${n}`);
+		const session = createImageDownloadSession();
+		let start!: () => void;
+		const firstRequest = new Promise<void>(resolve => { start = resolve; });
+		let recover = false;
+		let finishOther!: () => void;
+		const inFlight = new Promise<void>(resolve => { finishOther = resolve; });
+		const fetcher = vi.fn(async (url: string) => {
+			if (url === blocked && !recover) {
+				start();
+				return new Response('Busy', { status: 429, headers: { 'Retry-After': '1' } });
+			}
+			if (url === others[0] || url === others[1]) await inFlight;
+			return new Response(png, { headers: { 'Content-Type': 'image/png' } });
+		});
+		vi.stubGlobal('fetch', fetcher);
+		const markdown = [blocked, ...others].map(url => `![Image](${url})`).join('\n');
+		const run = () => prepareImageFiles(markdown, page, undefined, {}, undefined, {}, [], undefined, session);
+		const first = expect(run()).rejects.toMatchObject({ reason: 'download', imageNumber: 1, requests: [{ imageNumber: 1, url: blocked, httpStatus: 429 }] });
+		await firstRequest;
+		await vi.advanceTimersByTimeAsync(0);
+		finishOther();
+		await vi.advanceTimersByTimeAsync(999);
+		expect(fetcher.mock.calls.map(([url]) => url)).not.toContain(others[2]);
+		await vi.advanceTimersByTimeAsync(3001);
+		await first;
+		recover = true;
+		fetcher.mockClear();
+		const retry = run();
+		expect((await retry).imageCount).toBe(4);
+		expect(fetcher.mock.calls.map(([url]) => url)).toEqual([blocked]);
+	});
+
+	it('honors the last 429 cooldown when the user retries a failed save', async () => {
+		vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+		vi.setSystemTime(new Date('2026-11-28T08:00:00Z'));
+		const session = createImageDownloadSession();
+		const url = 'https://example.org/rate-limited.gif';
+		const run = (progress?: () => void) => prepareImageFiles(`![Figure](${url})`, url, progress, {}, undefined, {}, [], undefined, session);
+		let started!: () => void;
+		const firstRequest = new Promise<void>(resolve => { started = resolve; });
+		const fetcher = vi.fn(async () => {
+			started();
+			return new Response('Busy', { status: 429, headers: { 'Retry-After': '1' } });
+		});
+		vi.stubGlobal('fetch', fetcher);
+		const failed = expect(run()).rejects.toMatchObject({ requests: [{ url, httpStatus: 429 }] });
+		await firstRequest;
+		await vi.advanceTimersByTimeAsync(2000);
+		await failed;
+		expect(fetcher).toHaveBeenCalledTimes(3);
+		fetcher.mockImplementationOnce(async () => new Response(png, { headers: { 'Content-Type': 'image/png' } }));
+		let resumed!: () => void;
+		const retryStarted = new Promise<void>(resolve => { resumed = resolve; });
+		const retry = run(resumed);
+		await retryStarted;
+		await vi.advanceTimersByTimeAsync(999);
+		expect(fetcher).toHaveBeenCalledTimes(3);
+		await vi.advanceTimersByTimeAsync(1);
+		expect((await retry).imageCount).toBe(1);
+		expect(fetcher).toHaveBeenCalledTimes(4);
+	});
+	it('resumes only a failed bioRxiv extended figure and retains downloaded formula images', async () => {
+		const page = 'https://www.biorxiv.org/content/10.64898/2026.05.05.123456v1.full';
+		const formula = 'https://www.biorxiv.org/sites/default/files/highwire/biorxiv/early/2026/05/05/2026.05.05.123456/embed/graphic-6.gif';
+		const medium = 'https://www.biorxiv.org/content/biorxiv/early/2026/05/05/2026.05.05.123456/F6.medium.gif';
+		const large = medium.replace('.medium.gif', '.large.jpg');
+		const gif = new TextEncoder().encode('GIF89a');
+		let recover = false;
+		const fetcher = vi.fn(async (url: string) => url === large || url === medium && !recover
+			? new Response('Unavailable', { status: url === large ? 404 : 403 })
+			: new Response(gif, { headers: { 'Content-Type': 'image/gif' } }));
+		vi.stubGlobal('fetch', fetcher);
+		const session = createImageDownloadSession();
+		const markdown = `![Formula](${formula})\n\n![Extended Data Fig. 2](${medium})`;
+		const save = () => createImageArchive(markdown, 'Preprint', page, undefined, { [medium]: large }, undefined, undefined, {}, [], undefined, session);
+		await expect(save()).rejects.toMatchObject({ reason: 'download', imageNumber: 2, requests: [
+			{ imageNumber: 2, url: large, httpStatus: 404 }, { imageNumber: 2, url: medium, httpStatus: 403 },
+		] });
+		recover = true;
+		fetcher.mockClear();
+		const result = await save();
+		expect(fetcher.mock.calls.map(([url]) => url)).toEqual([large, medium]);
+		const files = unzipSync(result.bytes);
+		const folder = result.fileName.slice(0, -4);
+		expect(files[`${folder}/images/image-1.gif`]).toEqual(gif);
+		expect(files[`${folder}/images/image-2.gif`]).toEqual(gif);
+		expect(strFromU8(files[`${folder}/paper.md`])).toBe('![Formula](<images/image-1.gif>)\n\n![Extended Data Fig. 2](<images/image-2.gif>)');
+		expect(result.checks.images?.originalFallbacks).toBe(1);
 	});
 	it('does not retry 403/404 or validation failures before falling back', async () => {
 		const small = 'https://media.springernature.com/lw685/springer-static/image/art%3A10.1186%2Fs12859-024-05935-y/MediaObjects/Fig2.png';

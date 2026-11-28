@@ -2,7 +2,7 @@ import { createIcons, FolderOpen, RotateCw, CopyPlus, Check, X } from 'lucide';
 import { getMessage, setupLanguageAndDirection, translatePage } from '../utils/i18n';
 import { authorizePaperDirectory, choosePaperDirectory, getPaperDirectory, paperDirectoryFailure, savePaperDirectory, WritableDirectory } from '../utils/paper-directory';
 import { PaperSaveInput, reportPaperDirectorySave, takePaperDirectorySave } from '../utils/paper-directory-handoff';
-import { createImageArchive, ImageArchiveError } from '../utils/image-archive';
+import { createImageArchive, createImageDownloadSession, ImageArchiveError, type ImageDownloadSession } from '../utils/image-archive';
 import { AttachmentError } from '../utils/paper-attachments';
 import { saveNewPaperFile } from '../utils/paper-file-writer';
 import { sanitizeFileName } from '../utils/string-utils';
@@ -19,6 +19,7 @@ const version = document.getElementById('save-new-version') as HTMLButtonElement
 let directory: WritableDirectory | undefined;
 let input: PaperSaveInput | undefined;
 let archive: Awaited<ReturnType<typeof createImageArchive>> | undefined;
+let imageDownloads: ImageDownloadSession | undefined;
 let busy = false;
 let newVersion = false;
 let existingFolder = '';
@@ -30,8 +31,8 @@ async function revealSavePage() {
 		if (tab?.id !== undefined) await browser.tabs.update(tab.id, { active: true });
 	} catch { /* The user may have closed the tab while it was being activated. */ }
 }
-async function showAttention(state: 'attention' | 'failed' = 'attention') {
-	await reportPaperDirectorySave(requestId, { state, message: status.textContent ?? '' }, input?.source);
+async function showAttention(state: 'attention' | 'failed' = 'attention', message = status.textContent ?? '') {
+	await reportPaperDirectorySave(requestId, { state, message }, input?.source);
 	if (state === 'attention' && !input) return;
 	await revealSavePage();
 }
@@ -62,11 +63,18 @@ function offerPermission() {
 }
 async function showFailure(error: unknown) {
 	const failure = paperDirectoryFailure(error);
+	let summary: string | undefined;
 	authorize.hidden = true;
 	retry.hidden = true;
 	keep.hidden = version.hidden = true;
 	if (error instanceof ImageArchiveError) {
-		status.textContent = getMessage(`paperSaveImageError_${error.reason}`, String(error.imageNumber));
+		summary = getMessage(`paperSaveImageError_${error.reason}`, String(error.imageNumber));
+		// Image addresses can be signed; show them here without saving them in result history.
+		const diagnostics = error.requests.map(({ imageNumber, url, httpStatus }) => {
+			const http = httpStatus === undefined ? getMessage('paperSaveImageHttpUnavailable') : `HTTP ${httpStatus}`;
+			return `${getMessage('paperSaveImageRequestDiagnostic', [String(imageNumber), http])} ${url}`;
+		});
+		status.textContent = [summary, ...diagnostics].join('\n');
 		// Image preparation precedes all filesystem/download side effects.
 		retry.hidden = !input || error.reason !== 'download';
 	} else if (error instanceof AttachmentError) {
@@ -81,7 +89,7 @@ async function showFailure(error: unknown) {
 		if (input && ['paperDirectoryError_permission', 'paperDirectoryError_missing'].includes(failure.key)) offerPermission();
 	}
 	status.dataset.error = 'true';
-	await showAttention('failed');
+	await showAttention('failed', summary);
 }
 async function save() {
 	authorize.hidden = true;
@@ -99,14 +107,15 @@ async function save() {
 	const { source, format = 'directory', title } = input!;
 	let checks: ManualExportChecks | undefined;
 	if (format === 'directory') {
-		const saved = await savePaperDirectory(directory!, input!, progress, { newVersion });
+		const saved = await savePaperDirectory(directory!, input!, progress, { newVersion, imageDownloads: imageDownloads ??= createImageDownloadSession() });
 		status.textContent = getMessage('paperDirectorySaved', directory!.name + '/' + saved.folder);
 		checks = saved.checks;
 	} else {
 		let filename: string;
 		let contents: string | Uint8Array;
 		if (format === 'zip') {
-			archive ??= await createImageArchive(input!.markdown, title, source, progress, input!.imageSources, input!.checkContext, input!.identity, input!.figureLinks, input!.attachments, input!.bibtex);
+			archive ??= await createImageArchive(input!.markdown, title, source, progress, input!.imageSources, input!.checkContext,
+				input!.identity, input!.figureLinks, input!.attachments, input!.bibtex, imageDownloads ??= createImageDownloadSession());
 			filename = archive.fileName;
 			contents = archive.bytes;
 			checks = archive.checks;
@@ -126,6 +135,7 @@ async function save() {
 	} catch { /* The paper is already saved. */ }
 	input = undefined;
 	archive = undefined;
+	imageDownloads = undefined;
 	await reportPaperDirectorySave(requestId, { state: summary.warning ? 'saved-warning' : 'saved', message: status.textContent }, source);
 	if (summary.warning) await revealSavePage();
 	else window.close();
@@ -161,6 +171,7 @@ keep.addEventListener('click', async () => {
 	keep.disabled = version.disabled = true;
 	const source = input.source;
 	input = undefined;
+	imageDownloads = undefined;
 	status.textContent = getMessage('paperDirectoryKept', existingFolder);
 	await reportPaperDirectorySave(requestId, { state: 'skipped', message: status.textContent }, source);
 	window.close();

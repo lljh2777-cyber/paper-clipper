@@ -11,17 +11,28 @@ const MAX_TOTAL = 100 * 1024 * 1024;
 const IMAGE_DOWNLOAD_TIMEOUT_MS = 30000;
 export const IMAGE_DOWNLOAD_CONCURRENCY = 3;
 export const IMAGE_DOWNLOAD_RETRY_DELAYS_MS = [300, 900];
-export class ImageArchiveError extends Error {
-	constructor(public readonly reason: 'unsupported' | 'limit' | 'download', public readonly imageNumber = 0) { super(reason); }
+interface ImageRequestFailure { imageNumber: number; url: string; httpStatus?: number }
+interface DownloadedImage { bytes: Uint8Array; extension: string; selection: 'preferred' | 'original-fallback' | 'original' }
+export interface ImageDownloadSession {
+	completed: Map<string, DownloadedImage>;
+	retryAt: Map<string, number>;
 }
-class RetryableImageDownloadError extends ImageArchiveError {
-	constructor() { super('download'); }
+export function createImageDownloadSession(): ImageDownloadSession {
+	return { completed: new Map(), retryAt: new Map() };
+}
+
+export class ImageArchiveError extends Error {
+	constructor(public readonly reason: 'unsupported' | 'limit' | 'download', public readonly imageNumber = 0,
+		public readonly requests: readonly ImageRequestFailure[] = []) { super(reason); }
+}
+class ImageResponseError extends ImageArchiveError {
+	constructor(reason: ImageArchiveError['reason'], public readonly status: number, public readonly retryAfter?: string | null) { super(reason); }
 }
 export function isRetryableImageStatus(status: number): boolean {
 	return status === 408 || status === 429 || (status >= 500 && status <= 599);
 }
 
-function imageType(bytes: Uint8Array, mime: string): string {
+function imageType(bytes: Uint8Array, mime: string): string | undefined {
 	const head = new TextDecoder('ascii').decode(bytes.slice(0, 32));
 	const type = mime.split(';')[0].trim().toLowerCase();
 	if (type === 'image/png' && [137, 80, 78, 71, 13, 10, 26, 10].every((v, i) => bytes[i] === v)) return 'png';
@@ -29,7 +40,6 @@ function imageType(bytes: Uint8Array, mime: string): string {
 	if (type === 'image/gif' && /^GIF8[79]a/.test(head)) return 'gif';
 	if (type === 'image/webp' && head.startsWith('RIFF') && head.slice(8, 12) === 'WEBP') return 'webp';
 	if (type === 'image/avif' && head.slice(4, 8) === 'ftyp' && /avif|avis/.test(head.slice(8))) return 'avif';
-	throw new ImageArchiveError('unsupported');
 }
 
 function imageUrl(value: string, source: string): string {
@@ -93,7 +103,7 @@ async function downloadOnce(url: string, source: string, maxBytes: number, batch
 			document.body.append(frame);
 		});
 		const client = frame.contentWindow as (Window & typeof globalThis) | null;
-		if (!client) throw new RetryableImageDownloadError();
+		if (!client) throw new TypeError('Image download frame unavailable');
 		let cspBlocked = false;
 		client.addEventListener('securitypolicyviolation', () => { cspBlocked = true; });
 		let response: Response;
@@ -118,14 +128,41 @@ async function downloadOnce(url: string, source: string, maxBytes: number, batch
 	} finally { frame.remove(); }
 }
 
-async function download(url: string, source: string, maxBytes: number, batchSignal?: AbortSignal) {
+function retryAfterDelay(header: string | null | undefined): number | undefined {
+	const value = header?.trim();
+	if (!value) return;
+	if (/^\d+$/.test(value)) {
+		const delay = Number(value) * 1000;
+		return Number.isSafeInteger(delay) ? delay : undefined;
+	}
+	if (!/[A-Za-z]/.test(value)) return;
+	const date = Date.parse(value);
+	if (Number.isFinite(date)) return Math.max(0, date - Date.now());
+}
+
+async function download(url: string, source: string, maxBytes: number, batchSignal: AbortSignal, session: ImageDownloadSession) {
+	const origin = new URL(url).origin;
 	for (let attempt = 0; ; attempt++) {
+		// A 429 cooldown applies to every worker and to fallback URLs on this origin.
+		let remaining: number;
+		while ((remaining = (session.retryAt.get(origin) ?? 0) - Date.now()) > 0) {
+			await sleepWithSignal(Math.min(remaining, 2_147_483_647), batchSignal);
+		}
+		if (batchSignal.aborted) throw new ImageArchiveError('download');
 		try {
 			return await downloadOnce(url, source, maxBytes, batchSignal);
 		} catch (error) {
-			const retryable = !(error instanceof ImageArchiveError) || error instanceof RetryableImageDownloadError;
-			if (batchSignal?.aborted || !retryable || attempt >= IMAGE_DOWNLOAD_RETRY_DELAYS_MS.length) throw error;
-			await sleepWithSignal(IMAGE_DOWNLOAD_RETRY_DELAYS_MS[attempt], batchSignal);
+			const responseError = error instanceof ImageResponseError ? error : undefined;
+			const status = responseError?.status;
+			const limited = status === 429;
+			const backoff = IMAGE_DOWNLOAD_RETRY_DELAYS_MS[Math.min(attempt, IMAGE_DOWNLOAD_RETRY_DELAYS_MS.length - 1)];
+			if (limited && !batchSignal.aborted) {
+				const delay = retryAfterDelay(responseError?.retryAfter) ?? backoff;
+				session.retryAt.set(origin, Math.max(session.retryAt.get(origin) ?? 0, Date.now() + delay));
+			}
+			const retryable = !(error instanceof ImageArchiveError) || error.reason === 'download' && status !== undefined && isRetryableImageStatus(status);
+			if (batchSignal.aborted || !retryable || attempt >= IMAGE_DOWNLOAD_RETRY_DELAYS_MS.length) throw error;
+			if (!limited) await sleepWithSignal(backoff, batchSignal);
 		}
 	}
 }
@@ -133,11 +170,11 @@ async function download(url: string, source: string, maxBytes: number, batchSign
 async function readImage(response: Response, maxBytes: number): Promise<{ bytes: Uint8Array; extension: string }> {
 	if (!response.ok || !response.body) {
 		await response.body?.cancel();
-		throw isRetryableImageStatus(response.status) ? new RetryableImageDownloadError() : new ImageArchiveError('download');
+		throw new ImageResponseError('download', response.status, response.headers.get('Retry-After'));
 	}
 	if (Number(response.headers.get('content-length')) > maxBytes) {
 		await response.body.cancel();
-		throw new ImageArchiveError('limit');
+		throw new ImageResponseError('limit', response.status);
 	}
 	const reader = response.body.getReader();
 	const chunks: Uint8Array[] = [];
@@ -147,21 +184,20 @@ async function readImage(response: Response, maxBytes: number): Promise<{ bytes:
 			const { done, value } = await reader.read();
 			if (done) break;
 			size += value.length;
-			if (size > maxBytes) throw new ImageArchiveError('limit');
+			if (size > maxBytes) throw new ImageResponseError('limit', response.status);
 			chunks.push(value);
 		}
 	} finally { await reader.cancel(); }
 	const bytes = new Uint8Array(size);
 	let offset = 0;
 	for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
-	return { bytes, extension: imageType(bytes, response.headers.get('content-type') ?? '') };
+	const extension = imageType(bytes, response.headers.get('content-type') ?? '');
+	if (!extension) throw new ImageResponseError('unsupported', response.status);
+	return { bytes, extension };
 }
 
-export async function prepareImageFiles(markdown: string, source: string,
-	onProgress: (done: number, total: number) => void = () => {}, imageSources: Record<string, string> = {},
-	checkContext?: ManualExportCheckContext, figureLinks: Record<string, string> = {}, attachments: PaperAttachment[] = [], bibtex?: string): Promise<{ files: Record<string, Uint8Array>; imageCount: number; checks: ManualExportChecks }> {
+export function inspectArchiveMarkdown(markdown: string, source: string) {
 	if (markdown.length > 5 * 1024 * 1024) throw new ImageArchiveError('limit');
-	const checks = checkContext?.inputSha256 === await markdownSha256(markdown) ? checkContext.report : unassessedManualExportChecks();
 	const frontmatter = markdown.match(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/)?.[0] ?? '';
 	const tree = fromMarkdown(markdown.slice(frontmatter.length));
 	const nodes: RootContent[] = [];
@@ -185,69 +221,81 @@ export async function prepareImageFiles(markdown: string, source: string,
 	}
 	const urls = [...new Set(images.map(image => image.url))];
 	if (urls.length > 200) throw new ImageArchiveError('limit');
+	return { frontmatter, tree, nodes, definitions, images, urls };
+}
+
+export async function prepareImageFiles(markdown: string, source: string,
+	onProgress: (done: number, total: number) => void = () => {}, imageSources: Record<string, string> = {},
+	checkContext?: ManualExportCheckContext, figureLinks: Record<string, string> = {}, attachments: PaperAttachment[] = [], bibtex?: string,
+	session = createImageDownloadSession()): Promise<{ files: Record<string, Uint8Array>; imageCount: number; checks: ManualExportChecks }> {
+	const { frontmatter, nodes, definitions, images, urls } = inspectArchiveMarkdown(markdown, source);
+	const checks = checkContext?.inputSha256 === await markdownSha256(markdown) ? checkContext.report : unassessedManualExportChecks();
 	const files: Record<string, Uint8Array> = Object.create(null);
 	const destinations = new Map<string, string>();
-	const selections: { file: string; selection: 'preferred' | 'original-fallback' | 'original' }[] = [];
-	onProgress(0, urls.length);
+	const selections: { file: string; selection: DownloadedImage['selection'] }[] = [];
+	const pending = urls.map((url, index) => ({ url, index })).filter(({ url }) => !session.completed.has(url));
+	let completed = urls.length - pending.length;
+	let total = urls.reduce((bytes, url) => bytes + (session.completed.get(url)?.bytes.length ?? 0), 0);
+	onProgress(completed, urls.length);
 	if (urls.length > 0) {
 		const controller = new AbortController();
-		let nextIndex = 0;
-		let completed = 0;
-		let total = 0;
-		const downloaded = new Array<{ bytes: Uint8Array; extension: string; selection: 'preferred' | 'original-fallback' | 'original' }>(urls.length);
-		const errors = new Map<number, ImageArchiveError>();
+		let next = 0;
+		const errors: ImageArchiveError[] = [];
 
 		async function worker() {
 			while (true) {
 				if (controller.signal.aborted) return;
-				const index = nextIndex++;
-				if (index >= urls.length) return;
-				const url = urls[index];
+				const item = pending[next++];
+				if (!item) return;
+				const { index, url } = item;
+				const imageNumber = index + 1;
 				try {
 					const remaining = MAX_TOTAL - total;
-					if (remaining <= 0) throw new ImageArchiveError('limit', index + 1);
+					if (remaining <= 0) throw new ImageArchiveError('limit', imageNumber);
 					const candidates = imageDownloadCandidates(url, source, imageSources);
+					const requests: ImageRequestFailure[] = [];
 					let result: Awaited<ReturnType<typeof download>> | undefined;
 					let selected = 0;
 					for (const [candidateIndex, candidate] of candidates.entries()) {
 						if (controller.signal.aborted) return;
 						try {
-							result = await download(imageUrl(candidate, source), source, Math.min(MAX_IMAGE, remaining), controller.signal);
+							result = await download(imageUrl(candidate, source), source, Math.min(MAX_IMAGE, remaining), controller.signal, session);
 							selected = candidateIndex;
 							break;
 						} catch (error) {
 							if (controller.signal.aborted) return;
-							if (candidateIndex === candidates.length - 1) throw error;
+							requests.push({ imageNumber, url: candidate, httpStatus: error instanceof ImageResponseError ? error.status : undefined });
+							if (candidateIndex === candidates.length - 1) throw new ImageArchiveError(error instanceof ImageArchiveError ? error.reason : 'download', imageNumber, requests);
 						}
 					}
 					if (controller.signal.aborted) return;
 					const { bytes, extension } = result!;
+					if (total + bytes.length > MAX_TOTAL) throw new ImageArchiveError('limit', imageNumber);
 					total += bytes.length;
-					if (total > MAX_TOTAL) throw new ImageArchiveError('limit', index + 1);
-					downloaded[index] = {
+					session.completed.set(url, {
 						bytes,
 						extension,
 						selection: candidates.length === 1 ? 'original' : selected === 0 ? 'preferred' : 'original-fallback',
-					};
+					});
 					completed++;
 					onProgress(completed, urls.length);
 				} catch (error) {
-					if (!controller.signal.aborted) {
-						errors.set(index + 1, new ImageArchiveError(error instanceof ImageArchiveError ? error.reason : 'download', index + 1));
-						controller.abort();
-					}
-					return;
+					if (controller.signal.aborted) return;
+					const failure = error instanceof ImageArchiveError ? error : new ImageArchiveError('download', imageNumber);
+					errors.push(failure);
+					if (failure.reason !== 'download') controller.abort();
 				}
 			}
 		}
 
-		await Promise.all(Array.from({ length: Math.min(IMAGE_DOWNLOAD_CONCURRENCY, urls.length) }, () => worker()));
-		if (errors.size > 0) {
-			const first = Math.min(...errors.keys());
-			throw errors.get(first)!;
+		await Promise.all(Array.from({ length: Math.min(IMAGE_DOWNLOAD_CONCURRENCY, pending.length) }, () => worker()));
+		if (errors.length) {
+			errors.sort((a, b) => a.imageNumber - b.imageNumber);
+			const first = errors.find(error => error.reason !== 'download') ?? errors[0];
+			throw new ImageArchiveError(first.reason, first.imageNumber, errors.flatMap(error => error.requests));
 		}
 		for (const [index, url] of urls.entries()) {
-			const item = downloaded[index];
+			const item = session.completed.get(url)!;
 			const destination = `images/image-${index + 1}.${item.extension}`;
 			files[destination] = item.bytes;
 			destinations.set(url, destination);
@@ -304,11 +352,12 @@ export async function prepareImageFiles(markdown: string, source: string,
 
 export async function createImageArchive(markdown: string, title: string, source: string,
 	onProgress: (done: number, total: number) => void = () => {}, imageSources: Record<string, string> = {},
-	checkContext?: ManualExportCheckContext, identity: PaperIdentity = { doi: null, published: null }, figureLinks: Record<string, string> = {}, attachments: PaperAttachment[] = [], bibtex?: string): Promise<{ bytes: Uint8Array; fileName: string; imageCount: number; checks: ManualExportChecks }> {
+	checkContext?: ManualExportCheckContext, identity: PaperIdentity = { doi: null, published: null }, figureLinks: Record<string, string> = {}, attachments: PaperAttachment[] = [], bibtex?: string,
+	session?: ImageDownloadSession): Promise<{ bytes: Uint8Array; fileName: string; imageCount: number; checks: ManualExportChecks }> {
 	const doi = normalizeDoi(identity.doi);
 	if (identity.doi && !doi) throw new Error('Invalid paper DOI');
 	identity = { ...identity, doi };
-	const prepared = await prepareImageFiles(markdown, source, onProgress, imageSources, checkContext, figureLinks, attachments, bibtex);
+	const prepared = await prepareImageFiles(markdown, source, onProgress, imageSources, checkContext, figureLinks, attachments, bibtex, session);
 	const id = crypto.randomUUID();
 	const root = paperFolderName(title, identity, id);
 	const metadata = await paperTranslationMetadata({ title, source, identity }, prepared, id);
