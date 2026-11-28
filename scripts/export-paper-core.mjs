@@ -19,7 +19,7 @@ const modules = [
 	'import-papers', 'watch-exports', 'browser-queue', 'clip', 'archive-papers', 'paper-assets', 'paper-captions',
 	'accept-assets', 'accept-papers', 'paper-validation', 'paper-sections',
 ];
-const extras = ['build-cli', 'paper-metadata', 'accept-math', 'accept-vault', 'accept-clip-vault'];
+const extras = ['build-cli', 'paper-markdown', 'paper-metadata', 'accept-math', 'accept-vault', 'accept-clip-vault'];
 const documents = ['browser-fetcher', 'browser-queue', 'clip', 'import-papers', 'watch-exports', 'paper-agent', 'paper-assets', 'paper-clipper', 'vault-archive'];
 export const coreFiles = [
 	'LICENSE', '.gitignore',

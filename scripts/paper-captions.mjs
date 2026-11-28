@@ -1,6 +1,7 @@
 import { Marked } from 'marked';
 import { parseHTML } from 'linkedom';
 import { cellCaptionForCheck } from '../src/utils/cell-citations.mjs';
+import { escapeLiteralLessThan } from './paper-markdown.mjs';
 
 const marked = new Marked({ gfm: true });
 const springerNatureHost = /(^|\.)nature\.com$|^link\.springer\.com$|(^|\.)biomedcentral\.com$/;
@@ -8,10 +9,11 @@ const bodyOnly = value => value.replace(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---(?:\r?\
 // Citation superscripts may become Markdown footnote references. Ignore layout
 // whitespace, but retain every letter, number and punctuation mark of the legend.
 const canonicalText = value => value.replace(/\[\^(\d+)\]/g, '$1').replace(/\s+/g, '');
-const rendered = value => parseHTML(`<html><body>${marked.parse(value)}</body></html>`).document;
+const rendered = value => parseHTML(`<html><body>${marked.parse(escapeLiteralLessThan(value))}</body></html>`).document;
 
 function renderedText(raw) {
-	if (!raw.includes('$')) return { document: rendered(raw), text: canonicalText(rendered(raw).body.textContent) };
+	const doc = rendered(raw);
+	if (!raw.includes('$')) return { document: doc, text: canonicalText(doc.body.textContent) };
 	const saved = [];
 	const masked = raw.replace(/`[^`\n]+`|(?<!\\)\$(?![\s$])((?:\\[^\n]|[^\\$\n])+?)(?<![\s\\])\$(?!\$)/g, match => {
 		if (match.startsWith('`')) return match;
@@ -19,7 +21,6 @@ function renderedText(raw) {
 		saved.push(match);
 		return token;
 	});
-	const doc = rendered(raw);
 	if (!saved.length) return { document: doc, text: canonicalText(doc.body.textContent) };
 	let text = canonicalText(rendered(masked).body.textContent);
 	saved.forEach((value, index) => {

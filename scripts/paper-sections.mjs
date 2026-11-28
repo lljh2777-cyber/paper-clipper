@@ -1,5 +1,6 @@
 import { Marked } from 'marked';
 import { parseHTML } from 'linkedom';
+import { escapeLiteralLessThan } from './paper-markdown.mjs';
 
 const marked = new Marked({ gfm: true });
 const springerNatureHost = /(^|\.)nature\.com$|^link\.springer\.com$|(^|\.)biomedcentral\.com$/;
@@ -66,7 +67,7 @@ function markdownSections(markdown, url) {
 	for (const token of marked.lexer(body)) {
 		if (!['heading', 'paragraph'].includes(token.type)) continue;
 		if (token.type === 'paragraph' && /^\[\^[^\]\n]+\]:/.test(token.text)) continue;
-		const document = parseHTML(`<html><body>${marked.parse(token.raw)}</body></html>`).document;
+		const document = parseHTML(`<html><body>${marked.parse(escapeLiteralLessThan(token.raw))}</body></html>`).document;
 		const text = textOf(document.body, url, true);
 		if (token.type === 'heading') sections.push({ text, level: token.depth, paragraphs: [] });
 		else if (sections.length && text) sections.at(-1).paragraphs.push(text);

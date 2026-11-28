@@ -75,6 +75,17 @@ test('only numeric local Nature citations normalize to corresponding footnote ma
 	assert.equal(check('## Main\n\nEvidence[^1][^23] remains 1,23.', input.replace('href="#ref-CR1"', 'href="https://other.example/#ref-CR1"')).status, 'failed');
 });
 
+test('SpringerLink prose retains emphasis and comparison signs together', () => {
+	const springer = 'https://link.springer.com/article/10.1234/example';
+	const input = html(section('Results', '<p>For p&lt;0.05, the <i>score</i> was &gt;0.8. The threshold was <code>x &lt; 2</code>.</p><p>For p&lt; 0.05, <i>A</i> and <i>B</i> agreed at <i>ρ</i> &gt;0.8.</p>'));
+	const md = '## Results\n\nFor p<0.05, the *score* was >0.8. The threshold was `x < 2`.\n\nFor p< 0.05, *A* and *B* agreed at *ρ* >0.8.';
+	const check = value => checkSourceSections(input, value, springer);
+	assert.equal(check(md).matchedParagraphs, 2);
+	assert.equal(check(md.replace('p<0.05', 'p>0.05')).status, 'failed');
+	assert.equal(check(md.replace('`x < 2`', '`x > 2`')).status, 'failed');
+	assert.equal(check(md.replace('*ρ*', '*r*')).status, 'failed');
+});
+
 test('math, dollar and inline image paragraphs are explicitly skipped, never counted as matched', () => {
 	const input = html(section('Methods', '<p>Plain prose.</p><p>Formula <span class="mathjax-tex">\\(x_i\\)</span>.</p><p>Cost $5.</p><p>Inline <img src="eq.png">.</p>'));
 	const result = check('## Methods\n\nPlain prose.', input);

@@ -69,6 +69,17 @@ test('production caption check fails missing, shortened, duplicated, relocated a
 	assert.equal(checkFigureCaptions(html.replace(/<p>[\s\S]*<\/p>/, ''), markdown, url).status, 'failed');
 });
 
+test('SpringerLink captions retain formatted labels between literal comparisons', () => {
+	const springer = 'https://link.springer.com/article/10.1234/example';
+	const input = `<figure><figcaption>Fig. 1</figcaption><div class="c-article-section__figure-description"><p>Values &lt; 0.05. <strong>C)</strong> See <a href="/data">data</a> above 2, sorted by <em>Z</em>-score. Report values &gt; 1.</p></div></figure>`;
+	const md = 'Fig. 1\n\nValues < 0.05. **C)** See [data](/data) above 2, sorted by *Z*-score. Report values > 1.';
+	const check = value => checkFigureCaptions(input, value, springer).status;
+	assert.equal(check(md), 'passed');
+	for (const changed of [md.replace('< 0.05', '> 0.05'), md.replace('**C)**', '**D)**'), md.replace('(/data)', '(/other)')]) {
+		assert.equal(check(changed), 'failed');
+	}
+});
+
 test('Cell conversion and source checks retain collapsed panel text and complete citation definitions', () => {
 	const cell = 'https://www.cell.com/cell/fulltext/synthetic';
 	const prose = 'Synthetic tissue measurements were repeated across independent experimental groups. '.repeat(40);
